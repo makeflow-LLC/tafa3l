@@ -3,6 +3,11 @@
 const crypto = require('crypto');
 
 const QUESTION_TYPES = ['mc', 'truefalse', 'poll', 'word', 'scale', 'open'];
+/** مهلة «استعد… ٣ ٢ ١» قبل فتح السؤال المؤقّت — تبقي الجميع على نفس الخط */
+const READY_MS = 3200;
+/** تفاعلات سريعة يرسلها المشاركون أثناء العرض */
+const REACTIONS = ['👏', '🔥', '😂', '😮', '❤️', '🤔'];
+const REACTION_COOLDOWN_MS = 600;
 /** الأنواع التي تُحتسب لها نقاط (لها إجابة صحيحة) */
 const SCORED_TYPES = new Set(['mc', 'truefalse']);
 /** الأنواع التي لا تُظهر هوية المشارك في النتائج */
@@ -113,6 +118,8 @@ function normalizeQuiz(payload) {
       requireName: payload?.settings?.requireName !== false,
       allowLateJoin: payload?.settings?.allowLateJoin !== false,
       showLeaderboard: payload?.settings?.showLeaderboard !== false,
+      // عدّاد «استعد» قبل الأسئلة المؤقتة
+      countdown: payload?.settings?.countdown !== false,
     },
   };
 }
@@ -133,6 +140,7 @@ class Session {
     this.status = 'lobby'; // lobby | live | ended
     this.phase = 'lobby'; // lobby | question | results | leaderboard | final
     this.currentIndex = -1;
+    this.questionOpensAt = null; // متى تُقبل الإجابات (بعد عدّاد «استعد»)
     this.questionStartedAt = null;
     this.questionEndsAt = null;
     this.locked = false;
@@ -175,6 +183,7 @@ class Session {
       streak: 0,
       joinedAt: Date.now(),
       connected: true,
+      lastReaction: 0,
       sockets: new Set(),
       answers: new Map(), // qid -> { value, at, ms, correct, points }
     };
@@ -231,10 +240,18 @@ class Session {
     this.status = 'live';
     this.phase = 'question';
     this.locked = false;
-    this.questionStartedAt = Date.now();
-    this.questionEndsAt = q.timeLimit ? this.questionStartedAt + q.timeLimit * 1000 : null;
+    // الأسئلة المؤقتة تبدأ بعد عدّاد قصير حتى ينطلق الجميع معاً
+    const ready = q.timeLimit && this.settings.countdown ? READY_MS : 0;
+    this.questionOpensAt = Date.now() + ready;
+    this.questionStartedAt = this.questionOpensAt;
+    this.questionEndsAt = q.timeLimit ? this.questionOpensAt + q.timeLimit * 1000 : null;
     this.armTimer();
     this.touch();
+  }
+
+  /** هل انتهى عدّاد «استعد»؟ */
+  isOpen() {
+    return !this.questionOpensAt || Date.now() >= this.questionOpensAt;
   }
 
   armTimer() {
@@ -286,12 +303,26 @@ class Session {
   }
 
   acceptsAnswers() {
-    return this.status === 'live' && this.phase === 'question' && !this.locked;
+    return this.status === 'live' && this.phase === 'question' && !this.locked && this.isOpen();
+  }
+
+  /** تفاعل سريع (إيموجي) — يُبث للمضيف مع حد لمنع الإغراق */
+  react(participant, emoji) {
+    if (!REACTIONS.includes(emoji)) return false;
+    if (this.status !== 'live') return false;
+    const now = Date.now();
+    if (now - (participant.lastReaction || 0) < REACTION_COOLDOWN_MS) return false;
+    participant.lastReaction = now;
+    this.touch();
+    return true;
   }
 
   // -------------------------------------------------------------- الإجابات
 
   submitAnswer(participant, qid, rawValue) {
+    if (!this.isOpen()) {
+      return { ok: false, error: 'انتظر… لم يبدأ السؤال بعد' };
+    }
     if (!this.acceptsAnswers()) {
       return { ok: false, error: 'انتهى وقت الإجابة على هذا السؤال' };
     }
@@ -621,6 +652,7 @@ class Session {
       total: this.questions.length,
       locked: this.locked,
       endsAt: this.questionEndsAt,
+      opensAt: this.questionOpensAt,
       serverNow: Date.now(),
       settings: this.settings,
       me: {
@@ -663,6 +695,7 @@ class Session {
       total: this.questions.length,
       locked: this.locked,
       endsAt: this.questionEndsAt,
+      opensAt: this.questionOpensAt,
       serverNow: Date.now(),
       settings: this.settings,
       questions: this.questions.map((item) => ({ id: item.id, text: item.text, type: item.type })),
@@ -729,4 +762,4 @@ function normalizeAvatar(avatar) {
   };
 }
 
-module.exports = { Session, normalizeQuiz, QUESTION_TYPES, LIMITS, publicQuestion };
+module.exports = { Session, normalizeQuiz, QUESTION_TYPES, LIMITS, REACTIONS, READY_MS, publicQuestion };

@@ -22,13 +22,28 @@ test.before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 
-test.after(() => server.close());
+// كل الاتصالات المفتوحة، حتى نغلقها بالقوة ولو فشل اختبار في منتصفه
+const openSockets = new Set();
+
+test.after(() => {
+  for (const socket of openSockets) {
+    try {
+      socket.terminate();
+    } catch {
+      /* تجاهل */
+    }
+  }
+  server.closeAllConnections?.();
+  server.close();
+});
 
 // ------------------------------------------------------------------ أدوات
 
 function ws() {
   const url = base.replace('http', 'ws') + '/ws';
   const socket = new WebSocket(url);
+  openSockets.add(socket);
+  socket.on('close', () => openSockets.delete(socket));
   const queue = [];
   const waiters = [];
   socket.on('message', (raw) => {
@@ -85,7 +100,8 @@ async function post(path, body, headers) {
 
 const QUIZ = {
   title: 'اختبار تجريبي',
-  settings: { requireName: true, allowLateJoin: true, showLeaderboard: true },
+  // العدّاد مطفأ في معظم الاختبارات حتى لا ننتظر ٣ ثوانٍ قبل كل سؤال
+  settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: false },
   questions: [
     {
       type: 'mc',
@@ -300,6 +316,95 @@ test('إعادة الاتصال تحافظ على النقاط والإجابا�
   host.close();
   again.close();
   impostor.close();
+});
+
+test('عدّاد «استعد» يمنع الإجابة المبكرة ويفتح السؤال بعده', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'مع عدّاد',
+    settings: { countdown: true },
+    questions: [
+      {
+        // مدة قصيرة: لو بدأ العدّ من لحظة «ابدأ» بدل لحظة الفتح لضاع أكثر من نصف الوقت
+        type: 'mc',
+        text: 'س؟',
+        timeLimit: 6,
+        points: 1000,
+        options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }],
+        correct: ['o0'],
+      },
+    ],
+  });
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'ريم' });
+  await p.next('joined');
+
+  host.send({ t: 'host:start' });
+  const q = await p.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.ok(q.opensAt > Date.now(), 'يجب أن يكون وقت الفتح في المستقبل');
+
+  // إجابة أثناء العدّاد تُرفض
+  p.send({ t: 'answer', questionId: q.question.id, value: 'o0' });
+  const early = await p.next('answer:rejected');
+  assert.match(early.message, /لم يبدأ/);
+
+  // وبعد انتهاء العدّاد تُقبل
+  await new Promise((resolve) => setTimeout(resolve, q.opensAt - Date.now() + 120));
+  p.send({ t: 'answer', questionId: q.question.id, value: 'o0' });
+  const accepted = await p.next('answer:accepted');
+  assert.equal(accepted.correct, true);
+  // الزمن يُحسب من لحظة الفتح لا من لحظة الضغط على «ابدأ»:
+  // إجابة فورية ⇒ النقاط شبه كاملة (لو عُدّ زمن العدّاد لهبطت إلى ~٧٠٠)
+  assert.ok(accepted.points > 900, 'النقاط: ' + accepted.points);
+  assert.ok(accepted.points <= 1000, 'النقاط لا تتجاوز قيمة السؤال: ' + accepted.points);
+
+  host.close();
+  p.close();
+});
+
+test('التفاعلات تصل للمضيف وتُحدّ من التكرار السريع', async () => {
+  const { data: created } = await post('/api/sessions', QUIZ);
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'ندى' });
+  await p.next('joined');
+  host.send({ t: 'host:start' });
+  await p.next((m) => m.t === 'state' && m.phase === 'question');
+
+  p.send({ t: 'reaction', emoji: '👏' });
+  const reaction = await host.next('reaction');
+  assert.equal(reaction.emoji, '👏');
+
+  // إيموجي غير مسموح، ورشقة سريعة: لا شيء منها يصل
+  p.send({ t: 'reaction', emoji: '💣' });
+  p.send({ t: 'reaction', emoji: '🔥' });
+  await assert.rejects(() => host.next('reaction', 700));
+
+  host.close();
+  p.close();
+});
+
+test('القوالب المشتركة صالحة على الخادم والمتصفح', async () => {
+  const templates = await fetch(base + '/api/templates').then((r) => r.json());
+  assert.ok(templates.templates.length >= 3);
+  for (const template of templates.templates) {
+    assert.ok(template.key && template.name && template.title);
+    assert.ok(Array.isArray(template.questions) && template.questions.length > 0);
+    // كل قالب يجب أن يُنشئ جلسة فعلياً
+    const { status } = await post('/api/sessions', template);
+    assert.equal(status, 201, 'فشل القالب: ' + template.key);
+  }
 });
 
 test('توليد رمز QR بصيغة SVG', async () => {

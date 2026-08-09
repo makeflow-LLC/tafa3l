@@ -2,7 +2,7 @@
 (function (global) {
   'use strict';
 
-  const { $, el, toast, api, store, TYPE_LABELS, TYPE_EMOJI } = global.T;
+  const { el, toast, store, TYPE_LABELS, TYPE_EMOJI } = global.T;
 
   const DRAFT_KEY = 'tafa3l:draft';
   const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open'];
@@ -27,7 +27,7 @@
   function defaultDraft() {
     return {
       title: '',
-      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true },
+      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true },
       questions: [blankQuestion('mc')],
     };
   }
@@ -73,6 +73,7 @@
           switchRow('طلب الاسم أو الكنية', 'requireName', 'أطفئه لاستطلاع مجهول بلا أسماء'),
           switchRow('السماح بالدخول المتأخر', 'allowLateJoin', 'يستطيع الطلاب الدخول بعد بدء النشاط'),
           switchRow('عرض لوحة الترتيب', 'showLeaderboard', 'يظهر ترتيب المشاركين بين الأسئلة'),
+          switchRow('عدّاد «استعد ٣٢١»', 'countdown', 'ينطلق الجميع معاً في الأسئلة المؤقتة'),
         ])
       );
 
@@ -429,26 +430,34 @@
       return card;
     }
 
-    async function loadTemplates(row) {
-      try {
-        const { templates } = await api('/api/templates');
-        row.innerHTML = '';
-        templates.forEach((template) => {
-          const button = el('button', { class: 'btn sm ghost', type: 'button', title: template.description }, template.name);
-          button.addEventListener('click', () => {
-            if (!confirm(`استبدال المسودة الحالية بقالب «${template.name}»؟`)) return;
-            draft.title = template.title;
-            draft.settings = { ...template.settings };
-            draft.questions = template.questions.map((question) => ({ ...blankQuestion(question.type), ...question, id: uid() }));
-            openIndex = 0;
-            update();
-          });
-          row.append(button);
-        });
-      } catch {
-        row.innerHTML = '';
-        row.append(el('span', { class: 'muted small', text: 'تعذّر تحميل القوالب' }));
+    /** القوالب محمّلة مع الصفحة (window.TEMPLATES) — لا تعتمد على الشبكة إطلاقاً */
+    function loadTemplates(row) {
+      const templates = global.TEMPLATES || [];
+      row.innerHTML = '';
+      if (!templates.length) {
+        row.append(el('span', { class: 'muted small', text: 'لا توجد قوالب' }));
+        return;
       }
+      templates.forEach((template) => {
+        const button = el('button', { class: 'btn sm ghost', type: 'button', title: template.description }, template.name);
+        button.addEventListener('click', () => {
+          if (!confirm(`استبدال المسودة الحالية بقالب «${template.name}»؟`)) return;
+          applyTemplate(template);
+        });
+        row.append(button);
+      });
+    }
+
+    function applyTemplate(template) {
+      draft.title = template.title;
+      draft.settings = { ...template.settings };
+      draft.questions = template.questions.map((question) => ({
+        ...blankQuestion(question.type),
+        ...JSON.parse(JSON.stringify(question)),
+        id: uid(),
+      }));
+      openIndex = 0;
+      update();
     }
 
     draw();
@@ -473,5 +482,5 @@
     return null;
   }
 
-  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, DRAFT_KEY };
+  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, DRAFT_KEY };
 })(window);

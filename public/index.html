@@ -45,6 +45,7 @@
         <h2>أنت مدرب أو معلم؟</h2>
         <p class="muted small">أنشئ اختباراً أو استطلاعاً خلال دقيقة، اعرض رمز QR لطلابك، وتابع تقدّمهم مباشرة على لوحة التحكم.</p>
         <a class="btn accent block" href="/host.html">إنشاء نشاط جديد</a>
+        <a class="btn ghost block" href="/host.html#/demo" style="margin-top: 8px">⚡ تجربة سريعة بضغطة واحدة</a>
         <div id="resume" class="hidden" style="margin-top: 10px">
           <a class="btn ghost block" id="resumeLink" href="#">استئناف جلستي السابقة</a>
         </div>
@@ -67,8 +68,13 @@
     <script src="/assets/js/common.js"></script>
     <script>
       (function () {
-        const { $, api, toast, store } = window.T;
+        const { $, api, toast, store, serverAlive, showOfflineBanner } = window.T;
         const input = $('#code');
+
+        // تشخيص مبكر: إن كان الخادم غير متاح نشرح السبب بدل رسالة خطأ غامضة
+        serverAlive().then((alive) => {
+          if (!alive) showOfflineBanner(document.querySelector('.wrap'));
+        });
 
         // رمز قادم من رابط QR
         const params = new URLSearchParams(location.search);

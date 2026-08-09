@@ -2,7 +2,9 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs } = window.T;
+  const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, serverAlive, showOfflineBanner } =
+    window.T;
+  const Fx = window.Fx;
 
   const app = $('#app');
   const bar = $('#bar');
@@ -20,7 +22,15 @@
     tab: 'stage',
     tickTimer: null,
     joinUrl: '',
+    cancelCountdown: null,
+    lastPhaseKey: '',
+    clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
+
+  /** توقيت الخادم الآن كما نقدّره محلياً */
+  function serverTime() {
+    return Date.now() - state.clockOffset;
+  }
 
   // -------------------------------------------------------------- التوجيه
 
@@ -28,7 +38,34 @@
     const hash = location.hash.slice(1) || '/';
     const match = hash.match(/^\/live\/(\d{6})$/);
     if (match) return openLive(match[1]);
+    if (hash === '/demo') return startDemo();
     return openBuilder();
+  }
+
+  /** تجربة فورية: ينشئ جلسة من قالب جاهز بضغطة واحدة */
+  async function startDemo() {
+    teardown();
+    app.innerHTML = '';
+    app.append(el('div', { class: 'card center stack' }, [el('div', { class: 'spinner' }), el('p', { class: 'muted', text: 'جارٍ تجهيز تجربة سريعة…' })]));
+    const template = (window.TEMPLATES || []).find((item) => item.key === 'quiz') || (window.TEMPLATES || [])[0];
+    try {
+      const created = await api('/api/sessions', {
+        method: 'POST',
+        body: { title: template.title, settings: template.settings, questions: template.questions },
+      });
+      rememberHost(created.code, created.hostToken, created.title);
+      location.hash = '#/live/' + created.code;
+    } catch (err) {
+      app.innerHTML = '';
+      showOfflineBanner(app);
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('h2', { text: 'تعذّر بدء التجربة' }),
+          el('p', { class: 'muted small', text: err.message }),
+          el('a', { class: 'btn primary', href: '#/' }, 'الذهاب إلى المحرّر'),
+        ])
+      );
+    }
   }
 
   window.addEventListener('hashchange', route);
@@ -56,6 +93,12 @@
     const root = el('div', { class: 'stack' });
     app.append(el('h1', { text: 'إنشاء نشاط تفاعلي' }));
     app.append(root);
+
+    // تحذير مبكر إن كان الخادم غير متاح، بدل مفاجأة المدرب عند الإطلاق
+    serverAlive().then((alive) => {
+      if (!alive && location.hash !== '#/live') showOfflineBanner(app);
+    });
+
     window.Builder.mount(root, async (draft) => {
       try {
         const payload = {
@@ -71,6 +114,7 @@
         location.hash = '#/live/' + created.code;
       } catch (err) {
         toast(err.message, 'bad');
+        if (err.offline) showOfflineBanner(app);
       }
     });
   }
@@ -109,8 +153,14 @@
       },
       onMessage: (msg) => {
         if (msg.t === 'state') {
+          // يجب التقاط الفارق لحظة الوصول؛ حسابه لاحقاً يجعله دائماً صفراً
+          if (msg.serverNow) state.clockOffset = Date.now() - msg.serverNow;
+          const previous = state.live;
           state.live = msg;
+          announce(previous, msg);
           renderLive();
+        } else if (msg.t === 'reaction') {
+          Fx.floatEmoji(msg.emoji);
         } else if (msg.t === 'dashboard') {
           state.dashboard = msg.data;
           if (state.tab === 'dashboard') renderLive();
@@ -137,11 +187,27 @@
       .catch(() => {});
   }
 
+  /** أصوات ومؤثرات عند تغيّر المراحل ودخول المشاركين */
+  function announce(previous, next) {
+    if (previous && next.participants.length > previous.participants.length) Fx.play('join');
+    const key = next.status + ':' + next.phase + ':' + next.index;
+    if (key === state.lastPhaseKey) return;
+    const first = state.lastPhaseKey === '';
+    state.lastPhaseKey = key;
+    if (first) return;
+    if (next.phase === 'results') Fx.play('reveal');
+    else if (next.status === 'ended') {
+      Fx.play('finish');
+      Fx.confetti(150);
+    } else if (next.phase === 'leaderboard') Fx.play('reveal');
+  }
+
   function teardown() {
     state.socket?.close();
     state.socket = null;
     state.live = null;
     state.dashboard = null;
+    state.lastPhaseKey = '';
     clearTick();
   }
 
@@ -271,11 +337,34 @@
     ]);
   }
 
+  /** كم بقي على فتح السؤال (بتوقيت الخادم) */
+  function openIn(s) {
+    if (!s.opensAt) return 0;
+    return s.opensAt - serverTime();
+  }
+
   function renderQuestion(s) {
     const q = s.question;
     const results = s.results;
     const answered = s.answeredCount;
     const total = s.participants.length;
+
+    // عدّاد «استعد» — نفس التوقيت على كل الشاشات
+    const untilOpen = openIn(s);
+    if (s.phase === 'question' && untilOpen > 250) {
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('span', { class: 'badge' }, `${TYPE_EMOJI[q.type]} سؤال ${s.index + 1} من ${s.total}`),
+          el('h2', { class: 'big-q', text: q.text }),
+          el('p', { class: 'muted', text: 'استعد… ينطلق الجميع معاً' }),
+        ])
+      );
+      state.cancelCountdown = Fx.countdown(untilOpen, () => {
+        state.cancelCountdown = null;
+        renderLive();
+      });
+      return;
+    }
 
     const head = el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
@@ -404,7 +493,36 @@
         el('button', { class: 'btn accent', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج (JSON)'),
       ])
     );
-    if (s.leaderboard?.length) app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'الأوائل' }), boardList(s.leaderboard)]));
+    const board = s.leaderboard || [];
+    if (board.length) {
+      app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 منصة التتويج', style: { margin: 0 } }), podium(board)]));
+      if (board.length > 3) app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'بقية الترتيب' }), boardList(board.slice(3))]));
+    }
+  }
+
+  /** منصة التتويج للأوائل الثلاثة */
+  function podium(board) {
+    const order = [1, 0, 2]; // الفضة، الذهب، البرونز — ليكون الأول في الوسط
+    const medals = ['🥇', '🥈', '🥉'];
+    const heights = ['86px', '120px', '64px'];
+    const wrap = el('div', { class: 'podium' });
+    order.forEach((index, slot) => {
+      const entry = board[index];
+      if (!entry) return;
+      wrap.append(
+        el('div', { class: 'pod' }, [
+          el('div', { class: 'who' }, [
+            avatarNode(entry.avatar, ''),
+            el('div', { class: 'nm', text: entry.name }),
+            el('div', { class: 'sc', text: String(entry.score) }),
+          ]),
+          el('div', { class: 'block', style: { height: heights[slot] } }, [
+            el('span', { class: 'medal', text: medals[index] }),
+          ]),
+        ])
+      );
+    });
+    return wrap;
   }
 
   function boardList(list) {
@@ -629,15 +747,21 @@
 
   function startTick(s, q) {
     if (!s.endsAt) return;
-    const offset = s.serverNow ? Date.now() - s.serverNow : 0;
     const num = $('#tnum');
     const barEl = $('#tbar');
     if (!num || !barEl) return;
     const total = q.timeLimit * 1000;
+    let lastSecond = null;
     state.tickTimer = setInterval(() => {
-      const left = Math.max(0, s.endsAt - (Date.now() - offset));
-      num.textContent = String(Math.ceil(left / 1000));
+      const left = Math.max(0, s.endsAt - serverTime());
+      const seconds = Math.ceil(left / 1000);
+      num.textContent = String(seconds);
       barEl.style.width = Math.max(0, (left / total) * 100) + '%';
+      if (seconds !== lastSecond) {
+        if (lastSecond !== null && seconds > 0 && seconds <= 5) Fx.play('tick');
+        lastSecond = seconds;
+      }
+      num.classList.toggle('hot', seconds <= 5);
       if (left <= 0) clearTick();
     }, 200);
   }
@@ -645,6 +769,19 @@
   function clearTick() {
     if (state.tickTimer) clearInterval(state.tickTimer);
     state.tickTimer = null;
+    state.cancelCountdown?.();
+    state.cancelCountdown = null;
+  }
+
+  // زر كتم الصوت
+  const soundBtn = $('#soundBtn');
+  if (soundBtn) {
+    const paint = () => (soundBtn.textContent = Fx.soundOn() ? '🔊' : '🔇');
+    paint();
+    soundBtn.addEventListener('click', () => {
+      Fx.setSound(!Fx.soundOn());
+      paint();
+    });
   }
 
   // تنبيه قبل مغادرة صفحة جلسة مباشرة

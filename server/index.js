@@ -302,6 +302,13 @@ function handleMessage(socket, msg) {
       }
       return;
     }
+    if (type === 'reaction') {
+      // تفاعل سريع يظهر على شاشة المدرب — لا يُخزَّن ولا يُنسب لأحد
+      if (session.react(participant, msg.emoji)) {
+        for (const s of session.hostSockets) sendTo(s, { t: 'reaction', emoji: msg.emoji });
+      }
+      return;
+    }
     if (type === 'leave') {
       session.removeParticipant(participant.id);
       pushHost(session);

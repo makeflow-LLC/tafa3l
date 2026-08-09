@@ -1048,6 +1048,194 @@ tbody tr:hover {
   padding: 24px 12px;
 }
 
+/* ------------------------------------------------------------- المؤثرات */
+
+.fx-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+}
+
+.fx-emoji {
+  position: fixed;
+  bottom: 8%;
+  z-index: 85;
+  pointer-events: none;
+  animation: floatUp 2.6s ease-out forwards;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+}
+
+@keyframes floatUp {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    transform: translateY(-30px) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-58vh) scale(1) rotate(12deg);
+    opacity: 0;
+  }
+}
+
+.fx-countdown {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  justify-items: center;
+  background: rgba(11, 16, 32, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.fx-countdown .n {
+  font-size: clamp(5rem, 26vw, 11rem);
+  font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--brand-2), var(--brand));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.fx-countdown .n.pop {
+  animation: countPop 0.45s ease-out;
+}
+
+.fx-countdown .l {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+@keyframes countPop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* --------------------------------------------------------- التفاعلات */
+
+.reactions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.react {
+  font-size: 1.5rem;
+  line-height: 1;
+  min-height: 52px;
+  min-width: 52px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.react:active {
+  transform: scale(0.88);
+}
+
+.react.bump {
+  animation: countPop 0.35s ease-out;
+}
+
+/* ------------------------------------------------------- منصة التتويج */
+
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.podium .pod {
+  flex: 1 1 0;
+  max-width: 150px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.podium .who {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.podium .nm {
+  font-weight: 800;
+  font-size: 0.9rem;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podium .sc {
+  font-weight: 800;
+  color: var(--brand-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.podium .block {
+  width: 100%;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(180deg, var(--brand), rgba(124, 92, 255, 0.25));
+  display: grid;
+  place-items: center;
+  animation: rise 0.6s ease-out;
+  transform-origin: bottom;
+}
+
+.podium .medal {
+  font-size: 1.8rem;
+}
+
+@keyframes rise {
+  from {
+    transform: scaleY(0.05);
+  }
+}
+
+/* ------------------------------------------------------ تفاصيل أخرى */
+
+.timer .num.hot {
+  color: #fca5a5;
+  animation: pulse 1s infinite;
+}
+
+.badge.streak {
+  background: rgba(251, 146, 60, 0.18);
+  border-color: rgba(251, 146, 60, 0.45);
+  color: #fed7aa;
+}
+
+.toast.long {
+  border-radius: 14px;
+  line-height: 1.7;
+  text-align: start;
+}
+
 .link {
   color: var(--brand-2);
   text-decoration: none;

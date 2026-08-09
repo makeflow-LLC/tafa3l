@@ -2,7 +2,8 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, api, connect, store, vibrate, fmtMs } = window.T;
+  const { $, el, avatarNode, toast, api, connect, store, vibrate } = window.T;
+  const Fx = window.Fx;
 
   const app = $('#app');
   const connBadge = $('#conn');
@@ -25,7 +26,15 @@
     submitting: false,
     tickTimer: null,
     renderedKey: '',
+    cancelCountdown: null,
+    lastFeedback: '', // لمنع تكرار الصوت/القصاصات عند إعادة الرسم
+    clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
+
+  /** توقيت الخادم الآن كما نقدّره محلياً */
+  function serverTime() {
+    return Date.now() - state.clockOffset;
+  }
 
   // ------------------------------------------------------------- الاتصال
 
@@ -50,12 +59,16 @@
         store.set(SESSION_KEY, { participantId: msg.participantId, participantToken: msg.participantToken });
         break;
       case 'state':
+        // يجب التقاط الفارق لحظة الوصول؛ حسابه لاحقاً يجعله دائماً صفراً
+        if (msg.serverNow) state.clockOffset = Date.now() - msg.serverNow;
         state.last = msg;
         state.joined = true;
         render();
         break;
       case 'answer:accepted':
         vibrate(msg.correct === true ? [18, 60, 18] : 18);
+        Fx.play(msg.correct === true ? 'correct' : msg.correct === false ? 'wrong' : 'sent');
+        if (msg.correct === true) Fx.confetti(70);
         state.submitting = false;
         break;
       case 'answer:rejected':
@@ -203,11 +216,39 @@
     clearTick();
     app.innerHTML = '';
 
+    // عدّاد «استعد» متزامن مع الخادم قبل فتح السؤال المؤقّت
+    const untilOpen = openIn(s);
+    if (s.phase === 'question' && untilOpen > 250) {
+      renderReady(s, untilOpen);
+      return;
+    }
+
     if (s.status === 'ended' || s.phase === 'final') return renderFinal(s);
     if (s.phase === 'lobby') return renderLobby(s);
     if (s.phase === 'leaderboard') return renderLeaderboard(s);
     if (s.phase === 'results') return renderResults(s);
     return renderQuestion(s);
+  }
+
+  /** كم بقي على فتح السؤال (بتوقيت الخادم) */
+  function openIn(s) {
+    if (!s.opensAt) return 0;
+    return s.opensAt - serverTime();
+  }
+
+  function renderReady(s, msLeft) {
+    state.cancelCountdown?.();
+    app.append(header(s));
+    app.append(
+      el('div', { class: 'card stack center' }, [
+        el('span', { class: 'badge' }, `${s.question ? s.question.text : ''}`),
+        el('p', { class: 'muted', text: 'استعد… ينطلق الجميع معاً' }),
+      ])
+    );
+    state.cancelCountdown = Fx.countdown(msLeft, () => {
+      state.cancelCountdown = null;
+      render(true);
+    });
   }
 
   function header(s) {
@@ -249,12 +290,33 @@
 
     if (s.answered) {
       app.append(waitingCard(s, q));
+      app.append(reactionBar());
       startTick(s);
       return;
     }
 
     app.append(answerControls(s, q));
     startTick(s);
+  }
+
+  /** شريط التفاعلات السريعة — يظهر على شاشة المدرب */
+  function reactionBar() {
+    const row = el('div', { class: 'reactions' });
+    Fx.REACTIONS.forEach((emoji) => {
+      const button = el('button', { class: 'react', type: 'button', 'aria-label': 'تفاعل ' + emoji }, emoji);
+      button.addEventListener('click', () => {
+        socket.send({ t: 'reaction', emoji });
+        button.classList.remove('bump');
+        void button.offsetWidth;
+        button.classList.add('bump');
+        vibrate(10);
+      });
+      row.append(button);
+    });
+    return el('div', { class: 'card stack center' }, [
+      el('p', { class: 'muted small', style: { margin: 0 }, text: 'أرسل تفاعلك للشاشة 👇' }),
+      row,
+    ]);
   }
 
   function waitingCard(s, q) {
@@ -273,6 +335,7 @@
       el('div', { class: 'em', text: emoji }),
       el('div', { class: 'msg', text: msg }),
       scored && answered.points ? el('div', { class: 'badge ok' }, `+${answered.points} نقطة`) : null,
+      scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, `🔥 ${s.me.streak} إجابات متتالية!`) : null,
       el('p', { class: 'muted small', text: 'انتظر بقية المشاركين…' }),
     ]);
   }
@@ -408,6 +471,7 @@
       );
     }
 
+    app.append(reactionBar());
     app.append(el('p', { class: 'footer', text: 'في انتظار المدرب للانتقال…' }));
   }
 
@@ -455,10 +519,17 @@
       );
     }
     if (s.leaderboard?.length) app.append(boardList(s.leaderboard, s.me.id));
+    if (s.rank?.rank === 1) Fx.confetti(80);
+    app.append(reactionBar());
     app.append(el('p', { class: 'footer', text: 'في انتظار السؤال التالي…' }));
   }
 
   function renderFinal(s) {
+    if (state.lastFeedback !== 'final') {
+      state.lastFeedback = 'final';
+      Fx.play('finish');
+      Fx.confetti(140);
+    }
     app.append(
       el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: '🎊' }),
@@ -494,16 +565,23 @@
   function startTick(s) {
     const q = s.question;
     if (!q?.timeLimit || !s.endsAt) return;
-    const offset = s.serverNow ? Date.now() - s.serverNow : 0;
     const num = $('#tnum');
     const bar = $('#tbar');
     if (!num || !bar) return;
     const total = q.timeLimit * 1000;
+    let lastSecond = null;
 
     state.tickTimer = setInterval(() => {
-      const left = Math.max(0, s.endsAt - (Date.now() - offset));
-      num.textContent = String(Math.ceil(left / 1000));
+      const left = Math.max(0, s.endsAt - serverTime());
+      const seconds = Math.ceil(left / 1000);
+      num.textContent = String(seconds);
       bar.style.width = Math.max(0, (left / total) * 100) + '%';
+      // نبضة صوتية في الثواني الأخيرة لرفع الحماس
+      if (seconds !== lastSecond) {
+        if (lastSecond !== null && seconds > 0 && seconds <= 5 && !s.answered) Fx.play('tick');
+        lastSecond = seconds;
+      }
+      num.classList.toggle('hot', seconds <= 5);
       if (left <= 0) clearTick();
     }, 200);
   }
@@ -511,11 +589,24 @@
   function clearTick() {
     if (state.tickTimer) clearInterval(state.tickTimer);
     state.tickTimer = null;
+    state.cancelCountdown?.();
+    state.cancelCountdown = null;
   }
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.last) render(true);
   });
+
+  // زر كتم الصوت
+  const soundBtn = $('#soundBtn');
+  if (soundBtn) {
+    const paint = () => (soundBtn.textContent = Fx.soundOn() ? '🔊' : '🔇');
+    paint();
+    soundBtn.addEventListener('click', () => {
+      Fx.setSound(!Fx.soundOn());
+      paint();
+    });
+  }
 
   boot();
 })();
