@@ -1,0 +1,12 @@
+# نشر بضغطة واحدة على Render — عملية Node دائمة تدعم WebSocket
+services:
+  - type: web
+    name: tafa3l
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production

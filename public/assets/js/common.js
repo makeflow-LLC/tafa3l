@@ -47,7 +47,9 @@
   }
 
   const OFFLINE_HINT =
-    'تعذّر الوصول إلى خادم تفاعل. شغّل الخادم بالأمر «npm start» ثم افتح http://localhost:3000 من المتصفح.';
+    'تعذّر الوصول إلى خادم تفاعل — هذه الصفحة تُقدَّم كملفات ثابتة فقط. ' +
+    'محلياً شغّل «npm start»، وللنشر استخدم استضافة تشغّل Node دائماً (Render أو Railway أو Fly.io) ' +
+    'لأن منصات serverless مثل Vercel لا تدعم WebSocket.';
 
   async function api(path, options) {
     if (isFileProtocol()) {
@@ -99,10 +101,16 @@
     const banner = el('div', { class: 'banner', id: 'offlineBanner', style: { marginBottom: '12px' } }, [
       el('strong', { text: '⚠️ الخادم غير متصل — الوضع التجريبي' }),
       el('div', { class: 'small', style: { marginTop: '4px' } }, [
-        'يمكنك تجهيز الأسئلة الآن، لكن بدء جلسة مباشرة يحتاج تشغيل الخادم: ',
+        'يمكنك تجهيز الأسئلة الآن، لكن بدء جلسة مباشرة يحتاج خادماً يعمل. محلياً: ',
         el('code', { text: 'npm install && npm start', style: { direction: 'ltr', display: 'inline-block' } }),
-        ' ثم افتح ',
+        ' ثم ',
         el('code', { text: 'http://localhost:3000', style: { direction: 'ltr', display: 'inline-block' } }),
+        '.',
+      ]),
+      el('div', { class: 'small', style: { marginTop: '4px' } }, [
+        'للنشر على الإنترنت استخدم استضافة تشغّل عملية Node دائمة (Render أو Railway أو Fly.io). ',
+        'منصات serverless مثل Vercel و Netlify و GitHub Pages تخدم الملفات الثابتة فقط ولا تدعم WebSocket، ',
+        'لذلك لن تعمل الجلسات المباشرة عليها.',
       ]),
     ]);
     (container || document.querySelector('#app') || document.body).prepend(banner);
