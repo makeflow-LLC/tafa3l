@@ -261,11 +261,20 @@
   }
 
   function renderLobby(s) {
+    // نوضّح سبب الانتظار: في الوضع الحر لا ينتظر أحد إلا إذا أطفأ المدرب البدء التلقائي
+    const pace = s.settings?.pace;
+    const waitingReason =
+      pace === 'self'
+        ? 'وضع حر — لكن المدرب اختار أن يبدأ الجميع معاً'
+        : pace === 'auto'
+          ? 'سيبدأ النشاط وينتقل تلقائياً'
+          : 'أنت في القاعة، انتظر بدء المدرب…';
+
     app.append(
       el('div', { class: 'card stack center' }, [
         avatarNode(s.me.avatar, 'lg'),
         el('h1', { text: s.me.name }),
-        el('p', { class: 'muted', text: 'أنت في القاعة، انتظر بدء المدرب…' }),
+        el('p', { class: 'muted', text: waitingReason }),
         el('div', { class: 'spinner' }),
         el('span', { class: 'badge' }, `👥 ${s.participants} مشارك`),
       ])
@@ -292,6 +301,8 @@
 
     if (s.answered) {
       app.append(waitingCard(s, q));
+      const reveal = answerReveal(s, q);
+      if (reveal) app.append(reveal);
       app.append(reactionBar());
       startTick(s);
       return;
@@ -344,6 +355,31 @@
       scored && answered?.multiplier > 1 ? el('div', { class: 'badge streak' }, `🔥 مضاعف ×${answered.multiplier}`) : null,
       scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, `${s.me.streak} إجابات متتالية!`) : null,
       selfPaced ? null : el('p', { class: 'muted small', text: 'انتظر بقية المشاركين…' }),
+    ]);
+  }
+
+  /** الإجابة الصحيحة + شرحها — تظهر بعد إجابة المتدرب إن فعّل المدرب الخيار */
+  function answerReveal(s, q) {
+    if (!q?.scored) return null;
+    const revealed = q.options?.some((option) => option.correct !== undefined);
+    if (!revealed) return null;
+    // لا نكرّر العرض إن كانت إجابته صحيحة وبلا شرح
+    const wrong = s.answered && s.answered.correct === false;
+    if (!wrong && !q.explanation) return null;
+
+    const correctText = q.options
+      .filter((option) => option.correct)
+      .map((option) => option.text)
+      .join(' + ');
+
+    return el('div', { class: 'card stack reveal' }, [
+      correctText
+        ? el('div', { class: 'row', style: { gap: '8px' } }, [
+            el('span', { class: 'badge ok', text: '✓ الإجابة الصحيحة' }),
+            el('strong', { class: 'grow', text: correctText }),
+          ])
+        : null,
+      q.explanation ? el('p', { style: { margin: 0 } }, [el('span', { text: '💡 ' }), q.explanation]) : null,
     ]);
   }
 
@@ -456,6 +492,8 @@
     app.append(header(s));
     app.append(el('div', { class: 'card stack' }, [el('h2', { class: 'big-q', text: q.text })]));
     app.append(waitingCard(s, q, true));
+    const revealSelf = answerReveal(s, q);
+    if (revealSelf) app.append(revealSelf);
 
     if (q.options?.length) {
       const options = el('div', { class: 'options' });
@@ -502,6 +540,8 @@
     if (s.answered && q.scored) {
       app.append(waitingCard(s, q));
     }
+    const revealCard = answerReveal(s, q);
+    if (revealCard) app.append(revealCard);
 
     if (results?.options) {
       const options = el('div', { class: 'options' });
@@ -699,6 +739,20 @@
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.last) render(true);
   });
+
+  // زر الخروج من النشاط
+  const exitBtn = $('#exitBtn');
+  if (exitBtn) {
+    exitBtn.addEventListener('click', () => {
+      const live = state.last && state.last.status !== 'ended';
+      if (live && !confirm('هل تريد الخروج من النشاط؟ ستفقد نقاطك ولن تعود إلا بالدخول من جديد.')) return;
+      // لا نرسل «مغادرة» قبل الانضمام أصلاً حتى لا تظهر رسالة خطأ
+      if (state.joined) socket.send({ t: 'leave' });
+      store.del(SESSION_KEY);
+      socket.close();
+      location.href = '/';
+    });
+  }
 
   // زر كتم الصوت
   const soundBtn = $('#soundBtn');

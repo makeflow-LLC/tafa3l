@@ -511,6 +511,60 @@ test('الوضع الحر: كل متدرب يتقدّم بسرعته وبمؤق�
   b.close();
 });
 
+test('الوضع الحر: المتدرب يبدأ فور دخوله بلا انتظار المدرب', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'حر فوري',
+    settings: { pace: 'self', autoStart: true, countdown: false },
+    questions: [
+      { type: 'mc', text: 'س١', timeLimit: 30, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] },
+      { type: 'mc', text: 'س٢', timeLimit: 30, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] },
+    ],
+  });
+
+  // بلا أي مضيف متصل وبلا host:start
+  const a = ws();
+  await a.ready;
+  a.send({ t: 'join', code: created.code, name: 'ريما' });
+  await a.next('joined');
+  const first = await a.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.equal(first.question.text, 'س١', 'يرى سؤاله مباشرة بلا انتظار');
+  assert.ok(first.endsAt > Date.now(), 'مؤقّته الخاص يعمل');
+
+  // ومن ينضم لاحقاً يبدأ فوراً كذلك بمؤقّته الخاص
+  const b = ws();
+  await b.ready;
+  b.send({ t: 'join', code: created.code, name: 'سلمى' });
+  await b.next('joined');
+  const late = await b.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.equal(late.index, 0);
+  assert.ok(late.endsAt > Date.now(), 'المنضم المتأخر يحصل على مؤقّت أيضاً');
+
+  // وينتقل بنفسه
+  a.send({ t: 'answer', questionId: first.question.id, value: 'o0' });
+  await a.next('answer:accepted');
+  a.send({ t: 'next' });
+  const second = await a.next((m) => m.t === 'state' && m.index === 1 && m.phase === 'question');
+  assert.equal(second.question.text, 'س٢');
+
+  a.close();
+  b.close();
+});
+
+test('الوضع الحر مع إطفاء البدء التلقائي ينتظر المدرب', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'حر بانتظار',
+    settings: { pace: 'self', autoStart: false, countdown: false },
+    questions: [{ type: 'word', text: 'س', timeLimit: 0 }],
+  });
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'فهد' });
+  await p.next('joined');
+  const lobby = await p.next((m) => m.t === 'state');
+  assert.equal(lobby.phase, 'lobby', 'يبقى في القاعة حتى يبدأ المدرب');
+  p.close();
+});
+
 test('احتساب النقاط: ثابتة، وبلا نقاط، ومضاعف السلاسل', async () => {
   async function runOnce(settings) {
     const { data } = await post('/api/sessions', {
@@ -610,6 +664,93 @@ test('الأوسمة تُمنح حسب الأداء الفعلي', async () => {
   host.close();
   a.close();
   b.close();
+});
+
+test('الشرح والإجابة الصحيحة: تُكشف بعد الإجابة فقط، وتحترم إعداد المدرب', async () => {
+  const questions = [
+    {
+      type: 'mc',
+      text: 'ما هي عاصمة الأردن؟',
+      explanation: 'عمّان هي العاصمة منذ ١٩٢١.',
+      timeLimit: 0,
+      points: 750, // علامة حرة يضعها المدرب
+      options: [{ id: 'o0', text: 'عمّان' }, { id: 'o1', text: 'دمشق' }],
+      correct: ['o0'],
+    },
+  ];
+
+  // (أ) الكشف مفعّل
+  const { data: on } = await post('/api/sessions', { title: 'مع كشف', settings: { revealAnswer: true, countdown: false }, questions });
+  let host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: on.code, hostToken: on.hostToken });
+  await host.next('state');
+  let p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: on.code, name: 'هدى' });
+  await p.next('joined');
+  host.send({ t: 'host:start' });
+
+  const before = await p.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.equal(before.question.explanation, '', 'الشرح لا يُرسل قبل الإجابة');
+  assert.ok(before.question.options.every((o) => o.correct === undefined), 'الإجابة الصحيحة مخفية قبل الإجابة');
+
+  p.send({ t: 'answer', questionId: before.question.id, value: 'o1' }); // إجابة خاطئة
+  const ack = await p.next('answer:accepted');
+  assert.equal(ack.correct, false);
+
+  const after = await p.next((m) => m.t === 'state' && m.answered);
+  assert.equal(after.question.explanation, 'عمّان هي العاصمة منذ ١٩٢١.', 'الشرح يظهر بعد الإجابة');
+  assert.equal(after.question.options.find((o) => o.id === 'o0').correct, true, 'تظهر الإجابة الصحيحة');
+  host.close();
+  p.close();
+
+  // (ب) الكشف مُطفأ
+  const { data: off } = await post('/api/sessions', { title: 'بلا كشف', settings: { revealAnswer: false, countdown: false }, questions });
+  host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: off.code, hostToken: off.hostToken });
+  await host.next('state');
+  p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: off.code, name: 'سعد' });
+  await p.next('joined');
+  host.send({ t: 'host:start' });
+  const q = await p.next((m) => m.t === 'state' && m.phase === 'question');
+  p.send({ t: 'answer', questionId: q.question.id, value: 'o1' });
+  await p.next('answer:accepted');
+  const still = await p.next((m) => m.t === 'state' && m.answered);
+  assert.equal(still.question.explanation, '', 'لا شرح عندما يُطفئ المدرب الخيار');
+  assert.ok(still.question.options.every((o) => o.correct === undefined), 'تبقى الإجابة مخفية');
+
+  // العلامة الحرة محفوظة كما وضعها المدرب
+  host.send({ t: 'host:results' });
+  const results = await host.next((m) => m.t === 'state' && m.phase === 'results');
+  assert.equal(results.question.points, 750);
+
+  host.close();
+  p.close();
+});
+
+test('المشارك يستطيع الخروج فيُحذف من الجلسة', async () => {
+  const { data: created } = await post('/api/sessions', QUIZ);
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'وليد' });
+  await p.next('joined');
+  await host.next((m) => m.t === 'state' && m.participants.length === 1);
+
+  p.send({ t: 'leave' });
+  const after = await host.next((m) => m.t === 'state' && m.participants.length === 0, 4000);
+  assert.equal(after.participants.length, 0, 'يختفي من قائمة المدرب فور خروجه');
+
+  host.close();
+  p.close();
 });
 
 test('نبضة إبقاء الخادم مستيقظاً تعمل فقط عند وجود جلسات', async () => {

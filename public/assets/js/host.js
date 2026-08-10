@@ -25,6 +25,7 @@
     cancelCountdown: null,
     lastPhaseKey: '',
     selfQuestion: 0, // السؤال المعروض في الوضع الحر
+    leavingIntentionally: false, // خروج مقصود عبر أزرار التنقل
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -92,6 +93,13 @@
     bar.innerHTML = '';
     app.innerHTML = '';
     const root = el('div', { class: 'stack' });
+    // زر رجوع صريح — لا يكفي الأيقونة الصغيرة في الشريط العلوي
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الصفحة الرئيسية'),
+        el('span', { class: 'muted small', text: 'مسودتك تُحفظ تلقائياً' }),
+      ])
+    );
     app.append(el('h1', { text: 'إنشاء نشاط تفاعلي' }));
     app.append(root);
 
@@ -100,7 +108,12 @@
       if (!alive && location.hash !== '#/live') showOfflineBanner(app);
     });
 
-    window.Builder.mount(root, async (draft) => {
+    // المحرّر يجب ألا يترك الصفحة فارغة أبداً: نتعافى تلقائياً، وإن استمر العطل نُظهره
+    mountBuilderSafely(root);
+  }
+
+  function mountBuilderSafely(root) {
+    const onLaunch = async (draft) => {
       try {
         const payload = {
           title: draft.title,
@@ -117,7 +130,69 @@
         toast(err.message, 'bad');
         if (err.offline) showOfflineBanner(app);
       }
-    });
+    };
+
+    try {
+      window.Builder.mount(root, onLaunch);
+      return;
+    } catch (err) {
+      // السبب الأشيع: مسودة محفوظة من نسخة قديمة — نمسحها ونعيد المحاولة
+      console.error('تعذّر بناء المحرّر:', err);
+      try {
+        localStorage.removeItem(window.Builder.DRAFT_KEY);
+      } catch {
+        /* تجاهل */
+      }
+      root.innerHTML = '';
+      try {
+        window.Builder.mount(root, onLaunch);
+        toast('أُعيد ضبط المسودة بعد عطل', 'ok');
+        return;
+      } catch (err2) {
+        showBuilderError(root, err2);
+      }
+    }
+  }
+
+  /** بديل مرئي بدل صفحة فارغة، مع نص الخطأ ليسهل تشخيصه */
+  function showBuilderError(root, err) {
+    root.innerHTML = '';
+    root.append(
+      el('div', { class: 'card stack' }, [
+        el('h2', { text: '⚠️ تعذّر فتح محرّر الأسئلة' }),
+        el('p', { class: 'muted small', text: 'جرّب إعادة الضبط. إن تكرر العطل أرسل نص الرسالة التالية:' }),
+        el('pre', {
+          style: {
+            direction: 'ltr',
+            textAlign: 'left',
+            whiteSpace: 'pre-wrap',
+            background: 'rgba(0,0,0,.3)',
+            padding: '10px',
+            borderRadius: '10px',
+            fontSize: '.8rem',
+            margin: 0,
+          },
+          text: String(err && err.message ? err.message : err),
+        }),
+        el(
+          'button',
+          {
+            class: 'btn primary',
+            type: 'button',
+            onclick: () => {
+              try {
+                localStorage.clear();
+                sessionStorage.clear();
+              } catch {
+                /* تجاهل */
+              }
+              location.reload();
+            },
+          },
+          '🔄 إعادة الضبط وإعادة التحميل'
+        ),
+      ])
+    );
   }
 
   // ---------------------------------------------------------- العرض المباشر
@@ -572,6 +647,34 @@
         el('h2', { text: 'انتهى النشاط', style: { margin: 0 } }),
         el('p', { class: 'muted small', style: { margin: 0 }, text: 'حمّل النتائج الآن إن أردت الاحتفاظ بها — ستُحذف الجلسة تلقائياً.' }),
         el('button', { class: 'btn accent', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج (JSON)'),
+        el('div', { class: 'row', style: { justifyContent: 'center' } }, [
+          el(
+            'button',
+            {
+              class: 'btn ghost sm',
+              type: 'button',
+              onclick: () => {
+                state.leavingIntentionally = true;
+                teardown();
+                location.href = '/host.html#/';
+              },
+            },
+            '➕ نشاط جديد'
+          ),
+          el(
+            'button',
+            {
+              class: 'btn ghost sm',
+              type: 'button',
+              onclick: () => {
+                state.leavingIntentionally = true;
+                teardown();
+                location.href = '/';
+              },
+            },
+            '🏠 الصفحة الرئيسية'
+          ),
+        ]),
       ])
     );
     const board = s.leaderboard || [];
@@ -794,6 +897,9 @@
         el('button', { class: 'btn primary', type: 'button', disabled: s.participants.length === 0, onclick: () => send('host:start') },
           s.participants.length ? '▶ بدء النشاط' : 'بانتظار المشاركين')
       );
+      actions.push(
+        el('button', { class: 'icon-btn', type: 'button', title: 'إلغاء الجلسة وحذفها', onclick: endSession }, '🗑')
+      );
     } else if (s.status === 'ended') {
       actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج'));
       actions.push(el('button', { class: 'btn danger', type: 'button', onclick: endSession }, '🗑 حذف الجلسة'));
@@ -917,6 +1023,21 @@
     state.cancelCountdown = null;
   }
 
+  /**
+   * زر الصفحة الرئيسية: مغادرة الجلسة المباشرة لا تُنهيها — تبقى قائمة
+   * ويستطيع المدرب استئنافها، لذلك نوضّح ذلك بدل تحذير مبهم.
+   */
+  const homeBtn = $('#homeBtn');
+  if (homeBtn) {
+    homeBtn.addEventListener('click', () => {
+      const live = state.live && state.live.status === 'live';
+      if (live && !confirm('الجلسة ستبقى مستمرة ويمكنك استئنافها من الصفحة الرئيسية. الخروج الآن؟')) return;
+      state.leavingIntentionally = true;
+      teardown();
+      location.href = '/';
+    });
+  }
+
   // زر كتم الصوت
   const soundBtn = $('#soundBtn');
   if (soundBtn) {
@@ -930,6 +1051,8 @@
 
   // تنبيه قبل مغادرة صفحة جلسة مباشرة
   window.addEventListener('beforeunload', (event) => {
+    // لا نزعج المدرب إن كان خروجه مقصوداً عبر أزرار التنقل
+    if (state.leavingIntentionally) return;
     if (state.live && state.live.status === 'live') {
       event.preventDefault();
       event.returnValue = '';

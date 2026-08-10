@@ -12,7 +12,7 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', timeLimit: 20, points: 1000, options: [], correct: [] };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [] };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -36,15 +36,58 @@
         autoAdvanceSec: 6,
         scoring: 'speed',
         streakBonus: true,
+        revealAnswer: true,
+        autoStart: true,
       },
       questions: [blankQuestion('mc')],
     };
   }
 
+  /**
+   * قراءة المسودة المحفوظة مع تنظيفها بالكامل.
+   * مسودة قديمة أو ناقصة يجب ألا تُسقط المحرّر — نُكمل الناقص من الافتراضيات.
+   */
   function loadDraft() {
-    const draft = store.local.get(DRAFT_KEY, null);
-    if (!draft || !Array.isArray(draft.questions) || draft.questions.length === 0) return defaultDraft();
-    return draft;
+    return sanitizeDraft(store.local.get(DRAFT_KEY, null));
+  }
+
+  function sanitizeDraft(raw) {
+    const base = defaultDraft();
+    if (!raw || typeof raw !== 'object') return base;
+
+    const questions = (Array.isArray(raw.questions) ? raw.questions : [])
+      .filter((question) => question && typeof question === 'object')
+      .map(sanitizeQuestion);
+
+    return {
+      title: typeof raw.title === 'string' ? raw.title : '',
+      settings: { ...base.settings, ...(raw.settings && typeof raw.settings === 'object' ? raw.settings : {}) },
+      questions: questions.length ? questions : base.questions,
+    };
+  }
+
+  function sanitizeQuestion(raw) {
+    const fresh = blankQuestion(TYPES.includes(raw.type) ? raw.type : 'mc');
+    const question = { ...fresh, ...raw, type: fresh.type, id: typeof raw.id === 'string' && raw.id ? raw.id : fresh.id };
+
+    question.text = typeof raw.text === 'string' ? raw.text : '';
+    question.explanation = typeof raw.explanation === 'string' ? raw.explanation : '';
+    question.timeLimit = Number.isFinite(Number(raw.timeLimit)) ? Number(raw.timeLimit) : fresh.timeLimit;
+    question.points = Number.isFinite(Number(raw.points)) ? Number(raw.points) : fresh.points;
+
+    if (question.type === 'mc' || question.type === 'poll') {
+      const options = (Array.isArray(raw.options) ? raw.options : [])
+        .filter((option) => option && typeof option === 'object')
+        .map((option, index) => ({ id: String(option.id || 'o' + index), text: String(option.text ?? '') }));
+      question.options = options.length >= 2 ? options : fresh.options;
+    } else {
+      question.options = fresh.options;
+    }
+
+    question.correct = Array.isArray(raw.correct) ? raw.correct.map(String) : [];
+    if (question.type === 'scale') question.scale = { ...fresh.scale, ...(raw.scale && typeof raw.scale === 'object' ? raw.scale : {}) };
+
+    return question;
   }
 
   function saveDraft(draft) {
@@ -68,6 +111,15 @@
     function draw() {
       root.innerHTML = '';
 
+      // ---- القوالب أولاً: اختيار قالب يستبدل الإعدادات، فيجب أن يسبقها
+      const templatesBox = el('div', { class: 'card stack' }, [
+        el('h2', { text: 'ابدأ من قالب جاهز (اختياري)' }),
+        el('div', { class: 'row', id: 'tmplRow' }, el('span', { class: 'muted small', text: 'جارٍ التحميل…' })),
+        el('div', { class: 'muted small', text: 'اختيار قالب يستبدل الإعدادات والأسئلة — اختره أولاً ثم عدّل ما تشاء.' }),
+      ]);
+      root.append(templatesBox);
+      loadTemplates(templatesBox.querySelector('#tmplRow'));
+
       // ---- العنوان والإعدادات
       const titleInput = el('input', { maxlength: 120, placeholder: 'مثال: مراجعة الوحدة الثالثة', value: draft.title });
       titleInput.addEventListener('input', () => {
@@ -77,7 +129,7 @@
 
       root.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { text: '١. معلومات النشاط' }),
+          el('h2', { text: '٢. معلومات النشاط' }),
           el('div', {}, [el('label', { text: 'عنوان النشاط' }), titleInput]),
           switchRow('طلب الاسم أو الكنية', 'requireName', 'أطفئه لاستطلاع مجهول بلا أسماء'),
           switchRow('السماح بالدخول المتأخر', 'allowLateJoin', 'يستطيع الطلاب الدخول بعد بدء النشاط'),
@@ -89,7 +141,7 @@
       // ---- وضع التقدّم ونظام التحفيز
       root.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { text: '٢. سير النشاط والتحفيز' }),
+          el('h2', { text: '٣. سير النشاط والتحفيز' }),
           el('label', { text: 'من ينقل إلى السؤال التالي؟' }),
           choiceGroup(
             'pace',
@@ -101,6 +153,13 @@
             () => update()
           ),
           draft.settings.pace === 'auto' ? autoDelayRow() : null,
+          draft.settings.pace === 'self'
+            ? switchRow(
+                'يبدأ المتدرب فور دخوله 🚀',
+                'autoStart',
+                'بلا انتظار المدرب — ينطلق كل متدرب بمجرد مسحه رمز QR'
+              )
+            : null,
           draft.settings.pace === 'self'
             ? el('p', { class: 'muted small', style: { margin: 0 }, text: 'في الوضع الحر تظهر لك لوحة تتابع فيها موقع كل متدرب ونتائجه أولاً بأول.' })
             : null,
@@ -118,16 +177,13 @@
           draft.settings.scoring !== 'none'
             ? switchRow('مضاعف السلاسل 🔥', 'streakBonus', 'كل إجابة صحيحة متتالية تزيد النقاط ١٠٪ حتى ٥٠٪')
             : null,
+          switchRow(
+            'إظهار الإجابة الصحيحة 💡',
+            'revealAnswer',
+            'بعد إجابة المتدرب يرى الإجابة الصحيحة وشرحها إن كتبته'
+          ),
         ])
       );
-
-      // ---- القوالب
-      const templatesBox = el('div', { class: 'card stack' }, [
-        el('h2', { text: 'ابدأ من قالب جاهز' }),
-        el('div', { class: 'row', id: 'tmplRow' }, el('span', { class: 'muted small', text: 'جارٍ التحميل…' })),
-      ]);
-      root.append(templatesBox);
-      loadTemplates(templatesBox.querySelector('#tmplRow'));
 
       // ---- الأسئلة
       const list = el('div', { class: 'stack' });
@@ -136,7 +192,7 @@
       root.append(
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row between' }, [
-            el('h2', { text: `٣. الأسئلة (${draft.questions.length})`, style: { margin: 0 } }),
+            el('h2', { text: `٤. الأسئلة (${draft.questions.length})`, style: { margin: 0 } }),
           ]),
           list,
           el('label', { text: 'إضافة سؤال جديد', style: { marginTop: '4px' } }),
@@ -416,20 +472,67 @@
       const timeAndPoints = el('div', { class: 'grid two' }, [el('div', {}, [el('label', { text: 'مدة الإجابة' }), timeSelect])]);
 
       if (question.type === 'mc' || question.type === 'truefalse') {
-        const pointsSelect = el('select', {}, [
-          el('option', { value: '0' }, 'بلا نقاط'),
-          el('option', { value: '500' }, 'عادي (٥٠٠)'),
-          el('option', { value: '1000' }, 'قياسي (١٠٠٠)'),
-          el('option', { value: '2000' }, 'مضاعف (٢٠٠٠)'),
-        ]);
-        pointsSelect.value = String(question.points ?? 1000);
-        pointsSelect.addEventListener('change', () => {
-          question.points = Number(pointsSelect.value);
+        // علامة حرة لكل سؤال — يضع المدرب ما يشاء
+        const pointsInput = el('input', {
+          type: 'number',
+          min: 0,
+          max: 10000,
+          step: 10,
+          inputmode: 'numeric',
+          value: String(question.points ?? 1000),
+        });
+        const presets = el('div', { class: 'row', style: { gap: '6px', marginTop: '6px' } },
+          [0, 500, 1000, 2000].map((value) =>
+            el(
+              'button',
+              {
+                class: 'btn sm ghost',
+                type: 'button',
+                onclick: () => {
+                  question.points = value;
+                  pointsInput.value = String(value);
+                  saveDraft(draft);
+                },
+              },
+              value === 0 ? 'بلا علامة' : String(value)
+            )
+          )
+        );
+        pointsInput.addEventListener('input', () => {
+          const value = Number(pointsInput.value);
+          question.points = Number.isFinite(value) ? Math.min(10000, Math.max(0, Math.round(value))) : 0;
           saveDraft(draft);
         });
-        timeAndPoints.append(el('div', {}, [el('label', { text: 'النقاط' }), pointsSelect]));
+        timeAndPoints.append(
+          el('div', {}, [el('label', { text: 'علامة السؤال' }), pointsInput, presets])
+        );
       }
       body.append(timeAndPoints);
+
+      // شرح أو سبب الإجابة الصحيحة (اختياري)
+      if (question.type === 'mc' || question.type === 'truefalse') {
+        const explanation = el('textarea', {
+          maxlength: 400,
+          placeholder: 'مثال: عمّان هي العاصمة منذ عام ١٩٢١…',
+          style: { minHeight: '64px' },
+        });
+        explanation.value = question.explanation || '';
+        explanation.addEventListener('input', () => {
+          question.explanation = explanation.value;
+          saveDraft(draft);
+        });
+        body.append(
+          el('div', {}, [
+            el('label', { text: 'شرح الإجابة الصحيحة (اختياري)' }),
+            explanation,
+            el('div', {
+              class: 'muted small',
+              style: { marginTop: '4px' },
+              text: 'يظهر للمتدرب مع الإجابة الصحيحة — يحتاج تفعيل «إظهار الإجابة الصحيحة» في إعدادات النشاط.',
+            }),
+          ])
+        );
+      }
 
       // أدوات السؤال
       body.append(
