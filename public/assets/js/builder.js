@@ -274,7 +274,7 @@
    * @param {HTMLElement} root
    * @param {(draft:object)=>void} onLaunch
    */
-  function mount(root, onLaunch) {
+  function mount(root, onLaunch, extraActions) {
     const draft = loadDraft();
     let openIndex = 0;
 
@@ -408,6 +408,8 @@
       root.append(
         el('div', { class: 'card stack' }, [
           launch,
+          // أزرار إضافية من صفحة المدرب (مثل الحفظ في الحساب)
+          ...(typeof extraActions === 'function' ? [extraActions(draft, validate)] : []).filter(Boolean),
           el('p', { class: 'muted small center', style: { margin: 0 }, text: 'التخزين مؤقت: تختفي الجلسة والنتائج تلقائياً بعد انتهائها.' }),
           el(
             'button',

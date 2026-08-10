@@ -1,6 +1,6 @@
 {
   "name": "tafa3l",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "تفاعل — منصة أسئلة واستطلاعات تفاعلية للمدربين والمعلمين (تخزين مؤقت في الذاكرة)",
   "main": "server/index.js",
   "type": "commonjs",
@@ -22,6 +22,7 @@
   "license": "MIT",
   "dependencies": {
     "express": "^4.19.2",
+    "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "ws": "^8.18.0"
   }

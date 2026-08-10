@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#0b1020" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.6.1" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.7.0" />
   </head>
   <body>
     <div class="wrap narrow">
@@ -46,6 +46,7 @@
         <p class="muted small">أنشئ اختباراً أو استطلاعاً خلال دقيقة، اعرض رمز QR لطلابك، وتابع تقدّمهم مباشرة على لوحة التحكم.</p>
         <a class="btn accent block" href="/host.html">إنشاء نشاط جديد</a>
         <a class="btn ghost block" href="/host.html#/demo" style="margin-top: 8px">⚡ تجربة سريعة بضغطة واحدة</a>
+        <a class="btn ghost block" id="accountLink" href="/login.html" style="margin-top: 8px">🔐 دخول المدرب — احفظ أنشطتك</a>
         <div id="resume" class="hidden" style="margin-top: 10px">
           <a class="btn ghost block" id="resumeLink" href="#">استئناف جلستي السابقة</a>
         </div>
@@ -64,8 +65,8 @@
       <p class="footer">التخزين مؤقت: تُحذف الجلسة تلقائياً بعد انتهائها أو عند خمولها.</p>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.6.1"></script>
-    <script src="/assets/js/common.js?v=1.6.1"></script>
+    <script src="/assets/js/avatar.js?v=1.7.0"></script>
+    <script src="/assets/js/common.js?v=1.7.0"></script>
     <script>
       (function () {
         const { $, api, toast, store, serverAlive, showOfflineBanner } = window.T;
@@ -97,6 +98,16 @@
             toast(err.message, 'bad');
           }
         });
+
+        // إن كان مسجّل الدخول نوجّهه إلى أنشطته مباشرة
+        api('/api/auth/me')
+          .then(({ user }) => {
+            if (!user) return;
+            const link = $('#accountLink');
+            link.href = '/host.html#/mine';
+            link.textContent = '📚 نشاطاتي (' + user.name + ')';
+          })
+          .catch(() => {});
 
         // استئناف جلسة مدرب سابقة (المفتاح محفوظ في المتصفح فقط)
         const last = store.local.get('tafa3l:host:last', null);

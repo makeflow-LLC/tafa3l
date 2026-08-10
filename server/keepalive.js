@@ -45,7 +45,7 @@ function startKeepAlive(store) {
   const timer = setInterval(() => pingOnce(base, store), everyMs);
 
   timer.unref?.();
-  console.log(`إبقاء الخادم مستيقظاً: نبضة كل ${everyMs / 60000} دقيقة إلى ${base} أثناء وجود جلسات`);
+  if (process.env.PORT !== '0') console.log(`إبقاء الخادم مستيقظاً: نبضة كل ${everyMs / 60000} دقيقة إلى ${base} أثناء وجود جلسات`);
   return timer;
 }
 

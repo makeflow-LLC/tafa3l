@@ -10,15 +10,24 @@ const store = require('./store');
 const { normalizeQuiz } = require('./session');
 const templates = require('./templates');
 const { startKeepAlive, keepAliveUrl } = require('./keepalive');
+const storage = require('./storage');
+const auth = require('./auth');
+const { accountRoutes } = require('./routes-account');
 
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
 const PORT = Number.isFinite(Number(process.env.PORT)) && process.env.PORT !== '' ? Number(process.env.PORT) : 3000;
+
+/** سجلّ صامت أثناء الاختبارات (PORT=0) حتى لا يتداخل مع مشغّل الاختبارات */
+const quiet = process.env.PORT === '0' || process.env.NODE_ENV === 'test';
+const log = (...args) => !quiet && console.log(...args);
+const warn = (...args) => !quiet && console.warn(...args);
+
 const app = express();
 const server = http.createServer(app);
 
@@ -35,6 +44,10 @@ app.use(
     setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
   })
 );
+
+// كل مسارات API تعرف المستخدم الحالي إن كان مسجّلاً (بلا إجبار)
+app.use('/api', auth.attachUser);
+app.use('/api', accountRoutes(store));
 
 // ------------------------------------------------------------------ واجهة REST
 
@@ -64,6 +77,11 @@ app.get('/api/templates', (_req, res) => {
 app.post('/api/sessions', (req, res) => {
   try {
     const session = store.createSession(req.body || {});
+    // ننسب الجلسة لصاحبها إن كان مسجّل الدخول، لتظهر «مباشر الآن» في لوحته
+    if (req.user) {
+      session.ownerId = req.user.id;
+      if (req.body?.activityId) session.activityId = String(req.body.activityId);
+    }
     res.status(201).json({
       code: session.code,
       hostToken: session.hostToken,
@@ -444,12 +462,33 @@ const heartbeat = setInterval(() => {
 }, 30000);
 heartbeat.unref?.();
 
-server.listen(PORT, () => {
-  console.log(`تفاعل — يعمل على http://localhost:${server.address().port}`);
-  startKeepAlive(store);
-});
+// نهيّئ التخزين قبل الاستماع حتى لا يصل طلب قبل جهوزية الحسابات
+const ready = storage
+  .init()
+  .then(() => {
+    if (!storage.isDurable()) {
+      warn(
+        'تنبيه: تخزين الحسابات على ملف محلي. على استضافة بقرص مؤقت (مثل خطة Render المجانية) ' +
+          'تضيع الحسابات مع كل نشر — اضبط DATABASE_URL لقاعدة Postgres.'
+      );
+    }
+  })
+  .catch((err) => {
+    console.error('فشل تهيئة التخزين:', err.message);
+    throw err;
+  })
+  .then(
+    () =>
+      new Promise((resolve) => {
+        server.listen(PORT, () => {
+          log(`تفاعل — يعمل على http://localhost:${server.address().port}`);
+          startKeepAlive(store);
+          resolve();
+        });
+      })
+  );
 
 process.on('SIGTERM', () => server.close(() => process.exit(0)));
 process.on('SIGINT', () => server.close(() => process.exit(0)));
 
-module.exports = { app, server };
+module.exports = { app, server, ready };
