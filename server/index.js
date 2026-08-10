@@ -17,7 +17,7 @@ const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`

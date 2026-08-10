@@ -678,6 +678,16 @@ tbody tr:hover {
 
 /* -------------------------------------------------------- سحابة الكلمات */
 
+/* بطاقة النتيجة القابلة للمشاركة */
+.share-card-img {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  animation: pop 0.35s ease;
+}
+
 /* مقياس السحب — خط أفقي بمؤشر يُسحب */
 .slider-card {
   text-align: center;

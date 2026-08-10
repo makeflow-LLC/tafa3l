@@ -28,6 +28,7 @@
     renderedKey: '',
     cancelCountdown: null,
     lastFeedback: '', // لمنع تكرار الصوت/القصاصات عند إعادة الرسم
+    shareBlob: null, // بطاقة النتيجة المولّدة — تُرسم مرة واحدة
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -698,9 +699,269 @@
     );
     const awards = badgeList(s.badges);
     if (awards) app.append(awards);
+
+    // بطاقة النتيجة القابلة للمشاركة — صورة فيها كل الإنجاز
+    if (s.me) {
+      const shareBox = el('div', { class: 'card stack center' }, [
+        el('h2', { text: '📤 بطاقة نتيجتك', style: { margin: 0 } }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: 'شاركها على واتساب أو أي منصة — أو احفظها للذكرى' }),
+        el('div', { class: 'spinner' }),
+      ]);
+      app.append(shareBox);
+      buildShareCard(s, shareBox);
+    }
+
     if (s.leaderboard?.length) app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 الأوائل' }), boardList(s.leaderboard, s.me?.id)]));
     app.append(el('p', { class: 'footer', text: 'شكراً لمشاركتك! لم تُحفظ أي بيانات — كل شيء مؤقت.' }));
     store.del(SESSION_KEY);
+  }
+
+  // ------------------------------------------------- بطاقة النتيجة للمشاركة
+
+  /** مستوى تحفيزي من الترتيب — دائماً إيجابي حتى لآخر مركز */
+  function levelOf(s) {
+    if (!s.rank || !s.me?.score) return { emoji: '🎉', label: 'مشارك متفاعل' };
+    const { rank, of } = s.rank;
+    if (rank === 1) return { emoji: '🏆', label: 'بطل الجلسة' };
+    const pct = rank / Math.max(1, of);
+    if (pct <= 0.1) return { emoji: '🚀', label: 'أسطورة' };
+    if (pct <= 0.25) return { emoji: '🥇', label: 'محترف' };
+    if (pct <= 0.5) return { emoji: '💪', label: 'متمكّن' };
+    return { emoji: '🌱', label: 'واعد — القادم أفضل' };
+  }
+
+  function shareText(s, level) {
+    const title = s.title || state.info?.title || 'نشاط تفاعلي';
+    const bits = [];
+    if (s.me?.score) bits.push(`⭐ ${s.me.score} نقطة`);
+    if (s.rank) bits.push(`المركز ${s.rank.rank} من ${s.rank.of}`);
+    const perf = bits.length ? ' — ' + bits.join(' · ') : '';
+    return `${level.emoji} حصلت على لقب «${level.label}» في «${title}» على منصة تفاعل${perf} 🎊`;
+  }
+
+  /** مستطيل بزوايا دائرية */
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /** كبسولة نص وتعيد عرضها لرصّها بجانب أخرى */
+  function pill(ctx, text, cx, y, font, fill, stroke) {
+    ctx.font = font;
+    const w = ctx.measureText(text).width + 56;
+    const h = 76;
+    rr(ctx, cx - w / 2, y, w, h, h / 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#eef2ff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, y + h / 2 + 2);
+    return w;
+  }
+
+  /** يرسم بطاقة النتيجة على Canvas ويعيدها (1080×1350 — مناسبة للمنصات والواتس) */
+  async function drawShareCard(s) {
+    const W = 1080;
+    const H = 1350;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const FONT = '"Segoe UI", system-ui, "Noto Sans Arabic", sans-serif';
+    ctx.direction = 'rtl';
+
+    // الخلفية بنفس هوية التطبيق: ليل داكن مع توهجين
+    ctx.fillStyle = '#0b1020';
+    ctx.fillRect(0, 0, W, H);
+    let glow = ctx.createRadialGradient(W * 0.85, 0, 0, W * 0.85, 0, 700);
+    glow.addColorStop(0, 'rgba(124,92,255,0.35)');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+    glow = ctx.createRadialGradient(0, H, 0, 0, H, 700);
+    glow.addColorStop(0, 'rgba(34,211,238,0.22)');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // إطار البطاقة
+    rr(ctx, 40, 40, W - 80, H - 80, 48);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // العلامة والعنوان
+    ctx.fillStyle = '#eef2ff';
+    ctx.font = `800 60px ${FONT}`;
+    ctx.fillText('⚡ تفاعل', W / 2, 140);
+    ctx.fillStyle = '#a3aed0';
+    ctx.font = `600 40px ${FONT}`;
+    const title = s.title || state.info?.title || 'نشاط تفاعلي';
+    ctx.fillText(title.length > 40 ? title.slice(0, 39) + '…' : title, W / 2, 215);
+
+    // الأفاتار داخل دائرة
+    const avatarSize = 300;
+    try {
+      const svg = window.Avatar.toSvg(s.me.avatar, avatarSize);
+      const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = url;
+      });
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(W / 2, 430, avatarSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(img, W / 2 - avatarSize / 2, 430 - avatarSize / 2, avatarSize, avatarSize);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(W / 2, 430, avatarSize / 2 + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* بلا أفاتار إن تعذّر الرسم */
+    }
+
+    // الاسم
+    ctx.fillStyle = '#eef2ff';
+    ctx.font = `800 68px ${FONT}`;
+    ctx.fillText(s.me.name, W / 2, 650);
+
+    // المستوى — كبسولة متدرجة
+    const level = levelOf(s);
+    const levelText = `${level.emoji} ${level.label}`;
+    ctx.font = `800 54px ${FONT}`;
+    const lw = ctx.measureText(levelText).width + 90;
+    const lg = ctx.createLinearGradient(W / 2 - lw / 2, 0, W / 2 + lw / 2, 0);
+    lg.addColorStop(0, '#22d3ee');
+    lg.addColorStop(1, '#7c5cff');
+    rr(ctx, W / 2 - lw / 2, 720, lw, 100, 50);
+    ctx.fillStyle = lg;
+    ctx.fill();
+    ctx.fillStyle = '#0b1020';
+    ctx.fillText(levelText, W / 2, 774);
+
+    // النقاط والمركز
+    let y = 880;
+    const pills = [];
+    if (s.me.score) pills.push(`⭐ ${s.me.score} نقطة`);
+    if (s.rank) pills.push(`المركز ${s.rank.rank} من ${s.rank.of}`);
+    if (pills.length === 2) {
+      ctx.font = `700 42px ${FONT}`;
+      const w1 = ctx.measureText(pills[0]).width + 56;
+      const w2 = ctx.measureText(pills[1]).width + 56;
+      const gap = 24;
+      const totalW = w1 + w2 + gap;
+      pill(ctx, pills[0], W / 2 + totalW / 2 - w1 / 2, y, `700 42px ${FONT}`, 'rgba(34,197,94,0.18)', 'rgba(34,197,94,0.5)');
+      pill(ctx, pills[1], W / 2 - totalW / 2 + w2 / 2, y, `700 42px ${FONT}`, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.2)');
+    } else if (pills.length === 1) {
+      pill(ctx, pills[0], W / 2, y, `700 42px ${FONT}`, 'rgba(34,197,94,0.18)', 'rgba(34,197,94,0.5)');
+    }
+    y += 140;
+
+    // الأوسمة (حتى ثلاثة)
+    const badges = (s.badges || []).slice(0, 3);
+    if (badges.length) {
+      ctx.fillStyle = '#a3aed0';
+      ctx.font = `700 36px ${FONT}`;
+      ctx.fillText('🏅 الأوسمة', W / 2, y);
+      y += 70;
+      ctx.fillStyle = '#eef2ff';
+      ctx.font = `600 42px ${FONT}`;
+      for (const badge of badges) {
+        ctx.fillText(`${badge.emoji} ${badge.label}`, W / 2, y);
+        y += 62;
+      }
+    }
+
+    // التذييل
+    ctx.fillStyle = '#a3aed0';
+    ctx.font = `600 32px ${FONT}`;
+    ctx.fillText(new Date().toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' }), W / 2, H - 160);
+    ctx.fillStyle = '#7c8db0';
+    ctx.font = `600 30px ${FONT}`;
+    ctx.fillText('صُنعت على منصة تفاعل — أسئلة واستطلاعات حية', W / 2, H - 105);
+
+    return canvas;
+  }
+
+  /** يبني البطاقة ويعرضها مع أزرار المشاركة والحفظ */
+  async function buildShareCard(s, box) {
+    // إعادة رسم الشاشة النهائية (مثلاً عند خروج مشارك) لا تعيد توليد الصورة
+    let blob = state.shareBlob || null;
+    if (!blob) {
+      try {
+        const canvas = await drawShareCard(s);
+        blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) throw new Error('toBlob');
+        state.shareBlob = blob;
+      } catch {
+        box.remove();
+        return;
+      }
+    }
+
+    const level = levelOf(s);
+    const text = shareText(s, level);
+    const url = URL.createObjectURL(blob);
+    const img = el('img', { class: 'share-card-img', src: url, alt: 'بطاقة نتيجتي في تفاعل' });
+
+    const buttons = el('div', { class: 'row', style: { justifyContent: 'center', gap: '8px', flexWrap: 'wrap' } });
+
+    // المشاركة الأصلية (الجوال): تفتح واتساب وكل التطبيقات مع الصورة نفسها
+    const file = new File([blob], 'tafa3l-result.png', { type: 'image/png' });
+    if (navigator.canShare?.({ files: [file] })) {
+      const share = el('button', { class: 'btn primary', type: 'button' }, '📤 مشاركة البطاقة');
+      share.addEventListener('click', async () => {
+        try {
+          await navigator.share({ files: [file], text, title: 'نتيجتي في تفاعل' });
+        } catch {
+          /* أُلغيت المشاركة */
+        }
+      });
+      buttons.append(share);
+    } else {
+      // سطح المكتب: واتساب نصي على الأقل
+      buttons.append(
+        el('a', { class: 'btn primary', target: '_blank', rel: 'noopener', href: 'https://wa.me/?text=' + encodeURIComponent(text) }, '🟢 واتساب')
+      );
+    }
+
+    buttons.append(el('a', { class: 'btn ghost', href: url, download: 'tafa3l-نتيجتي.png' }, '⬇ حفظ الصورة'));
+
+    const copyBtn = el('button', { class: 'btn ghost', type: 'button' }, '📋 نسخ النص');
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('نُسخ النص — ألصقه أينما تريد', 'ok');
+      } catch {
+        toast('تعذّر النسخ', 'bad');
+      }
+    });
+    buttons.append(copyBtn);
+
+    box.querySelector('.spinner')?.remove();
+    box.append(img, buttons);
   }
 
   /** شارة الصعود أو الهبوط في الترتيب منذ السؤال السابق */
