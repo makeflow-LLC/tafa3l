@@ -11,6 +11,12 @@ const { normalizeQuiz } = require('./session');
 const templates = require('./templates');
 const { startKeepAlive, keepAliveUrl } = require('./keepalive');
 
+// بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
+const BUILD = {
+  version: require('../package.json').version,
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown'],
+};
+
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
 const PORT = Number.isFinite(Number(process.env.PORT)) && process.env.PORT !== '' ? Number(process.env.PORT) : 3000;
 const app = express();
@@ -20,8 +26,13 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 app.use(
   express.static(path.join(__dirname, '..', 'public'), {
-    maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+    // لا نخزّن الملفات في المتصفح: بعد كل نشر يجب أن يرى المدرب النسخة الجديدة فوراً.
+    // الملفات صغيرة، و etag يجعل إعادة التحقق ترد 304 بلا تحميل فعلي.
+    maxAge: 0,
+    etag: true,
+    lastModified: true,
     extensions: ['html'],
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
   })
 );
 
@@ -31,6 +42,8 @@ app.use(
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
+    version: BUILD.version,
+    features: BUILD.features,
     uptime: Math.round(process.uptime()),
     ...store.stats(),
     config: {
