@@ -94,6 +94,181 @@
     store.local.set(DRAFT_KEY, draft);
   }
 
+  // ------------------------------------------------------ استيراد من JSON
+
+  /** أسماء بديلة شائعة تكتبها المساعدات الذكية لكل نوع */
+  const TYPE_ALIASES = {
+    mc: 'mc', choice: 'mc', multiplechoice: 'mc', multiple_choice: 'mc', mcq: 'mc', quiz: 'mc',
+    truefalse: 'truefalse', true_false: 'truefalse', tf: 'truefalse', boolean: 'truefalse', bool: 'truefalse',
+    poll: 'poll', survey: 'poll', vote: 'poll', opinion: 'poll',
+    word: 'word', wordcloud: 'word', word_cloud: 'word', cloud: 'word', oneword: 'word',
+    scale: 'scale', rating: 'scale', likert: 'scale', range: 'scale',
+    open: 'open', text: 'open', essay: 'open', open_ended: 'open', openended: 'open', free: 'open',
+  };
+
+  /**
+   * تحويل JSON ملصوق إلى مسودة نشاط.
+   * متسامح مع مخرجات المساعدات الذكية: أسوار ```json، خيارات كنصوص،
+   * إجابة صحيحة بالنص أو الفهرس أو الحرف، وأسماء أنواع بديلة.
+   * يعيد { draft, warnings } أو { error }.
+   */
+  function parseImport(text) {
+    const warnings = [];
+    let raw = String(text || '').trim();
+    if (!raw) return { error: 'الصق JSON أولاً' };
+
+    // إزالة أسوار الشيفرة وأي كلام قبل/بعد الكائن
+    raw = raw.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/m, '').trim();
+    const start = raw.search(/[{[]/);
+    if (start > 0) raw = raw.slice(start);
+    const lastBrace = Math.max(raw.lastIndexOf('}'), raw.lastIndexOf(']'));
+    if (lastBrace >= 0) raw = raw.slice(0, lastBrace + 1);
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (err) {
+      return { error: 'النص ليس JSON صالحاً — ' + err.message };
+    }
+
+    if (Array.isArray(data)) data = { questions: data };
+    if (!data || typeof data !== 'object' || !Array.isArray(data.questions)) {
+      return { error: 'الشكل غير صحيح: المطلوب كائن فيه قائمة "questions" أو قائمة أسئلة مباشرة' };
+    }
+    if (data.questions.length === 0) return { error: 'قائمة الأسئلة فارغة' };
+
+    const questions = [];
+    data.questions.forEach((q, i) => {
+      const norm = normalizeImported(q, i, warnings);
+      if (norm) questions.push(norm);
+    });
+    if (!questions.length) return { error: 'لم يُعثر على أي سؤال صالح في القائمة' };
+
+    const draft = sanitizeDraft({ title: data.title, settings: data.settings, questions });
+    return { draft, warnings };
+  }
+
+  function normalizeImported(q, index, warnings) {
+    if (typeof q === 'string') {
+      // نص وحده = سؤال مفتوح
+      return { ...blankQuestion('open'), text: q };
+    }
+    if (!q || typeof q !== 'object') {
+      warnings.push(`سؤال ${index + 1}: ليس كائناً — تم تجاهله`);
+      return null;
+    }
+
+    const rawType = String(q.type || (q.options || q.choices || q.answers ? 'mc' : 'open'))
+      .toLowerCase()
+      .replace(/[\s-]/g, '_');
+    const type = TYPE_ALIASES[rawType] || TYPE_ALIASES[rawType.replace(/_/g, '')];
+    if (!type) {
+      warnings.push(`سؤال ${index + 1}: نوع غير معروف «${q.type}» — تم تجاهله`);
+      return null;
+    }
+
+    const out = { ...blankQuestion(type) };
+    out.text = String(q.text ?? q.question ?? q.title ?? '').trim();
+    if (!out.text) {
+      warnings.push(`سؤال ${index + 1}: بلا نص — تم تجاهله`);
+      return null;
+    }
+    out.explanation = String(q.explanation ?? q.reason ?? q.why ?? '').trim();
+    if (q.timeLimit != null || q.time != null || q.seconds != null) {
+      const t = Number(q.timeLimit ?? q.time ?? q.seconds);
+      out.timeLimit = Number.isFinite(t) ? Math.max(0, Math.round(t)) : out.timeLimit;
+    }
+    if (q.points != null || q.score != null || q.marks != null) {
+      const p = Number(q.points ?? q.score ?? q.marks);
+      out.points = Number.isFinite(p) ? Math.min(10000, Math.max(0, Math.round(p))) : out.points;
+    }
+
+    if (type === 'mc' || type === 'poll') {
+      const rawOptions = q.options ?? q.choices ?? q.answers ?? [];
+      out.options = (Array.isArray(rawOptions) ? rawOptions : [])
+        .map((option, i) => ({
+          id: 'o' + i,
+          text: String(typeof option === 'object' && option !== null ? option.text ?? option.label ?? '' : option ?? '').trim(),
+        }))
+        .filter((option) => option.text);
+      if (out.options.length < 2) {
+        warnings.push(`سؤال ${index + 1}: أقل من خيارين — تم تجاهله`);
+        return null;
+      }
+      if (type === 'mc') {
+        out.correct = resolveCorrect(q.correct ?? q.answer ?? q.correctAnswer ?? q.correct_answers, out.options);
+        if (!out.correct.length && out.points > 0) {
+          warnings.push(`سؤال ${index + 1}: لم أتعرّف على الإجابة الصحيحة — سيُعامل كاستطلاع بلا نقاط`);
+        }
+      }
+    }
+
+    if (type === 'truefalse') {
+      const c = Array.isArray(q.correct) ? q.correct[0] : q.correct ?? q.answer ?? q.correctAnswer;
+      const s = String(c).trim().toLowerCase();
+      if (c === true || ['true', 'صح', 'صحيح', 'نعم', '1'].includes(s)) out.correct = ['true'];
+      else if (c === false || ['false', 'خطأ', 'خاطئ', 'لا', '0'].includes(s)) out.correct = ['false'];
+      else warnings.push(`سؤال ${index + 1}: إجابة صح/خطأ غير واضحة «${c}»`);
+    }
+
+    if (type === 'scale' && q.scale && typeof q.scale === 'object') {
+      out.scale = {
+        min: Number(q.scale.min) || 1,
+        max: Number(q.scale.max) || 5,
+        minLabel: String(q.scale.minLabel ?? q.scale.min_label ?? '').trim() || 'غير موافق',
+        maxLabel: String(q.scale.maxLabel ?? q.scale.max_label ?? '').trim() || 'موافق تماماً',
+      };
+    }
+
+    return out;
+  }
+
+  /** الإجابة الصحيحة قد تأتي كنص الخيار أو فهرسه أو حرفه أو معرّفه */
+  function resolveCorrect(list, options) {
+    const arr = Array.isArray(list) ? list : list === null || list === undefined ? [] : [list];
+    const out = [];
+    const latin = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const arabic = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح'];
+    for (const item of arr) {
+      if (typeof item === 'number' && options[item]) {
+        out.push(options[item].id);
+        continue;
+      }
+      const s = String(item).trim();
+      const byId = options.find((o) => o.id === s);
+      const byText = options.find((o) => o.text === s || o.text.trim() === s);
+      let idx = latin.indexOf(s.toLowerCase());
+      if (idx < 0) idx = arabic.indexOf(s);
+      if (byId) out.push(byId.id);
+      else if (byText) out.push(byText.id);
+      else if (idx >= 0 && options[idx]) out.push(options[idx].id);
+      else if (/^\d+$/.test(s) && options[Number(s)]) out.push(options[Number(s)].id);
+    }
+    return [...new Set(out)];
+  }
+
+  /** مثال جاهز يوضح الصيغة للمدرب وللمساعد الذكي */
+  const IMPORT_EXAMPLE = {
+    title: 'مراجعة الوحدة الأولى',
+    settings: { pace: 'host', scoring: 'speed', streakBonus: true, revealAnswer: true },
+    questions: [
+      {
+        type: 'mc',
+        text: 'ما هي عاصمة الأردن؟',
+        options: ['عمّان', 'دمشق', 'بيروت', 'القاهرة'],
+        correct: ['عمّان'],
+        points: 1000,
+        timeLimit: 20,
+        explanation: 'عمّان هي العاصمة منذ عام ١٩٢١.',
+      },
+      { type: 'truefalse', text: 'الماء يغلي عند ١٠٠°م عند سطح البحر.', correct: true, points: 500, timeLimit: 15 },
+      { type: 'poll', text: 'أي موضوع تفضّل للمراجعة القادمة؟', options: ['الكسور', 'الهندسة', 'الجبر'] },
+      { type: 'scale', text: 'ما مدى وضوح الدرس؟', scale: { min: 1, max: 5, minLabel: 'غير واضح', maxLabel: 'واضح جداً' } },
+      { type: 'word', text: 'صف الدرس بكلمة واحدة' },
+      { type: 'open', text: 'ما الذي تقترح تحسينه؟' },
+    ],
+  };
+
   /**
    * يرسم محرر الأسئلة داخل عنصر، ويعيد كائناً فيه المسودة الحالية.
    * @param {HTMLElement} root
@@ -119,6 +294,9 @@
       ]);
       root.append(templatesBox);
       loadTemplates(templatesBox.querySelector('#tmplRow'));
+
+      // ---- الاستيراد من JSON (مخرجات مساعد ذكي أو ملف جاهز)
+      root.append(importCard());
 
       // ---- العنوان والإعدادات
       const titleInput = el('input', { maxlength: 120, placeholder: 'مثال: مراجعة الوحدة الثالثة', value: draft.title });
@@ -247,6 +425,73 @@
           ),
         ])
       );
+    }
+
+    /** بطاقة لصق JSON وتحويله إلى نشاط كامل */
+    function importCard() {
+      const textarea = el('textarea', {
+        placeholder: '{ "title": "…", "questions": [ … ] }\n\nالصق هنا JSON من مساعدك الذكي أو من ملف — ثم اضغط «تحويل إلى تفاعلي».',
+        style: {
+          minHeight: '110px',
+          direction: 'ltr',
+          textAlign: 'left',
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: '0.78rem',
+        },
+      });
+      const result = el('div', { class: 'small', style: { minHeight: '1em' } });
+
+      const convert = el('button', { class: 'btn accent', type: 'button' }, '⚡ تحويل إلى تفاعلي');
+      convert.addEventListener('click', () => {
+        const parsed = parseImport(textarea.value);
+        if (parsed.error) {
+          result.textContent = '❌ ' + parsed.error;
+          result.style.color = '#fca5a5';
+          toast(parsed.error, 'bad');
+          return;
+        }
+        const count = parsed.draft.questions.length;
+        if (!confirm(`استبدال المسودة الحالية بـ ${count} سؤالاً من JSON؟`)) return;
+        Object.assign(draft, parsed.draft);
+        openIndex = 0;
+        update();
+        const note = parsed.warnings.length ? ` (${parsed.warnings.length} تنبيه)` : '';
+        toast(`✅ تم استيراد ${count} سؤالاً${note}`, 'ok');
+        if (parsed.warnings.length) console.warn('تنبيهات الاستيراد:', parsed.warnings);
+      });
+
+      const example = el('button', { class: 'btn sm ghost', type: 'button' }, '📋 مثال');
+      example.addEventListener('click', () => {
+        textarea.value = JSON.stringify(IMPORT_EXAMPLE, null, 2);
+        result.textContent = 'هذا مثال يوضح الصيغة — عدّله أو الصق مكانه';
+        result.style.color = '';
+      });
+
+      const copyPrompt = el('button', { class: 'btn sm ghost', type: 'button' }, '🤖 نسخ برومبت المساعد');
+      copyPrompt.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(AI_PROMPT);
+          toast('نُسخ البرومبت — الصقه في مساعدك الذكي', 'ok');
+        } catch {
+          textarea.value = AI_PROMPT;
+          toast('تعذّر النسخ التلقائي — البرومبت الآن في الصندوق، انسخه يدوياً');
+        }
+      });
+
+      return el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between' }, [
+          el('h2', { text: 'أو حوّل JSON إلى نشاط ⚡', style: { margin: 0 } }),
+          el('div', { class: 'row', style: { gap: '6px' } }, [example, copyPrompt]),
+        ]),
+        el('p', {
+          class: 'muted small',
+          style: { margin: 0 },
+          text: 'اطلب من أي مساعد ذكي توليد الأسئلة (زر البرومبت يعطيه التعليمات الكاملة)، ثم الصق الناتج هنا.',
+        }),
+        textarea,
+        convert,
+        result,
+      ]);
     }
 
     /** مجموعة خيارات على شكل بطاقات (وضع التقدّم، احتساب النقاط) */
@@ -660,5 +905,54 @@
     return null;
   }
 
-  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, DRAFT_KEY };
+  /** برومبت جاهز يعطيه المدرب لأي مساعد ذكي ليولّد JSON صالحاً للاستيراد */
+  const AI_PROMPT = [
+    'أنت مساعد متخصص في تصميم أنشطة تفاعلية تعليمية لمنصة «تفاعل».',
+    'مهمتك: تحويل طلب المعلم (موضوع، درس، نص، أو أسئلة خام) إلى JSON صالح تماماً بالصيغة أدناه.',
+    '',
+    '## قواعد الإخراج',
+    '- أخرج JSON فقط داخل سور شيفرة واحد، بلا أي شرح قبله أو بعده.',
+    '- اكتب الأسئلة بلغة طلب المعلم (العربية غالباً).',
+    '- لا تخترع إجابات صحيحة إن لم تكن متأكداً — اسأل المعلم أو اجعل السؤال استطلاعاً.',
+    '',
+    '## الصيغة',
+    '{',
+    '  "title": "عنوان النشاط",',
+    '  "settings": {',
+    '    "pace": "host",            // host: المعلم ينقل الأسئلة | auto: انتقال تلقائي | self: كل طالب بسرعته',
+    '    "scoring": "speed",        // speed: نقاط أكثر للأسرع | flat: نقاط ثابتة | none: بلا نقاط',
+    '    "streakBonus": true,       // مضاعف للإجابات الصحيحة المتتالية',
+    '    "revealAnswer": true,      // يرى الطالب الإجابة الصحيحة وشرحها بعد إجابته',
+    '    "requireName": true,       // false = استطلاع مجهول بلا أسماء',
+    '    "countdown": true          // عدّاد «استعد ٣٢١» قبل الأسئلة المؤقتة',
+    '  },',
+    '  "questions": [ ... ]',
+    '}',
+    '',
+    '## أنواع الأسئلة (حقل type)',
+    '1. "mc" — اختيار من متعدد (يُصحَّح ويُنقَّط):',
+    '   { "type": "mc", "text": "نص السؤال", "options": ["خيار ١", "خيار ٢", "خيار ٣", "خيار ٤"],',
+    '     "correct": ["خيار ١"], "points": 1000, "timeLimit": 20, "explanation": "لماذا هذه هي الإجابة" }',
+    '   - options: من ٢ إلى ٨ خيارات نصية.',
+    '   - correct: قائمة بنصوص الخيارات الصحيحة حرفياً كما كتبتها في options (يجوز أكثر من إجابة).',
+    '   - points: من 0 إلى 10000 (الافتراضي 1000). timeLimit بالثواني من 5 إلى 600، أو 0 بلا مؤقّت.',
+    '   - explanation اختياري: سبب الإجابة الصحيحة، يظهر للطالب بعد إجابته.',
+    '2. "truefalse" — صح/خطأ: { "type": "truefalse", "text": "...", "correct": true, "points": 500, "timeLimit": 15, "explanation": "..." }',
+    '3. "poll" — استطلاع رأي بلا تصحيح: { "type": "poll", "text": "...", "options": ["...", "..."] }',
+    '4. "scale" — مقياس رقمي: { "type": "scale", "text": "...", "scale": { "min": 1, "max": 5, "minLabel": "غير موافق", "maxLabel": "موافق تماماً" } }',
+    '5. "word" — سحابة كلمات (كلمة واحدة من كل طالب): { "type": "word", "text": "..." }',
+    '6. "open" — إجابة نصية مفتوحة: { "type": "open", "text": "..." }',
+    '',
+    '## حدود يجب احترامها',
+    '- حتى 60 سؤالاً. نص السؤال حتى 300 حرف، الخيار حتى 120، الشرح حتى 400.',
+    '- نوّع الأنواع عندما يناسب: افتح بكسر جليد (poll)، وانهِ بتغذية راجعة (scale أو word).',
+    '- درّج الصعوبة، واجعل المشتتات في mc معقولة وليست هزلية إلا إن طُلب المرح.',
+    '- للاختبار المصحَّح استخدم mc و truefalse مع points و explanation.',
+    '- للاستطلاع المجهول اجعل "requireName": false و "scoring": "none".',
+    '',
+    '## مثال كامل',
+    JSON.stringify(IMPORT_EXAMPLE, null, 2),
+  ].join('\n');
+
+  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, parseImport, AI_PROMPT, DRAFT_KEY };
 })(window);
