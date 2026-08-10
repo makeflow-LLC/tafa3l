@@ -24,3 +24,9 @@ services:
       # مدة بقاء نتائج جلسة انتهت قبل حذفها (بالدقائق)
       - key: SESSION_ENDED_MINUTES
         value: "60"
+
+      # لبقاء حسابات المدربين وأنشطتهم المحفوظة بعد كل نشر.
+      # بدونها تُخزَّن في ملف محلي يضيع مع القرص المؤقت للخطة المجانية.
+      # أنشئ قاعدة Postgres (Render أو Supabase أو Neon) وضع رابطها هنا:
+      # - key: DATABASE_URL
+      #   value: postgres://user:pass@host:5432/dbname

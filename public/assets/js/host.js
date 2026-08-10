@@ -26,6 +26,9 @@
     lastPhaseKey: '',
     selfQuestion: 0, // السؤال المعروض في الوضع الحر
     leavingIntentionally: false, // خروج مقصود عبر أزرار التنقل
+    user: null, // المدرب المسجّل، أو null للاستخدام بلا حساب
+    durable: null, // هل تخزين الحسابات دائم على هذا الخادم
+    editingActivityId: null, // النشاط المحفوظ الجاري تعديله
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -41,7 +44,189 @@
     const match = hash.match(/^\/live\/(\d{6})$/);
     if (match) return openLive(match[1]);
     if (hash === '/demo') return startDemo();
+    if (hash === '/mine') return openMyActivities();
+    const edit = hash.match(/^\/edit\/([\w-]+)$/);
+    if (edit) return openSavedActivity(edit[1]);
     return openBuilder();
+  }
+
+  // ------------------------------------------------------- حساب المدرب
+
+  /** يجلب المستخدم الحالي مرة واحدة ويحدّث الشريط العلوي */
+  async function loadAccount() {
+    try {
+      const data = await api('/api/auth/me');
+      state.user = data.user || null;
+      state.durable = data.durable;
+    } catch {
+      state.user = null;
+    }
+    paintAccount();
+    return state.user;
+  }
+
+  function paintAccount() {
+    const slot = $('#account');
+    if (!slot) return;
+    slot.innerHTML = '';
+    if (state.user) {
+      slot.append(
+        el('a', { class: 'btn ghost sm', href: '#/mine', title: state.user.email }, '📚 ' + state.user.name)
+      );
+    } else {
+      slot.append(el('a', { class: 'btn ghost sm', href: '/login.html' }, '🔐 دخول'));
+    }
+  }
+
+  /** لوحة «نشاطاتي»: فتح، إطلاق، حذف */
+  async function openMyActivities() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    const user = state.user || (await loadAccount());
+    if (!user) {
+      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/mine');
+      return;
+    }
+
+    let activities = [];
+    try {
+      activities = (await api('/api/activities')).activities;
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: 'تعذّر جلب أنشطتك' }), el('p', { class: 'muted small', text: err.message })]));
+      return;
+    }
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الصفحة الرئيسية'),
+        el('a', { class: 'btn accent sm', href: '#/' }, '➕ نشاط جديد'),
+      ])
+    );
+    app.append(el('h1', { text: '📚 نشاطاتي' }));
+    app.append(
+      el('p', { class: 'muted small' }, `${user.name} · ${activities.length} نشاطاً محفوظاً · تُحفظ الأسئلة فقط، ونتائج الطلاب تبقى مؤقتة.`)
+    );
+
+    if (state.durable === false) {
+      app.append(
+        el('div', { class: 'banner', style: { marginBottom: '12px' } }, [
+          el('strong', { text: '⚠️ التخزين غير دائم على هذا الخادم' }),
+          el('div', { class: 'small', text: 'الحسابات والأنشطة محفوظة في ملف محلي وتضيع مع كل نشر — اضبط DATABASE_URL لقاعدة Postgres.' }),
+        ])
+      );
+    }
+
+    if (!activities.length) {
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('div', { style: { fontSize: '2.4rem' }, text: '📭' }),
+          el('h2', { text: 'لا توجد أنشطة محفوظة بعد' }),
+          el('p', { class: 'muted small', text: 'أنشئ نشاطاً ثم اضغط «حفظ في حسابي» ليظهر هنا.' }),
+          el('a', { class: 'btn primary', href: '#/' }, 'إنشاء نشاط'),
+        ])
+      );
+    } else {
+      const list = el('div', { class: 'stack' });
+      activities.forEach((activity) => list.append(activityCard(activity)));
+      app.append(list);
+    }
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between' }, [
+          el('span', { class: 'muted small', text: state.user.email }),
+          el(
+            'button',
+            {
+              class: 'btn ghost sm',
+              type: 'button',
+              onclick: async () => {
+                await api('/api/auth/logout', { method: 'POST' });
+                state.user = null;
+                paintAccount();
+                location.href = '/';
+              },
+            },
+            'تسجيل الخروج'
+          ),
+        ]),
+      ])
+    );
+  }
+
+  function activityCard(activity) {
+    const when = new Date(activity.updatedAt).toLocaleDateString('ar', { year: 'numeric', month: 'short', day: 'numeric' });
+    const pace = { host: '🎛️ المدرب', auto: '⏱️ تلقائي', self: '🏃 حر' }[activity.settings?.pace] || '';
+
+    const launch = el('button', { class: 'btn accent sm', type: 'button' }, '🚀 إطلاق جلسة');
+    launch.addEventListener('click', async () => {
+      launch.disabled = true;
+      launch.textContent = 'جارٍ الإطلاق…';
+      try {
+        const created = await api(`/api/activities/${activity.id}/launch`, { method: 'POST' });
+        rememberHost(created.code, created.hostToken, created.title);
+        location.hash = '#/live/' + created.code;
+      } catch (err) {
+        toast(err.message, 'bad');
+        launch.disabled = false;
+        launch.textContent = '🚀 إطلاق جلسة';
+      }
+    });
+
+    const remove = el('button', { class: 'btn danger sm', type: 'button' }, '🗑 حذف');
+    remove.addEventListener('click', async () => {
+      if (!confirm(`حذف «${activity.title}» نهائياً؟`)) return;
+      try {
+        await api(`/api/activities/${activity.id}`, { method: 'DELETE' });
+        toast('حُذف النشاط', 'ok');
+        openMyActivities();
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    });
+
+    return el('div', { class: 'card stack' }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { text: activity.title, style: { margin: 0, fontSize: '1.05rem' } }),
+        activity.live ? el('span', { class: 'badge live' }, `مباشر · ${activity.live.code}`) : null,
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('span', { class: 'badge', text: `${activity.questionCount} سؤالاً` }),
+        pace ? el('span', { class: 'badge', text: pace }) : null,
+        el('span', { class: 'muted small', text: 'آخر تعديل ' + when }),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        activity.live
+          ? el('a', { class: 'btn primary sm', href: '#/live/' + activity.live.code }, '↩ العودة للجلسة')
+          : launch,
+        el('a', { class: 'btn ghost sm', href: '#/edit/' + activity.id }, '✏️ فتح وتعديل'),
+        el('span', { class: 'grow' }),
+        remove,
+      ]),
+    ]);
+  }
+
+  /** فتح نشاط محفوظ داخل المحرّر */
+  async function openSavedActivity(id) {
+    teardown();
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+    if (!state.user) await loadAccount();
+    try {
+      const { activity } = await api('/api/activities/' + id);
+      window.Builder.saveDraft({ title: activity.title, settings: activity.settings, questions: activity.questions });
+      state.editingActivityId = activity.id;
+      openBuilder();
+      toast('فُتح «' + activity.title + '» للتعديل', 'ok');
+    } catch (err) {
+      toast(err.message, 'bad');
+      location.hash = '#/mine';
+    }
   }
 
   /** تجربة فورية: ينشئ جلسة من قالب جاهز بضغطة واحدة */
@@ -88,6 +273,8 @@
 
   function openBuilder() {
     teardown();
+    // المسار «#/» يعني نشاطاً جديداً؛ التعديل يمر عبر «#/edit/:id»
+    if ((location.hash.slice(1) || '/') === '/') state.editingActivityId = null;
     codeBadge.classList.add('hidden');
     connBadge.classList.add('hidden');
     bar.innerHTML = '';
@@ -123,6 +310,7 @@
             options: (question.options || []).filter((option) => option.text.trim()),
           })),
         };
+        if (state.editingActivityId) payload.activityId = state.editingActivityId;
         const created = await api('/api/sessions', { method: 'POST', body: payload });
         rememberHost(created.code, created.hostToken, created.title);
         location.hash = '#/live/' + created.code;
@@ -133,7 +321,7 @@
     };
 
     try {
-      window.Builder.mount(root, onLaunch);
+      window.Builder.mount(root, onLaunch, saveAction);
       return;
     } catch (err) {
       // السبب الأشيع: مسودة محفوظة من نسخة قديمة — نمسحها ونعيد المحاولة
@@ -145,13 +333,60 @@
       }
       root.innerHTML = '';
       try {
-        window.Builder.mount(root, onLaunch);
+        window.Builder.mount(root, onLaunch, saveAction);
         toast('أُعيد ضبط المسودة بعد عطل', 'ok');
         return;
       } catch (err2) {
         showBuilderError(root, err2);
       }
     }
+  }
+
+  /**
+   * زر «حفظ في حسابي» داخل المحرّر.
+   * بلا حساب يدعو لتسجيل الدخول بدل إخفاء الميزة، ومع نشاط مفتوح يحدّثه بدل تكراره.
+   */
+  function saveAction(draft, validate) {
+    if (!state.user) {
+      return el(
+        'a',
+        { class: 'btn ghost', href: '/login.html?next=' + encodeURIComponent('/host.html#/') },
+        '🔐 سجّل الدخول لحفظ النشاط في حسابك'
+      );
+    }
+
+    const editing = !!state.editingActivityId;
+    const button = el('button', { class: 'btn ghost', type: 'button' }, editing ? '💾 حفظ التعديلات' : '💾 حفظ في حسابي');
+    button.addEventListener('click', async () => {
+      const problem = validate(draft);
+      if (problem) return toast(problem, 'bad');
+      const payload = {
+        title: draft.title,
+        settings: draft.settings,
+        questions: draft.questions.map((question) => ({
+          ...question,
+          options: (question.options || []).filter((option) => option.text.trim()),
+        })),
+      };
+      button.disabled = true;
+      button.textContent = 'جارٍ الحفظ…';
+      try {
+        if (editing) {
+          await api('/api/activities/' + state.editingActivityId, { method: 'PUT', body: payload });
+          toast('حُفظت التعديلات ✅', 'ok');
+        } else {
+          const { activity } = await api('/api/activities', { method: 'POST', body: payload });
+          state.editingActivityId = activity.id;
+          toast('حُفظ في حسابك ✅', 'ok');
+        }
+      } catch (err) {
+        toast(err.message, 'bad');
+      } finally {
+        button.disabled = false;
+        button.textContent = state.editingActivityId ? '💾 حفظ التعديلات' : '💾 حفظ في حسابي';
+      }
+    });
+    return button;
   }
 
   /** بديل مرئي بدل صفحة فارغة، مع نص الخطأ ليسهل تشخيصه */
@@ -1059,5 +1294,6 @@
     }
   });
 
-  route();
+  // نعرف المستخدم أولاً حتى تظهر أزرار الحساب صحيحة من أول رسم
+  loadAccount().finally(route);
 })();

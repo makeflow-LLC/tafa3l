@@ -10,15 +10,14 @@ const assert = require('node:assert');
 const WebSocket = require('ws');
 
 process.env.PORT = '0';
-const { server } = require('../server/index');
+// عزل بيانات الاختبار عن بيانات التطوير
+process.env.DATA_DIR = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'tafa3l-test-'));
+const { server, ready } = require('../server/index');
 
 let base;
 
 test.before(async () => {
-  await new Promise((resolve) => {
-    if (server.listening) return resolve();
-    server.once('listening', resolve);
-  });
+  await ready;
   base = `http://127.0.0.1:${server.address().port}`;
 });
 
