@@ -25,6 +25,7 @@
     cancelCountdown: null,
     lastPhaseKey: '',
     selfQuestion: 0, // السؤال المعروض في الوضع الحر
+    leavingIntentionally: false, // خروج مقصود عبر أزرار التنقل
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -639,6 +640,34 @@
         el('h2', { text: 'انتهى النشاط', style: { margin: 0 } }),
         el('p', { class: 'muted small', style: { margin: 0 }, text: 'حمّل النتائج الآن إن أردت الاحتفاظ بها — ستُحذف الجلسة تلقائياً.' }),
         el('button', { class: 'btn accent', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج (JSON)'),
+        el('div', { class: 'row', style: { justifyContent: 'center' } }, [
+          el(
+            'button',
+            {
+              class: 'btn ghost sm',
+              type: 'button',
+              onclick: () => {
+                state.leavingIntentionally = true;
+                teardown();
+                location.href = '/host.html#/';
+              },
+            },
+            '➕ نشاط جديد'
+          ),
+          el(
+            'button',
+            {
+              class: 'btn ghost sm',
+              type: 'button',
+              onclick: () => {
+                state.leavingIntentionally = true;
+                teardown();
+                location.href = '/';
+              },
+            },
+            '🏠 الصفحة الرئيسية'
+          ),
+        ]),
       ])
     );
     const board = s.leaderboard || [];
@@ -861,6 +890,9 @@
         el('button', { class: 'btn primary', type: 'button', disabled: s.participants.length === 0, onclick: () => send('host:start') },
           s.participants.length ? '▶ بدء النشاط' : 'بانتظار المشاركين')
       );
+      actions.push(
+        el('button', { class: 'icon-btn', type: 'button', title: 'إلغاء الجلسة وحذفها', onclick: endSession }, '🗑')
+      );
     } else if (s.status === 'ended') {
       actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج'));
       actions.push(el('button', { class: 'btn danger', type: 'button', onclick: endSession }, '🗑 حذف الجلسة'));
@@ -984,6 +1016,21 @@
     state.cancelCountdown = null;
   }
 
+  /**
+   * زر الصفحة الرئيسية: مغادرة الجلسة المباشرة لا تُنهيها — تبقى قائمة
+   * ويستطيع المدرب استئنافها، لذلك نوضّح ذلك بدل تحذير مبهم.
+   */
+  const homeBtn = $('#homeBtn');
+  if (homeBtn) {
+    homeBtn.addEventListener('click', () => {
+      const live = state.live && state.live.status === 'live';
+      if (live && !confirm('الجلسة ستبقى مستمرة ويمكنك استئنافها من الصفحة الرئيسية. الخروج الآن؟')) return;
+      state.leavingIntentionally = true;
+      teardown();
+      location.href = '/';
+    });
+  }
+
   // زر كتم الصوت
   const soundBtn = $('#soundBtn');
   if (soundBtn) {
@@ -997,6 +1044,8 @@
 
   // تنبيه قبل مغادرة صفحة جلسة مباشرة
   window.addEventListener('beforeunload', (event) => {
+    // لا نزعج المدرب إن كان خروجه مقصوداً عبر أزرار التنقل
+    if (state.leavingIntentionally) return;
     if (state.live && state.live.status === 'live') {
       event.preventDefault();
       event.returnValue = '';

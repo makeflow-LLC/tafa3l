@@ -21,6 +21,7 @@ const SCORED_TYPES = new Set(['mc', 'truefalse']);
 const LIMITS = {
   title: 120,
   questionText: 300,
+  explanation: 400,
   optionText: 120,
   options: 8,
   questions: 60,
@@ -56,8 +57,11 @@ function normalizeQuestion(raw, index) {
     id: clean(raw?.id, 40) || id('q_'),
     type,
     text: clean(raw?.text, LIMITS.questionText) || `سؤال ${index + 1}`,
+    // شرح أو سبب يظهر مع الإجابة الصحيحة (اختياري)
+    explanation: clean(raw?.explanation, LIMITS.explanation),
     timeLimit: raw?.timeLimit === 0 || raw?.timeLimit === null ? 0 : clamp(raw?.timeLimit, 5, 600, 30),
-    points: clamp(raw?.points, 0, 2000, 1000),
+    // علامة السؤال — يضعها المدرب بحرية
+    points: clamp(raw?.points, 0, 10000, 1000),
     options: [],
     correct: [],
     scale: null,
@@ -146,6 +150,8 @@ function normalizeQuiz(payload) {
       scoring: SCORING_MODES.includes(payload?.settings?.scoring) ? payload.settings.scoring : 'speed',
       // مضاعف يتصاعد مع الإجابات الصحيحة المتتالية
       streakBonus: payload?.settings?.streakBonus !== false,
+      // إظهار الإجابة الصحيحة وشرحها للمتدرب فور إجابته
+      revealAnswer: payload?.settings?.revealAnswer !== false,
     },
   };
 }
@@ -912,8 +918,8 @@ class Session {
       return state;
     }
     if (q) {
-      // نكشف الإجابة الصحيحة فقط بعد أن يجيب
-      state.question = publicQuestion(q, participant.phase === 'feedback');
+      // نكشف الإجابة الصحيحة والشرح بعد أن يجيب، إن سمح المدرب بذلك
+      state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer);
       if (participant.phase === 'feedback') state.results = this.aggregate(participant.index);
     }
     return state;
@@ -952,7 +958,9 @@ class Session {
     };
 
     if (q && (this.phase === 'question' || this.phase === 'results')) {
-      state.question = publicQuestion(q, this.phase === 'results');
+      // بعد عرض النتائج تُكشف للجميع؛ وقبلها تُكشف لمن أجاب فقط إن فعّل المدرب الخيار
+      const reveal = this.phase === 'results' || (this.settings.revealAnswer && !!answer);
+      state.question = publicQuestion(q, reveal);
     }
     if (this.phase === 'results' && q) {
       state.results = this.aggregate(this.currentIndex);
@@ -1041,6 +1049,8 @@ function publicQuestion(q, revealCorrect) {
     id: q.id,
     type: q.type,
     text: q.text,
+    // الشرح لا يُرسل إلا مع كشف الإجابة
+    explanation: revealCorrect ? q.explanation || '' : '',
     timeLimit: q.timeLimit,
     points: q.points,
     options: q.options.map((o) => ({

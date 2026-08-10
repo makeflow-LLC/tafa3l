@@ -12,7 +12,7 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', timeLimit: 20, points: 1000, options: [], correct: [] };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [] };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -36,6 +36,7 @@
         autoAdvanceSec: 6,
         scoring: 'speed',
         streakBonus: true,
+        revealAnswer: true,
       },
       questions: [blankQuestion('mc')],
     };
@@ -69,6 +70,7 @@
     const question = { ...fresh, ...raw, type: fresh.type, id: typeof raw.id === 'string' && raw.id ? raw.id : fresh.id };
 
     question.text = typeof raw.text === 'string' ? raw.text : '';
+    question.explanation = typeof raw.explanation === 'string' ? raw.explanation : '';
     question.timeLimit = Number.isFinite(Number(raw.timeLimit)) ? Number(raw.timeLimit) : fresh.timeLimit;
     question.points = Number.isFinite(Number(raw.points)) ? Number(raw.points) : fresh.points;
 
@@ -158,6 +160,11 @@
           draft.settings.scoring !== 'none'
             ? switchRow('مضاعف السلاسل 🔥', 'streakBonus', 'كل إجابة صحيحة متتالية تزيد النقاط ١٠٪ حتى ٥٠٪')
             : null,
+          switchRow(
+            'إظهار الإجابة الصحيحة 💡',
+            'revealAnswer',
+            'بعد إجابة المتدرب يرى الإجابة الصحيحة وشرحها إن كتبته'
+          ),
         ])
       );
 
@@ -456,20 +463,67 @@
       const timeAndPoints = el('div', { class: 'grid two' }, [el('div', {}, [el('label', { text: 'مدة الإجابة' }), timeSelect])]);
 
       if (question.type === 'mc' || question.type === 'truefalse') {
-        const pointsSelect = el('select', {}, [
-          el('option', { value: '0' }, 'بلا نقاط'),
-          el('option', { value: '500' }, 'عادي (٥٠٠)'),
-          el('option', { value: '1000' }, 'قياسي (١٠٠٠)'),
-          el('option', { value: '2000' }, 'مضاعف (٢٠٠٠)'),
-        ]);
-        pointsSelect.value = String(question.points ?? 1000);
-        pointsSelect.addEventListener('change', () => {
-          question.points = Number(pointsSelect.value);
+        // علامة حرة لكل سؤال — يضع المدرب ما يشاء
+        const pointsInput = el('input', {
+          type: 'number',
+          min: 0,
+          max: 10000,
+          step: 10,
+          inputmode: 'numeric',
+          value: String(question.points ?? 1000),
+        });
+        const presets = el('div', { class: 'row', style: { gap: '6px', marginTop: '6px' } },
+          [0, 500, 1000, 2000].map((value) =>
+            el(
+              'button',
+              {
+                class: 'btn sm ghost',
+                type: 'button',
+                onclick: () => {
+                  question.points = value;
+                  pointsInput.value = String(value);
+                  saveDraft(draft);
+                },
+              },
+              value === 0 ? 'بلا علامة' : String(value)
+            )
+          )
+        );
+        pointsInput.addEventListener('input', () => {
+          const value = Number(pointsInput.value);
+          question.points = Number.isFinite(value) ? Math.min(10000, Math.max(0, Math.round(value))) : 0;
           saveDraft(draft);
         });
-        timeAndPoints.append(el('div', {}, [el('label', { text: 'النقاط' }), pointsSelect]));
+        timeAndPoints.append(
+          el('div', {}, [el('label', { text: 'علامة السؤال' }), pointsInput, presets])
+        );
       }
       body.append(timeAndPoints);
+
+      // شرح أو سبب الإجابة الصحيحة (اختياري)
+      if (question.type === 'mc' || question.type === 'truefalse') {
+        const explanation = el('textarea', {
+          maxlength: 400,
+          placeholder: 'مثال: عمّان هي العاصمة منذ عام ١٩٢١…',
+          style: { minHeight: '64px' },
+        });
+        explanation.value = question.explanation || '';
+        explanation.addEventListener('input', () => {
+          question.explanation = explanation.value;
+          saveDraft(draft);
+        });
+        body.append(
+          el('div', {}, [
+            el('label', { text: 'شرح الإجابة الصحيحة (اختياري)' }),
+            explanation,
+            el('div', {
+              class: 'muted small',
+              style: { marginTop: '4px' },
+              text: 'يظهر للمتدرب مع الإجابة الصحيحة — يحتاج تفعيل «إظهار الإجابة الصحيحة» في إعدادات النشاط.',
+            }),
+          ])
+        );
+      }
 
       // أدوات السؤال
       body.append(
