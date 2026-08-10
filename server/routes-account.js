@@ -181,6 +181,30 @@ function accountRoutes(store) {
     res.json({ ok: true });
   });
 
+  /** استنساخ نشاط — نسخة مستقلة يمكن تعديلها دون المساس بالأصل */
+  router.post('/activities/:id/duplicate', auth.requireUser, async (req, res) => {
+    try {
+      const activity = await storage.get().getActivity(req.params.id);
+      if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+      const list = await storage.get().listActivities(req.user.id);
+      if (list.length >= MAX_ACTIVITIES) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_ACTIVITIES} نشاطاً) — احذف نشاطاً قديماً` });
+      }
+      const now = Date.now();
+      const copy = {
+        ...activity,
+        id: storage.newId('a_'),
+        title: (activity.title + ' — نسخة').slice(0, 120),
+        createdAt: now,
+        updatedAt: now,
+      };
+      await storage.get().saveActivity(copy);
+      res.status(201).json({ activity: { id: copy.id, title: copy.title, updatedAt: copy.updatedAt } });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر استنساخ النشاط' });
+    }
+  });
+
   /** إطلاق جلسة مباشرة من نشاط محفوظ */
   router.post('/activities/:id/launch', auth.requireUser, async (req, res) => {
     try {
@@ -204,4 +228,50 @@ function accountRoutes(store) {
   return router;
 }
 
-module.exports = { accountRoutes };
+/**
+ * حفظ تلقائي عند الإطلاق: المدرب المسجّل لا يحتاج زر «حفظ» —
+ * كل جلسة يطلقها تُحفظ في نشاطاته (أو تُحدَّث إن كانت نسخة من نشاط موجود).
+ * إنهاء الجلسة أو إيقافها لا يمس النشاط المحفوظ أبداً.
+ * يعيد معرّف النشاط أو null، ولا يرمي خطأ حتى لا يعطل إنشاء الجلسة.
+ */
+async function syncLaunchedActivity(user, session, activityId) {
+  try {
+    const db = storage.get();
+    const now = Date.now();
+    const content = { title: session.title, settings: session.settings, questions: session.questions };
+
+    if (activityId) {
+      const existing = await db.getActivity(String(activityId));
+      if (existing && existing.ownerId === user.id) {
+        await db.saveActivity({ ...existing, ...content, updatedAt: now });
+        return existing.id;
+      }
+    }
+
+    const list = await db.listActivities(user.id);
+    // إطلاق متكرر لنفس النشاط بلا معرّف: نطابق بالعنوان وعدد الأسئلة بدل تكديس نسخ
+    const twin = list.find(
+      (a) => a.title === session.title && Array.isArray(a.questions) && a.questions.length === session.questions.length
+    );
+    if (twin) {
+      await db.saveActivity({ ...twin, ...content, updatedAt: now });
+      return twin.id;
+    }
+
+    if (list.length >= MAX_ACTIVITIES) return null;
+    const activity = {
+      id: storage.newId('a_'),
+      ownerId: user.id,
+      ...content,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.saveActivity(activity);
+    return activity.id;
+  } catch (err) {
+    console.error('الحفظ التلقائي للنشاط:', err.message);
+    return null;
+  }
+}
+
+module.exports = { accountRoutes, syncLaunchedActivity };

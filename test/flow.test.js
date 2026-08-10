@@ -229,6 +229,11 @@ test('المسار الكامل: دخول، إجابة، تصحيح، نتائج
   assert.equal(dashboard.perQuestion[0].accuracy, 50);
   assert.ok(dashboard.participants[0].score > 0);
   assert.equal(dashboard.participants[0].name, 'سارة');
+  // لوحة التحكم تعرض النتائج المجمّعة نفسها: سحابة الكلمات وأعمدة المقياس
+  assert.equal(dashboard.perQuestion[1].results.words[0].text, 'ممتازة');
+  assert.equal(dashboard.perQuestion[1].results.words[0].count, 2);
+  assert.equal(dashboard.perQuestion[2].results.average, 4);
+  assert.equal(dashboard.perQuestion[2].results.buckets.length, 5);
 
   // الإنهاء
   host.send({ t: 'host:end' });

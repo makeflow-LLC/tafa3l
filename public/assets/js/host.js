@@ -12,6 +12,7 @@
   const codeBadge = $('#codeBadge');
 
   const HOSTS_KEY = 'tafa3l:hosts';
+  const EDITING_KEY = 'tafa3l:host:editingActivity';
 
   const state = {
     code: null,
@@ -28,13 +29,21 @@
     leavingIntentionally: false, // خروج مقصود عبر أزرار التنقل
     user: null, // المدرب المسجّل، أو null للاستخدام بلا حساب
     durable: null, // هل تخزين الحسابات دائم على هذا الخادم
-    editingActivityId: null, // النشاط المحفوظ الجاري تعديله
+    editingActivityId: store.local.get(EDITING_KEY, null), // النشاط المحفوظ الجاري تعديله — يبقى بعد تحديث الصفحة
+    dashOpenQ: null, // سؤال مفتوح النتائج في جدول لوحة التحكم
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
   /** توقيت الخادم الآن كما نقدّره محلياً */
   function serverTime() {
     return Date.now() - state.clockOffset;
+  }
+
+  /** يثبّت النشاط الجاري تعديله في المتصفح حتى لا يتكرر النشاط مع كل إطلاق */
+  function setEditingActivity(id) {
+    state.editingActivityId = id || null;
+    if (id) store.local.set(EDITING_KEY, id);
+    else store.local.set(EDITING_KEY, null);
   }
 
   // -------------------------------------------------------------- التوجيه
@@ -110,7 +119,7 @@
     );
     app.append(el('h1', { text: '📚 نشاطاتي' }));
     app.append(
-      el('p', { class: 'muted small' }, `${user.name} · ${activities.length} نشاطاً محفوظاً · تُحفظ الأسئلة فقط، ونتائج الطلاب تبقى مؤقتة.`)
+      el('p', { class: 'muted small' }, `${user.name} · ${activities.length} نشاطاً محفوظاً · كل نشاط تطلقه يُحفظ هنا تلقائياً، وإنهاء الجلسة لا يحذفه. تُحفظ الأسئلة فقط — نتائج الطلاب تبقى مؤقتة.`)
     );
 
     if (state.durable === false) {
@@ -191,6 +200,19 @@
       }
     });
 
+    const duplicate = el('button', { class: 'btn ghost sm', type: 'button' }, '📄 استنساخ');
+    duplicate.addEventListener('click', async () => {
+      duplicate.disabled = true;
+      try {
+        const { activity: copy } = await api(`/api/activities/${activity.id}/duplicate`, { method: 'POST' });
+        toast(`نُسخ إلى «${copy.title}»`, 'ok');
+        openMyActivities();
+      } catch (err) {
+        toast(err.message, 'bad');
+        duplicate.disabled = false;
+      }
+    });
+
     return el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
         el('h2', { text: activity.title, style: { margin: 0, fontSize: '1.05rem' } }),
@@ -206,6 +228,7 @@
           ? el('a', { class: 'btn primary sm', href: '#/live/' + activity.live.code }, '↩ العودة للجلسة')
           : launch,
         el('a', { class: 'btn ghost sm', href: '#/edit/' + activity.id }, '✏️ فتح وتعديل'),
+        duplicate,
         el('span', { class: 'grow' }),
         remove,
       ]),
@@ -220,7 +243,7 @@
     try {
       const { activity } = await api('/api/activities/' + id);
       window.Builder.saveDraft({ title: activity.title, settings: activity.settings, questions: activity.questions });
-      state.editingActivityId = activity.id;
+      setEditingActivity(activity.id);
       openBuilder();
       toast('فُتح «' + activity.title + '» للتعديل', 'ok');
     } catch (err) {
@@ -274,7 +297,7 @@
   function openBuilder() {
     teardown();
     // المسار «#/» يعني نشاطاً جديداً؛ التعديل يمر عبر «#/edit/:id»
-    if ((location.hash.slice(1) || '/') === '/') state.editingActivityId = null;
+    if ((location.hash.slice(1) || '/') === '/') setEditingActivity(null);
     codeBadge.classList.add('hidden');
     connBadge.classList.add('hidden');
     bar.innerHTML = '';
@@ -313,6 +336,11 @@
         if (state.editingActivityId) payload.activityId = state.editingActivityId;
         const created = await api('/api/sessions', { method: 'POST', body: payload });
         rememberHost(created.code, created.hostToken, created.title);
+        // الخادم يحفظ النشاط تلقائياً للمدرب المسجّل — نتذكر معرّفه حتى لا يتكرر
+        if (created.activityId) {
+          setEditingActivity(created.activityId);
+          toast('💾 حُفظ النشاط في «نشاطاتي» تلقائياً', 'ok');
+        }
         location.hash = '#/live/' + created.code;
       } catch (err) {
         toast(err.message, 'bad');
@@ -376,7 +404,7 @@
           toast('حُفظت التعديلات ✅', 'ok');
         } else {
           const { activity } = await api('/api/activities', { method: 'POST', body: payload });
-          state.editingActivityId = activity.id;
+          setEditingActivity(activity.id);
           toast('حُفظ في حسابك ✅', 'ok');
         }
       } catch (err) {
@@ -474,7 +502,8 @@
           Fx.floatEmoji(msg.emoji);
         } else if (msg.t === 'dashboard') {
           state.dashboard = msg.data;
-          if (state.tab === 'dashboard') renderLive();
+          // لوحة التحكم ومسرح الوضع الحر كلاهما يرسمان من هذه البيانات
+          if (state.tab === 'dashboard' || state.live?.pace === 'self') renderLive();
         } else if (msg.t === 'session:closed') {
           toast('انتهت الجلسة', 'bad');
           teardown();
@@ -650,11 +679,21 @@
       send('host:dashboard');
       return el('p', { class: 'muted center', text: 'جارٍ التحميل…' });
     }
-    return el('div', { class: 'stats' }, [
-      stat(`${row.responses}/${row.reached}`, 'أجابوا / وصلوا'),
-      row.accuracy === null ? null : stat(row.accuracy + '٪', 'الدقة'),
-      stat(fmtMs(row.avgMs), 'متوسط الزمن'),
-    ].filter(Boolean));
+    const wrap = el('div', { class: 'stack' });
+    wrap.append(
+      el('div', { class: 'stats' }, [
+        stat(`${row.responses}/${row.reached}`, 'أجابوا / وصلوا'),
+        row.accuracy === null ? null : stat(row.accuracy + '٪', 'الدقة'),
+        stat(fmtMs(row.avgMs), 'متوسط الزمن'),
+      ].filter(Boolean))
+    );
+    // النتائج الفعلية: سحابة الكلمات، أعمدة المقياس، الخيارات، أو الإجابات المفتوحة
+    if (row.results && row.results.total > 0) {
+      wrap.append(resultsView({ scored: row.correct !== null }, row.results, true));
+    } else {
+      wrap.append(el('p', { class: 'muted center small', style: { margin: 0 }, text: 'لا توجد إجابات على هذا السؤال بعد' }));
+    }
+    return wrap;
   }
 
   function renderLobby(s) {
@@ -1012,20 +1051,42 @@
       ].filter(Boolean))
     );
 
-    // جدول الأسئلة
-    const qRows = data.perQuestion.map((question) =>
-      el('tr', {}, [
+    // جدول الأسئلة — النقر على سؤال يفتح نتائجه الكاملة (سحابة الكلمات، الأعمدة…)
+    const qRows = [];
+    data.perQuestion.forEach((question) => {
+      const open = state.dashOpenQ === question.index;
+      const row = el('tr', { style: { cursor: 'pointer' } }, [
         el('td', {}, [el('span', { class: 'badge', text: TYPE_EMOJI[question.type] }), ' ' + (question.index + 1)]),
-        el('td', { style: { whiteSpace: 'normal', minWidth: '180px' } }, question.text),
+        el('td', { style: { whiteSpace: 'normal', minWidth: '180px' } }, [
+          el('span', { text: question.text + ' ' }),
+          el('span', { class: 'muted small', text: open ? '▲' : '▼ النتائج' }),
+        ]),
         el('td', {}, question.asked ? `${question.responses} (${question.responseRate}٪)` : '—'),
         el('td', {}, question.accuracy === null ? '—' : question.accuracy + '٪'),
         el('td', {}, question.responses ? fmtMs(question.avgMs) : '—'),
-      ])
-    );
+      ]);
+      row.addEventListener('click', () => {
+        state.dashOpenQ = open ? null : question.index;
+        renderLive();
+      });
+      qRows.push(row);
+      if (open) {
+        qRows.push(
+          el('tr', {}, [
+            el('td', { colspan: 5, style: { whiteSpace: 'normal' } }, [
+              question.results && question.results.total > 0
+                ? resultsView({ scored: question.correct !== null }, question.results, true)
+                : el('p', { class: 'muted center small', style: { margin: 0 }, text: 'لا توجد إجابات بعد' }),
+            ]),
+          ])
+        );
+      }
+    });
 
     app.append(
       el('div', { class: 'card stack' }, [
         el('h2', { text: 'أداء الأسئلة', style: { margin: 0 } }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: 'اضغط على أي سؤال لعرض نتائجه الكاملة' }),
         el('div', { class: 'table-wrap' }, [
           el('table', {}, [
             el('thead', {}, el('tr', {}, [el('th', {}, '#'), el('th', {}, 'السؤال'), el('th', {}, 'الإجابات'), el('th', {}, 'الدقة'), el('th', {}, 'الزمن')])),

@@ -420,20 +420,48 @@
     }
 
     if (q.type === 'scale') {
+      // مقياس حقيقي: خط أفقي يُسحب عليه المؤشر، لا قائمة خيارات
       const scale = q.scale || { min: 1, max: 5, minLabel: '', maxLabel: '' };
-      const options = el('div', { class: 'options' });
+      const start = Math.round((scale.min + scale.max) / 2);
+
+      const valueBubble = el('div', { class: 'slider-value', text: String(start) });
+      const range = el('input', {
+        type: 'range',
+        class: 'slider',
+        min: scale.min,
+        max: scale.max,
+        step: 1,
+        value: start,
+        'aria-label': 'اسحب لاختيار قيمة بين ' + scale.min + ' و ' + scale.max,
+      });
+      // علامات القيم تحت الخط
+      const ticks = el('div', { class: 'slider-ticks' });
       for (let i = scale.min; i <= scale.max; i++) {
-        const button = el('button', { class: `opt c${(i - scale.min) % 8}`, type: 'button' }, [
-          el('span', { class: 'tag', text: String(i) }),
-          el('span', {
-            class: 'grow',
-            text: i === scale.min ? scale.minLabel : i === scale.max ? scale.maxLabel : '',
-          }),
-        ]);
-        button.addEventListener('click', () => submit(q, i));
-        options.append(button);
+        ticks.append(el('span', { class: i === start ? 'on' : '', 'data-v': i, text: String(i) }));
       }
-      box.append(options);
+      const paint = () => {
+        valueBubble.textContent = range.value;
+        const ratio = (Number(range.value) - scale.min) / Math.max(1, scale.max - scale.min);
+        valueBubble.style.transform = `scale(${1 + ratio * 0.25})`;
+        for (const tick of ticks.children) tick.className = tick.dataset.v === range.value ? 'on' : '';
+      };
+      range.addEventListener('input', paint);
+
+      const send = el('button', { class: 'btn primary block' }, 'إرسال ✓');
+      send.addEventListener('click', () => submit(q, Number(range.value)));
+
+      box.append(
+        el('div', { class: 'card stack slider-card' }, [
+          valueBubble,
+          range,
+          ticks,
+          el('div', { class: 'row between small muted', style: { marginTop: '2px' } }, [
+            el('span', { text: scale.minLabel || String(scale.min) }),
+            el('span', { text: scale.maxLabel || String(scale.max) }),
+          ]),
+          send,
+        ])
+      );
       return box;
     }
 
@@ -519,6 +547,22 @@
         );
       });
       app.append(options);
+    }
+
+    // في الوضع الحر أيضاً يرى المتدرب ما أجاب به الآخرون: سحابة الكلمات، المقياس، الآراء
+    const results = s.results;
+    if (results?.words) {
+      app.append(el('div', { class: 'card' }, wordCloud(results.words)));
+    } else if (results?.buckets) {
+      app.append(el('div', { class: 'card stack' }, [scaleChart(results), el('p', { class: 'center muted', text: `المتوسط: ${results.average}` })]));
+    } else if (results?.responses && !q.options?.length) {
+      app.append(
+        el(
+          'div',
+          { class: 'card quotes' },
+          results.responses.slice(-12).reverse().map((r) => el('div', { class: 'quote' }, [el('span', { text: r.text })]))
+        )
+      );
     }
 
     const last = s.index + 1 >= s.total;

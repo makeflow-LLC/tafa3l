@@ -208,6 +208,68 @@ test('النشاط المحفوظ يُرفض إن كان بلا أسئلة صا�
   assert.equal(bad.status, 400);
 });
 
+test('الإطلاق المباشر من المحرّر يحفظ النشاط تلقائياً بلا تكرار', async () => {
+  const c = client();
+  await c.request('POST', '/api/auth/signup', { email: email(), name: 'ريم', password: 'sirr12345' });
+
+  // إطلاق أول: يجب أن يُحفظ النشاط تلقائياً ويعود معرّفه
+  const first = await c.request('POST', '/api/sessions', QUIZ);
+  assert.equal(first.status, 201);
+  assert.ok(first.data.activityId, 'الإطلاق يعيد معرّف النشاط المحفوظ تلقائياً');
+
+  let list = await c.request('GET', '/api/activities');
+  assert.equal(list.data.activities.length, 1, 'النشاط حُفظ تلقائياً دون زر حفظ');
+  assert.equal(list.data.activities[0].title, QUIZ.title);
+
+  // إنهاء الجلسة لا يحذف النشاط المحفوظ
+  await fetch(`${base}/api/sessions/${first.data.code}?hostToken=${encodeURIComponent(first.data.hostToken)}`, { method: 'DELETE' });
+  list = await c.request('GET', '/api/activities');
+  assert.equal(list.data.activities.length, 1, 'إنهاء الجلسة لا يمس النشاط المحفوظ');
+
+  // إطلاق ثانٍ بنفس المعرّف: تحديث لا نسخة جديدة
+  const second = await c.request('POST', '/api/sessions', { ...QUIZ, activityId: first.data.activityId });
+  assert.equal(second.data.activityId, first.data.activityId);
+  list = await c.request('GET', '/api/activities');
+  assert.equal(list.data.activities.length, 1, 'إعادة الإطلاق لا تكدّس نسخاً');
+
+  // إطلاق ثالث بلا معرّف لكن بنفس العنوان وعدد الأسئلة: يطابق الموجود
+  const third = await c.request('POST', '/api/sessions', QUIZ);
+  assert.equal(third.data.activityId, first.data.activityId, 'المطابقة بالعنوان تمنع التكرار');
+  list = await c.request('GET', '/api/activities');
+  assert.equal(list.data.activities.length, 1);
+});
+
+test('الإطلاق بلا تسجيل دخول لا يحفظ شيئاً (الوعد الأصلي)', async () => {
+  const anon = client();
+  const created = await anon.request('POST', '/api/sessions', QUIZ);
+  assert.equal(created.status, 201);
+  assert.equal(created.data.activityId, null, 'بلا حساب لا يُحفظ نشاط');
+});
+
+test('استنساخ نشاط يعطي نسخة مستقلة', async () => {
+  const c = client();
+  await c.request('POST', '/api/auth/signup', { email: email(), name: 'جود', password: 'sirr12345' });
+  const id = (await c.request('POST', '/api/activities', QUIZ)).data.activity.id;
+
+  const dup = await c.request('POST', `/api/activities/${id}/duplicate`);
+  assert.equal(dup.status, 201);
+  assert.notEqual(dup.data.activity.id, id);
+  assert.match(dup.data.activity.title, /نسخة/);
+
+  const list = await c.request('GET', '/api/activities');
+  assert.equal(list.data.activities.length, 2);
+
+  // تعديل النسخة لا يمس الأصل
+  await c.request('PUT', '/api/activities/' + dup.data.activity.id, { ...QUIZ, title: 'النسخة المعدلة' });
+  const original = await c.request('GET', '/api/activities/' + id);
+  assert.equal(original.data.activity.title, QUIZ.title);
+
+  // ولا يستنسخ أحدٌ نشاط غيره
+  const other = client();
+  await other.request('POST', '/api/auth/signup', { email: email(), name: 'غيث', password: 'sirr12345' });
+  assert.equal((await other.request('POST', `/api/activities/${id}/duplicate`)).status, 404);
+});
+
 test('كلمات المرور تُخزَّن مجزّأة لا كنص صريح', async () => {
   const storage = require('../server/storage');
   const mail = email();
