@@ -140,6 +140,8 @@ function normalizeQuiz(payload) {
        */
       pace: PACES.includes(payload?.settings?.pace) ? payload.settings.pace : 'host',
       autoAdvanceSec: clamp(payload?.settings?.autoAdvanceSec, 2, 60, 6),
+      // الوضع الحر: يبدأ المتدرب فور دخوله بلا انتظار المدرب
+      autoStart: payload?.settings?.autoStart !== false,
 
       /**
        * احتساب النقاط:
@@ -232,6 +234,18 @@ class Session {
       answers: new Map(), // qid -> { value, at, ms, correct, points }
     };
     this.participants.set(participant.id, participant);
+
+    if (this.settings.pace === 'self') {
+      if (this.status === 'lobby' && this.settings.autoStart) {
+        // الوضع الحر مع البدء التلقائي: أول داخل يُشغّل النشاط
+        this.status = 'live';
+        this.phase = 'self';
+        this.currentIndex = 0;
+      }
+      // من ينضم بعد البدء يجب أن يُفتح له سؤاله فوراً بمؤقّته الخاص
+      if (this.status === 'live') this.openFor(participant);
+    }
+
     this.touch();
     return participant;
   }

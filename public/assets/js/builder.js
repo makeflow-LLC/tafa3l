@@ -37,6 +37,7 @@
         scoring: 'speed',
         streakBonus: true,
         revealAnswer: true,
+        autoStart: true,
       },
       questions: [blankQuestion('mc')],
     };
@@ -110,6 +111,15 @@
     function draw() {
       root.innerHTML = '';
 
+      // ---- القوالب أولاً: اختيار قالب يستبدل الإعدادات، فيجب أن يسبقها
+      const templatesBox = el('div', { class: 'card stack' }, [
+        el('h2', { text: 'ابدأ من قالب جاهز (اختياري)' }),
+        el('div', { class: 'row', id: 'tmplRow' }, el('span', { class: 'muted small', text: 'جارٍ التحميل…' })),
+        el('div', { class: 'muted small', text: 'اختيار قالب يستبدل الإعدادات والأسئلة — اختره أولاً ثم عدّل ما تشاء.' }),
+      ]);
+      root.append(templatesBox);
+      loadTemplates(templatesBox.querySelector('#tmplRow'));
+
       // ---- العنوان والإعدادات
       const titleInput = el('input', { maxlength: 120, placeholder: 'مثال: مراجعة الوحدة الثالثة', value: draft.title });
       titleInput.addEventListener('input', () => {
@@ -119,7 +129,7 @@
 
       root.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { text: '١. معلومات النشاط' }),
+          el('h2', { text: '٢. معلومات النشاط' }),
           el('div', {}, [el('label', { text: 'عنوان النشاط' }), titleInput]),
           switchRow('طلب الاسم أو الكنية', 'requireName', 'أطفئه لاستطلاع مجهول بلا أسماء'),
           switchRow('السماح بالدخول المتأخر', 'allowLateJoin', 'يستطيع الطلاب الدخول بعد بدء النشاط'),
@@ -131,7 +141,7 @@
       // ---- وضع التقدّم ونظام التحفيز
       root.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { text: '٢. سير النشاط والتحفيز' }),
+          el('h2', { text: '٣. سير النشاط والتحفيز' }),
           el('label', { text: 'من ينقل إلى السؤال التالي؟' }),
           choiceGroup(
             'pace',
@@ -143,6 +153,13 @@
             () => update()
           ),
           draft.settings.pace === 'auto' ? autoDelayRow() : null,
+          draft.settings.pace === 'self'
+            ? switchRow(
+                'يبدأ المتدرب فور دخوله 🚀',
+                'autoStart',
+                'بلا انتظار المدرب — ينطلق كل متدرب بمجرد مسحه رمز QR'
+              )
+            : null,
           draft.settings.pace === 'self'
             ? el('p', { class: 'muted small', style: { margin: 0 }, text: 'في الوضع الحر تظهر لك لوحة تتابع فيها موقع كل متدرب ونتائجه أولاً بأول.' })
             : null,
@@ -168,14 +185,6 @@
         ])
       );
 
-      // ---- القوالب
-      const templatesBox = el('div', { class: 'card stack' }, [
-        el('h2', { text: 'ابدأ من قالب جاهز' }),
-        el('div', { class: 'row', id: 'tmplRow' }, el('span', { class: 'muted small', text: 'جارٍ التحميل…' })),
-      ]);
-      root.append(templatesBox);
-      loadTemplates(templatesBox.querySelector('#tmplRow'));
-
       // ---- الأسئلة
       const list = el('div', { class: 'stack' });
       draft.questions.forEach((question, index) => list.append(questionCard(question, index)));
@@ -183,7 +192,7 @@
       root.append(
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row between' }, [
-            el('h2', { text: `٣. الأسئلة (${draft.questions.length})`, style: { margin: 0 } }),
+            el('h2', { text: `٤. الأسئلة (${draft.questions.length})`, style: { margin: 0 } }),
           ]),
           list,
           el('label', { text: 'إضافة سؤال جديد', style: { marginTop: '4px' } }),

@@ -511,6 +511,60 @@ test('الوضع الحر: كل متدرب يتقدّم بسرعته وبمؤق�
   b.close();
 });
 
+test('الوضع الحر: المتدرب يبدأ فور دخوله بلا انتظار المدرب', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'حر فوري',
+    settings: { pace: 'self', autoStart: true, countdown: false },
+    questions: [
+      { type: 'mc', text: 'س١', timeLimit: 30, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] },
+      { type: 'mc', text: 'س٢', timeLimit: 30, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] },
+    ],
+  });
+
+  // بلا أي مضيف متصل وبلا host:start
+  const a = ws();
+  await a.ready;
+  a.send({ t: 'join', code: created.code, name: 'ريما' });
+  await a.next('joined');
+  const first = await a.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.equal(first.question.text, 'س١', 'يرى سؤاله مباشرة بلا انتظار');
+  assert.ok(first.endsAt > Date.now(), 'مؤقّته الخاص يعمل');
+
+  // ومن ينضم لاحقاً يبدأ فوراً كذلك بمؤقّته الخاص
+  const b = ws();
+  await b.ready;
+  b.send({ t: 'join', code: created.code, name: 'سلمى' });
+  await b.next('joined');
+  const late = await b.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.equal(late.index, 0);
+  assert.ok(late.endsAt > Date.now(), 'المنضم المتأخر يحصل على مؤقّت أيضاً');
+
+  // وينتقل بنفسه
+  a.send({ t: 'answer', questionId: first.question.id, value: 'o0' });
+  await a.next('answer:accepted');
+  a.send({ t: 'next' });
+  const second = await a.next((m) => m.t === 'state' && m.index === 1 && m.phase === 'question');
+  assert.equal(second.question.text, 'س٢');
+
+  a.close();
+  b.close();
+});
+
+test('الوضع الحر مع إطفاء البدء التلقائي ينتظر المدرب', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'حر بانتظار',
+    settings: { pace: 'self', autoStart: false, countdown: false },
+    questions: [{ type: 'word', text: 'س', timeLimit: 0 }],
+  });
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'فهد' });
+  await p.next('joined');
+  const lobby = await p.next((m) => m.t === 'state');
+  assert.equal(lobby.phase, 'lobby', 'يبقى في القاعة حتى يبدأ المدرب');
+  p.close();
+});
+
 test('احتساب النقاط: ثابتة، وبلا نقاط، ومضاعف السلاسل', async () => {
   async function runOnce(settings) {
     const { data } = await post('/api/sessions', {
