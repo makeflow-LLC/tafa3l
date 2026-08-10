@@ -10,7 +10,7 @@
       name: '🎯 اختبار سريع',
       description: 'أسئلة اختيار من متعدد مع إجابات صحيحة ونقاط وترتيب',
       title: 'اختبار سريع',
-      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true },
+      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'host', scoring: 'speed', streakBonus: true },
       questions: [
         {
           type: 'mc',
@@ -52,7 +52,7 @@
       name: '📊 استطلاع مجهول',
       description: 'بلا أسماء وبلا نقاط — مناسب للآراء والتغذية الراجعة',
       title: 'استطلاع رأي',
-      settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false },
+      settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false, pace: 'host', scoring: 'none' },
       questions: [
         {
           type: 'poll',
@@ -78,7 +78,7 @@
       name: '🧊 كسر الجليد',
       description: 'نشاط تحمية سريع وممتع في بداية الحصة',
       title: 'نبدأ بالتحمية!',
-      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true },
+      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'auto', autoAdvanceSec: 6, scoring: 'flat', streakBonus: true },
       questions: [
         {
           type: 'poll',
@@ -106,7 +106,7 @@
       name: '💬 تغذية راجعة',
       description: 'سحابة كلمات + مقياس + سؤال مفتوح لختام الحصة',
       title: 'ختام الحصة',
-      settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false },
+      settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false, pace: 'self', scoring: 'none' },
       questions: [
         { type: 'word', text: 'أهم فكرة خرجت بها اليوم؟', timeLimit: 0 },
         {

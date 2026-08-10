@@ -226,6 +226,8 @@
     if (s.status === 'ended' || s.phase === 'final') return renderFinal(s);
     if (s.phase === 'lobby') return renderLobby(s);
     if (s.phase === 'leaderboard') return renderLeaderboard(s);
+    // الوضع الحر: بعد الإجابة يرى نتيجته وزراً للانتقال بنفسه
+    if (s.phase === 'feedback') return renderSelfFeedback(s);
     if (s.phase === 'results') return renderResults(s);
     return renderQuestion(s);
   }
@@ -319,12 +321,15 @@
     ]);
   }
 
-  function waitingCard(s, q) {
+  function waitingCard(s, q, selfPaced) {
     const answered = s.answered;
     const scored = q.scored;
     let emoji = '⏳';
     let msg = 'تم استلام إجابتك';
-    if (scored && answered.correct === true) {
+    if (!answered) {
+      emoji = '⌛';
+      msg = 'انتهى وقتك على هذا السؤال';
+    } else if (scored && answered.correct === true) {
       emoji = '🎉';
       msg = 'إجابة صحيحة!';
     } else if (scored && answered.correct === false) {
@@ -334,9 +339,11 @@
     return el('div', { class: 'card feedback' }, [
       el('div', { class: 'em', text: emoji }),
       el('div', { class: 'msg', text: msg }),
-      scored && answered.points ? el('div', { class: 'badge ok' }, `+${answered.points} نقطة`) : null,
-      scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, `🔥 ${s.me.streak} إجابات متتالية!`) : null,
-      el('p', { class: 'muted small', text: 'انتظر بقية المشاركين…' }),
+      scored && answered?.points ? el('div', { class: 'badge ok' }, `+${answered.points} نقطة`) : null,
+      // مضاعف السلسلة إن كان مفعّلاً وأثّر فعلاً
+      scored && answered?.multiplier > 1 ? el('div', { class: 'badge streak' }, `🔥 مضاعف ×${answered.multiplier}`) : null,
+      scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, `${s.me.streak} إجابات متتالية!`) : null,
+      selfPaced ? null : el('p', { class: 'muted small', text: 'انتظر بقية المشاركين…' }),
     ]);
   }
 
@@ -420,6 +427,70 @@
       state.submitting = false;
       toast('لا يوجد اتصال — حاول مجدداً', 'bad');
     }
+  }
+
+  /** انتهى وقت المتدرب في الوضع الحر دون إجابة */
+  function renderSelfTimeout(s) {
+    app.innerHTML = '';
+    app.append(header(s));
+    const last = s.index + 1 >= s.total;
+    const nextBtn = el('button', { class: 'btn primary block' }, last ? '🏁 إنهاء' : 'السؤال التالي ⟨');
+    nextBtn.addEventListener('click', () => {
+      nextBtn.disabled = true;
+      socket.send({ t: 'next' });
+      setTimeout(() => (nextBtn.disabled = false), 1500);
+    });
+    app.append(
+      el('div', { class: 'card feedback' }, [
+        el('div', { class: 'em', text: '⌛' }),
+        el('div', { class: 'msg', text: 'انتهى وقتك على هذا السؤال' }),
+        el('p', { class: 'muted small', text: 'لا بأس — تابع إلى التالي!' }),
+      ])
+    );
+    app.append(nextBtn);
+  }
+
+  /** شاشة ما بعد الإجابة في الوضع الحر — النتيجة ثم زر «التالي» */
+  function renderSelfFeedback(s) {
+    const q = s.question;
+    app.append(header(s));
+    app.append(el('div', { class: 'card stack' }, [el('h2', { class: 'big-q', text: q.text })]));
+    app.append(waitingCard(s, q, true));
+
+    if (q.options?.length) {
+      const options = el('div', { class: 'options' });
+      const mine = s.answered ? [].concat(s.answered.value) : [];
+      q.options.forEach((option, index) => {
+        const chosen = mine.includes(option.id);
+        options.append(
+          el(
+            'div',
+            {
+              class:
+                `opt c${index % 8}` +
+                (q.scored && option.correct ? ' correct' : '') +
+                (q.scored && chosen && !option.correct ? ' wrong' : '') +
+                (!q.scored && chosen ? ' selected' : ''),
+            },
+            [
+              el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+              el('span', { class: 'grow', text: option.text }),
+              chosen ? el('span', { class: 'badge', text: 'إجابتك' }) : null,
+            ]
+          )
+        );
+      });
+      app.append(options);
+    }
+
+    const last = s.index + 1 >= s.total;
+    const nextBtn = el('button', { class: 'btn primary block' }, last ? '🏁 إنهاء' : 'السؤال التالي ⟨');
+    nextBtn.addEventListener('click', () => {
+      nextBtn.disabled = true;
+      socket.send({ t: 'next' });
+      setTimeout(() => (nextBtn.disabled = false), 1500);
+    });
+    app.append(nextBtn);
   }
 
   function renderResults(s) {
@@ -514,6 +585,7 @@
             el('div', { class: 'v', text: `#${s.rank.rank}` }),
             el('div', { class: 'k', text: `من ${s.rank.of} مشارك` }),
           ]),
+          rankDeltaBadge(s.rankDelta),
           el('div', { class: 'badge ok' }, `⭐ ${s.me.score} نقطة`),
         ])
       );
@@ -540,9 +612,36 @@
         s.me && s.me.score ? el('div', { class: 'badge ok' }, `⭐ ${s.me.score} نقطة`) : null,
       ])
     );
+    const awards = badgeList(s.badges);
+    if (awards) app.append(awards);
     if (s.leaderboard?.length) app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 الأوائل' }), boardList(s.leaderboard, s.me?.id)]));
     app.append(el('p', { class: 'footer', text: 'شكراً لمشاركتك! لم تُحفظ أي بيانات — كل شيء مؤقت.' }));
     store.del(SESSION_KEY);
+  }
+
+  /** شارة الصعود أو الهبوط في الترتيب منذ السؤال السابق */
+  function rankDeltaBadge(delta) {
+    if (!delta) return null;
+    const up = delta > 0;
+    return el('div', { class: 'badge ' + (up ? 'ok' : 'bad') }, `${up ? '⬆ صعدت' : '⬇ نزلت'} ${Math.abs(delta)} مركزاً`);
+  }
+
+  /** أوسمة نهاية النشاط */
+  function badgeList(badges) {
+    if (!badges?.length) return null;
+    return el('div', { class: 'card stack' }, [
+      el('h2', { class: 'center', text: '🏅 أوسمتك', style: { margin: 0 } }),
+      el(
+        'div',
+        { class: 'badges' },
+        badges.map((badge) =>
+          el('div', { class: 'award' }, [
+            el('span', { class: 'em', text: badge.emoji }),
+            el('span', { class: 'lbl', text: badge.label }),
+          ])
+        )
+      ),
+    ]);
   }
 
   function boardList(list, meId) {
@@ -582,7 +681,11 @@
         lastSecond = seconds;
       }
       num.classList.toggle('hot', seconds <= 5);
-      if (left <= 0) clearTick();
+      if (left <= 0) {
+        clearTick();
+        // الوضع الحر: انتهى وقته دون إجابة — نعرض له زر الانتقال بنفسه
+        if (s.pace === 'self' && !s.answered) renderSelfTimeout(s);
+      }
     }, 200);
   }
 

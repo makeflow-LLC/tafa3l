@@ -287,19 +287,31 @@ function handleMessage(socket, msg) {
     if (type === 'answer') {
       const result = session.submitAnswer(participant, msg.questionId, msg.value);
       if (!result.ok) return sendTo(socket, { t: 'answer:rejected', message: result.error });
-      sendTo(socket, { t: 'answer:accepted', correct: result.correct, points: result.points });
+      sendTo(socket, { t: 'answer:accepted', correct: result.correct, points: result.points, multiplier: result.multiplier });
       for (const s of participant.sockets) sendTo(s, session.participantState(participant));
       pushHost(session);
 
-      // إذا أجاب الجميع نُغلق السؤال تلقائياً ونعرض النتائج
-      const q = session.currentQuestion;
-      if (q && session.participants.size > 0) {
-        const all = [...session.participants.values()].every((p) => p.answers.has(q.id));
-        if (all && session.phase === 'question') {
-          session.showResults();
-          session.broadcastState();
+      // إذا أجاب الجميع نُغلق السؤال تلقائياً ونعرض النتائج (عدا الوضع الحر)
+      if (session.settings.pace !== 'self') {
+        const q = session.currentQuestion;
+        if (q && session.participants.size > 0) {
+          const all = [...session.participants.values()].every((p) => p.answers.has(q.id));
+          if (all && session.phase === 'question') {
+            session.showResults();
+            session.broadcastState();
+          }
         }
       }
+      return;
+    }
+
+    if (type === 'next') {
+      // الوضع الحر: المتدرب ينتقل بنفسه بعد الإجابة أو انتهاء وقته
+      if (!session.advance(participant)) {
+        return sendTo(socket, { t: 'answer:rejected', message: 'لا يمكن الانتقال الآن' });
+      }
+      for (const s of participant.sockets) sendTo(s, session.participantState(participant));
+      pushHost(session);
       return;
     }
     if (type === 'reaction') {
@@ -365,8 +377,8 @@ function handleMessage(socket, msg) {
       return;
   }
 
+  // broadcastState يرسل الحالة ولوحة الإحصاءات للمضيف معاً
   session.broadcastState();
-  for (const s of session.hostSockets) sendTo(s, { t: 'dashboard', data: session.dashboard() });
 }
 
 /** تحديث المضيف بالحالة والإحصاءات معاً (لتبقى لوحة التحكم حيّة) */

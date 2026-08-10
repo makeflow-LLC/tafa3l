@@ -24,6 +24,7 @@
     joinUrl: '',
     cancelCountdown: null,
     lastPhaseKey: '',
+    selfQuestion: 0, // السؤال المعروض في الوضع الحر
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -257,11 +258,14 @@
     return button;
   }
 
+  const PACE_LABEL = { host: '🎛️ أنت تنقل الشرائح', auto: '⏱️ انتقال تلقائي', self: '🏃 كل متدرب بسرعته' };
+
   function statusLabel(s) {
     if (s.status === 'ended') return 'انتهى النشاط';
-    if (s.status === 'lobby') return 'في انتظار البدء — شارك الرمز مع المشاركين';
+    if (s.status === 'lobby') return `في انتظار البدء · ${PACE_LABEL[s.pace] || ''}`;
+    if (s.pace === 'self') return `${PACE_LABEL.self} · ${s.total} أسئلة`;
     const phase = { question: 'الإجابة جارية', results: 'عرض النتائج', leaderboard: 'لوحة الترتيب' }[s.phase] || '';
-    return `سؤال ${s.index + 1} من ${s.total} · ${phase}`;
+    return `سؤال ${s.index + 1} من ${s.total} · ${phase}${s.pace === 'auto' ? ' · تلقائي' : ''}`;
   }
 
   // ------------------------------------------------------------- المسرح
@@ -269,8 +273,78 @@
   function renderStage(s) {
     if (s.status === 'lobby') return renderLobby(s);
     if (s.status === 'ended' || s.phase === 'final') return renderFinal(s);
+    if (s.pace === 'self') return renderSelfStage(s);
     if (s.phase === 'leaderboard') return renderBoard(s);
     return renderQuestion(s);
+  }
+
+  /** شاشة المدرب في الوضع الحر: متابعة تقدّم الجميع + تصفّح نتائج أي سؤال */
+  function renderSelfStage(s) {
+    const total = s.participants.length;
+    const done = s.finishedCount || 0;
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between' }, [
+          el('span', { class: 'badge' }, '🏃 وضع حر — كل متدرب بسرعته'),
+          el('span', { class: 'badge' + (done === total && total ? ' ok' : '') }, `أنهى ${done} من ${total}`),
+        ]),
+        el('div', { class: 'progress' }, el('i', { style: { width: (total ? (done / total) * 100 : 0) + '%' } })),
+      ])
+    );
+
+    // أين وصل كل متدرب
+    const people = el('div', { class: 'people' });
+    if (!total) people.append(el('span', { class: 'muted small', text: 'لا يوجد مشاركون' }));
+    s.participants.forEach((p) => {
+      people.append(
+        el('span', { class: 'chip' + (p.done ? ' answered' : '') + (p.connected ? '' : ' off') }, [
+          avatarNode(p.avatar, 'sm'),
+          el('span', { text: p.name }),
+          el('span', { class: 'badge', text: p.done ? '✓ أنهى' : `${p.at}/${s.total}` }),
+        ])
+      );
+    });
+    app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'أين وصل المتدربون؟', style: { margin: 0 } }), people]));
+
+    // تصفّح نتائج أي سؤال
+    const picker = el('div', { class: 'tabs', style: { marginBottom: '10px' } });
+    s.questions.forEach((question, index) => {
+      const button = el('button', { class: state.selfQuestion === index ? 'on' : '', type: 'button' }, String(index + 1));
+      button.addEventListener('click', () => {
+        state.selfQuestion = index;
+        renderLive();
+      });
+      picker.append(button);
+    });
+    const index = Math.min(state.selfQuestion || 0, s.questions.length - 1);
+    const current = s.questions[index];
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between' }, [
+          el('h2', { text: 'نتائج الأسئلة', style: { margin: 0 } }),
+          el('span', { class: 'badge' }, `${TYPE_EMOJI[current.type]} ${TYPE_LABELS[current.type]}`),
+        ]),
+        picker,
+        el('h3', { text: current.text }),
+        selfResults(index),
+      ])
+    );
+  }
+
+  /** نتائج سؤال محدد في الوضع الحر (تُؤخذ من لوحة الإحصاءات) */
+  function selfResults(index) {
+    const data = state.dashboard;
+    const row = data?.perQuestion?.[index];
+    if (!row) {
+      send('host:dashboard');
+      return el('p', { class: 'muted center', text: 'جارٍ التحميل…' });
+    }
+    return el('div', { class: 'stats' }, [
+      stat(`${row.responses}/${row.reached}`, 'أجابوا / وصلوا'),
+      row.accuracy === null ? null : stat(row.accuracy + '٪', 'الدقة'),
+      stat(fmtMs(row.avgMs), 'متوسط الزمن'),
+    ].filter(Boolean));
   }
 
   function renderLobby(s) {
@@ -392,6 +466,13 @@
       ])
     );
 
+    // مؤشر الانتقال التلقائي
+    if (s.autoNextAt && s.phase !== 'question') {
+      const label = el('span', { class: 'badge', id: 'autoNext' }, '…');
+      app.append(el('div', { class: 'card row between' }, [el('span', { class: 'muted small', text: '⏱️ الانتقال التلقائي بعد' }), label]));
+      startAutoTick(s, label);
+    }
+
     app.append(resultsView(q, results, s.phase === 'results'));
     if (s.phase === 'question') startTick(s, q);
   }
@@ -497,6 +578,35 @@
     if (board.length) {
       app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 منصة التتويج', style: { margin: 0 } }), podium(board)]));
       if (board.length > 3) app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'بقية الترتيب' }), boardList(board.slice(3))]));
+    }
+
+    // أوسمة تحفيزية: تُبرز نجاحات لا يلتقطها الترتيب وحده
+    if (s.badgeList?.length) {
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('h2', { text: '🏅 الأوسمة', style: { margin: 0 } }),
+          el(
+            'div',
+            { class: 'stack' },
+            s.badgeList.map((entry) =>
+              el('div', { class: 'row', style: { gap: '10px' } }, [
+                avatarNode(entry.avatar, 'sm'),
+                el('span', { style: { fontWeight: '700' }, text: entry.name }),
+                el(
+                  'span',
+                  { class: 'badges grow' },
+                  entry.badges.map((badge) =>
+                    el('span', { class: 'award sm' }, [
+                      el('span', { class: 'em', text: badge.emoji }),
+                      el('span', { class: 'lbl', text: badge.label }),
+                    ])
+                  )
+                ),
+              ])
+            )
+          ),
+        ])
+      );
     }
   }
 
@@ -687,6 +797,26 @@
     } else if (s.status === 'ended') {
       actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج'));
       actions.push(el('button', { class: 'btn danger', type: 'button', onclick: endSession }, '🗑 حذف الجلسة'));
+    } else if (s.pace === 'self') {
+      // الوضع الحر: لا شرائح ينقلها المدرب — فقط الإنهاء
+      actions.push(
+        el(
+          'button',
+          {
+            class: 'btn ghost',
+            type: 'button',
+            onclick: () => {
+              state.tab = 'dashboard';
+              send('host:dashboard');
+              renderLive();
+            },
+          },
+          '📊 متابعة التقدّم'
+        )
+      );
+      actions.push(
+        el('button', { class: 'btn danger', type: 'button', onclick: () => confirm('إنهاء النشاط للجميع الآن؟') && send('host:end') }, '🏁 إنهاء النشاط')
+      );
     } else {
       actions.push(el('button', { class: 'icon-btn', type: 'button', title: 'السؤال السابق', disabled: s.index <= 0, onclick: () => send('host:prev') }, '⟩'));
       if (s.phase === 'question') {
@@ -766,9 +896,23 @@
     }, 200);
   }
 
+  /** عدّاد الانتقال التلقائي على شاشة المدرب */
+  function startAutoTick(s, label) {
+    clearInterval(state.autoTimer);
+    const paint = () => {
+      const left = Math.max(0, s.autoNextAt - serverTime());
+      label.textContent = Math.ceil(left / 1000) + 'ث';
+      if (left <= 0) clearInterval(state.autoTimer);
+    };
+    paint();
+    state.autoTimer = setInterval(paint, 250);
+  }
+
   function clearTick() {
     if (state.tickTimer) clearInterval(state.tickTimer);
     state.tickTimer = null;
+    if (state.autoTimer) clearInterval(state.autoTimer);
+    state.autoTimer = null;
     state.cancelCountdown?.();
     state.cancelCountdown = null;
   }

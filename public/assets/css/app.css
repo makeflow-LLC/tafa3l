@@ -1236,6 +1236,56 @@ tbody tr:hover {
   text-align: start;
 }
 
+/* ------------------------------------------------------------- الأوسمة */
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.award {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 12px 14px;
+  min-width: 104px;
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.18), rgba(124, 92, 255, 0.14));
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  animation: pop 0.35s ease;
+}
+
+.award .em {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.award .lbl {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.award.sm {
+  flex-direction: row;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  min-width: 0;
+  border-radius: 999px;
+}
+
+.award.sm .em {
+  font-size: 1rem;
+}
+
+.award.sm .lbl {
+  font-size: 0.75rem;
+}
+
 .link {
   color: var(--brand-2);
   text-decoration: none;
