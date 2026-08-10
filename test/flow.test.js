@@ -612,6 +612,26 @@ test('الأوسمة تُمنح حسب الأداء الفعلي', async () => {
   b.close();
 });
 
+test('نبضة إبقاء الخادم مستيقظاً تعمل فقط عند وجود جلسات', async () => {
+  const { pingOnce } = require('../server/keepalive');
+  const store = require('../server/store');
+
+  // نظّف أي جلسات سابقة حتى يكون العدّ صفراً
+  for (const code of [...store.sessions.keys()]) store.deleteSession(code);
+  assert.equal(await pingOnce(base, store), false, 'بلا جلسات: لا نبضة (حتى لا نستهلك ساعات الخطة المجانية)');
+
+  const { data } = await post('/api/sessions', QUIZ);
+  const before = await fetch(base + '/api/health').then((r) => r.json());
+  assert.equal(await pingOnce(base, store), true, 'مع وجود جلسة: تُرسل نبضة');
+
+  // النبضة وصلت فعلاً إلى الخادم عبر HTTP
+  const after = await fetch(base + '/api/health').then((r) => r.json());
+  assert.ok(after.uptime >= before.uptime);
+  assert.equal(after.config.sessionIdleMinutes, 180, 'الإعدادات مكشوفة للتشخيص');
+
+  await fetch(`${base}/api/sessions/${data.code}?hostToken=${encodeURIComponent(data.hostToken)}`, { method: 'DELETE' });
+});
+
 test('توليد رمز QR بصيغة SVG', async () => {
   const response = await fetch(base + '/api/qr?text=' + encodeURIComponent('https://example.com/j/123456'));
   assert.equal(response.status, 200);

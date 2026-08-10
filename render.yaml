@@ -1,4 +1,5 @@
-# نشر بضغطة واحدة على Render — عملية Node دائمة تدعم WebSocket
+# نشر «تفاعل» على Render — لا بد أن يكون النوع web (عملية Node دائمة)
+# وليس static، لأن التطبيق يحتاج WebSocket وحالة في الذاكرة.
 services:
   - type: web
     name: tafa3l
@@ -10,3 +11,16 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+
+      # يمنع نوم الخدمة أثناء المحاضرة: الخادم ينبض لنفسه ما دامت هناك جلسة قائمة.
+      # RENDER_EXTERNAL_URL تضبطه Render تلقائياً، لذلك لا تحتاج كتابة العنوان.
+      - key: KEEP_ALIVE_MINUTES
+        value: "10"
+
+      # مدة بقاء الجلسة في الذاكرة بلا نشاط (بالدقائق) — ارفعها للمحاضرات الطويلة
+      - key: SESSION_IDLE_MINUTES
+        value: "300"
+
+      # مدة بقاء نتائج جلسة انتهت قبل حذفها (بالدقائق)
+      - key: SESSION_ENDED_MINUTES
+        value: "60"

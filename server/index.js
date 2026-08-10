@@ -9,6 +9,7 @@ const QRCode = require('qrcode');
 const store = require('./store');
 const { normalizeQuiz } = require('./session');
 const templates = require('./templates');
+const { startKeepAlive, keepAliveUrl } = require('./keepalive');
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
 const PORT = Number.isFinite(Number(process.env.PORT)) && process.env.PORT !== '' ? Number(process.env.PORT) : 3000;
@@ -26,8 +27,20 @@ app.use(
 
 // ------------------------------------------------------------------ واجهة REST
 
+/** فحص الصحة — يكشف أيضاً الإعدادات الفعلية لتشخيص النشر بسرعة */
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, uptime: Math.round(process.uptime()), ...store.stats() });
+  res.json({
+    ok: true,
+    uptime: Math.round(process.uptime()),
+    ...store.stats(),
+    config: {
+      // مهم للتحقق من أن الخدمة لن تنام أثناء المحاضرة
+      keepAlive: keepAliveUrl() || null,
+      keepAliveMinutes: Number(process.env.KEEP_ALIVE_MINUTES) || 10,
+      sessionIdleMinutes: Number(process.env.SESSION_IDLE_MINUTES) || 180,
+      sessionEndedMinutes: Number(process.env.SESSION_ENDED_MINUTES) || 30,
+    },
+  });
 });
 
 app.get('/api/templates', (_req, res) => {
@@ -417,6 +430,7 @@ heartbeat.unref?.();
 
 server.listen(PORT, () => {
   console.log(`تفاعل — يعمل على http://localhost:${server.address().port}`);
+  startKeepAlive(store);
 });
 
 process.on('SIGTERM', () => server.close(() => process.exit(0)));
