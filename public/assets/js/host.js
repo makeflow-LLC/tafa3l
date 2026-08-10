@@ -100,7 +100,12 @@
       if (!alive && location.hash !== '#/live') showOfflineBanner(app);
     });
 
-    window.Builder.mount(root, async (draft) => {
+    // المحرّر يجب ألا يترك الصفحة فارغة أبداً: نتعافى تلقائياً، وإن استمر العطل نُظهره
+    mountBuilderSafely(root);
+  }
+
+  function mountBuilderSafely(root) {
+    const onLaunch = async (draft) => {
       try {
         const payload = {
           title: draft.title,
@@ -117,7 +122,69 @@
         toast(err.message, 'bad');
         if (err.offline) showOfflineBanner(app);
       }
-    });
+    };
+
+    try {
+      window.Builder.mount(root, onLaunch);
+      return;
+    } catch (err) {
+      // السبب الأشيع: مسودة محفوظة من نسخة قديمة — نمسحها ونعيد المحاولة
+      console.error('تعذّر بناء المحرّر:', err);
+      try {
+        localStorage.removeItem(window.Builder.DRAFT_KEY);
+      } catch {
+        /* تجاهل */
+      }
+      root.innerHTML = '';
+      try {
+        window.Builder.mount(root, onLaunch);
+        toast('أُعيد ضبط المسودة بعد عطل', 'ok');
+        return;
+      } catch (err2) {
+        showBuilderError(root, err2);
+      }
+    }
+  }
+
+  /** بديل مرئي بدل صفحة فارغة، مع نص الخطأ ليسهل تشخيصه */
+  function showBuilderError(root, err) {
+    root.innerHTML = '';
+    root.append(
+      el('div', { class: 'card stack' }, [
+        el('h2', { text: '⚠️ تعذّر فتح محرّر الأسئلة' }),
+        el('p', { class: 'muted small', text: 'جرّب إعادة الضبط. إن تكرر العطل أرسل نص الرسالة التالية:' }),
+        el('pre', {
+          style: {
+            direction: 'ltr',
+            textAlign: 'left',
+            whiteSpace: 'pre-wrap',
+            background: 'rgba(0,0,0,.3)',
+            padding: '10px',
+            borderRadius: '10px',
+            fontSize: '.8rem',
+            margin: 0,
+          },
+          text: String(err && err.message ? err.message : err),
+        }),
+        el(
+          'button',
+          {
+            class: 'btn primary',
+            type: 'button',
+            onclick: () => {
+              try {
+                localStorage.clear();
+                sessionStorage.clear();
+              } catch {
+                /* تجاهل */
+              }
+              location.reload();
+            },
+          },
+          '🔄 إعادة الضبط وإعادة التحميل'
+        ),
+      ])
+    );
   }
 
   // ---------------------------------------------------------- العرض المباشر

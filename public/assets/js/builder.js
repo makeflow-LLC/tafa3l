@@ -41,10 +41,50 @@
     };
   }
 
+  /**
+   * قراءة المسودة المحفوظة مع تنظيفها بالكامل.
+   * مسودة قديمة أو ناقصة يجب ألا تُسقط المحرّر — نُكمل الناقص من الافتراضيات.
+   */
   function loadDraft() {
-    const draft = store.local.get(DRAFT_KEY, null);
-    if (!draft || !Array.isArray(draft.questions) || draft.questions.length === 0) return defaultDraft();
-    return draft;
+    return sanitizeDraft(store.local.get(DRAFT_KEY, null));
+  }
+
+  function sanitizeDraft(raw) {
+    const base = defaultDraft();
+    if (!raw || typeof raw !== 'object') return base;
+
+    const questions = (Array.isArray(raw.questions) ? raw.questions : [])
+      .filter((question) => question && typeof question === 'object')
+      .map(sanitizeQuestion);
+
+    return {
+      title: typeof raw.title === 'string' ? raw.title : '',
+      settings: { ...base.settings, ...(raw.settings && typeof raw.settings === 'object' ? raw.settings : {}) },
+      questions: questions.length ? questions : base.questions,
+    };
+  }
+
+  function sanitizeQuestion(raw) {
+    const fresh = blankQuestion(TYPES.includes(raw.type) ? raw.type : 'mc');
+    const question = { ...fresh, ...raw, type: fresh.type, id: typeof raw.id === 'string' && raw.id ? raw.id : fresh.id };
+
+    question.text = typeof raw.text === 'string' ? raw.text : '';
+    question.timeLimit = Number.isFinite(Number(raw.timeLimit)) ? Number(raw.timeLimit) : fresh.timeLimit;
+    question.points = Number.isFinite(Number(raw.points)) ? Number(raw.points) : fresh.points;
+
+    if (question.type === 'mc' || question.type === 'poll') {
+      const options = (Array.isArray(raw.options) ? raw.options : [])
+        .filter((option) => option && typeof option === 'object')
+        .map((option, index) => ({ id: String(option.id || 'o' + index), text: String(option.text ?? '') }));
+      question.options = options.length >= 2 ? options : fresh.options;
+    } else {
+      question.options = fresh.options;
+    }
+
+    question.correct = Array.isArray(raw.correct) ? raw.correct.map(String) : [];
+    if (question.type === 'scale') question.scale = { ...fresh.scale, ...(raw.scale && typeof raw.scale === 'object' ? raw.scale : {}) };
+
+    return question;
   }
 
   function saveDraft(draft) {
