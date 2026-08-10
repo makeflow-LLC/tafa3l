@@ -261,11 +261,20 @@
   }
 
   function renderLobby(s) {
+    // نوضّح سبب الانتظار: في الوضع الحر لا ينتظر أحد إلا إذا أطفأ المدرب البدء التلقائي
+    const pace = s.settings?.pace;
+    const waitingReason =
+      pace === 'self'
+        ? 'وضع حر — لكن المدرب اختار أن يبدأ الجميع معاً'
+        : pace === 'auto'
+          ? 'سيبدأ النشاط وينتقل تلقائياً'
+          : 'أنت في القاعة، انتظر بدء المدرب…';
+
     app.append(
       el('div', { class: 'card stack center' }, [
         avatarNode(s.me.avatar, 'lg'),
         el('h1', { text: s.me.name }),
-        el('p', { class: 'muted', text: 'أنت في القاعة، انتظر بدء المدرب…' }),
+        el('p', { class: 'muted', text: waitingReason }),
         el('div', { class: 'spinner' }),
         el('span', { class: 'badge' }, `👥 ${s.participants} مشارك`),
       ])

@@ -86,6 +86,9 @@ app.get('/api/sessions/:code', (req, res) => {
     status: session.status,
     requireName: session.settings.requireName,
     allowLateJoin: session.settings.allowLateJoin,
+    // مكشوفان للتشخيص السريع: هل طُبّق وضع التقدّم الذي اختاره المدرب؟
+    pace: session.settings.pace,
+    autoStart: session.settings.autoStart,
     participants: session.participants.size,
     questionCount: session.questions.length,
     joinUrl: joinUrl(req, session.code),
