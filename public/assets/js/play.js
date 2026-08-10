@@ -732,11 +732,70 @@
 
   function shareText(s, level) {
     const title = s.title || state.info?.title || 'نشاط تفاعلي';
+    const theme = cardTheme(s);
     const bits = [];
     if (s.me?.score) bits.push(`⭐ ${s.me.score} نقطة`);
-    if (s.rank) bits.push(`المركز ${s.rank.rank} من ${s.rank.of}`);
+    if (s.rank) bits.push(theme.banner ? `من بين ${s.rank.of} مشاركاً` : `المركز ${s.rank.rank} من ${s.rank.of}`);
     const perf = bits.length ? ' — ' + bits.join(' · ') : '';
-    return `${level.emoji} حصلت على لقب «${level.label}» في «${title}» على منصة تفاعل${perf} 🎊`;
+    // أصحاب المنصة يتصدّر مركزهم النص؛ والبقية بلقب تحفيزي
+    const lead = theme.banner ? `${theme.emblem} حصلت على ${theme.banner}` : `${level.emoji} حصلت على لقب «${level.label}»`;
+    return `${lead} في «${title}» على منصة تفاعل${perf} 🎊`;
+  }
+
+  /** هوية البطاقة بحسب الترتيب — ذهبية للأول، فضية للثاني، برونزية للثالث */
+  function cardTheme(s) {
+    const rank = s.me?.score ? s.rank?.rank : null;
+    if (rank === 1)
+      return { emblem: '🏆', crown: true, banner: 'المركز الأول', colors: ['#ffe9a3', '#f59e0b'], ray: 'rgba(245,158,11,0.13)', halo: 'rgba(255,215,0,0.35)', spark: 'rgba(255,224,130,0.9)' };
+    if (rank === 2)
+      return { emblem: '🥈', banner: 'المركز الثاني', colors: ['#f8fafc', '#94a3b8'], ray: 'rgba(148,163,184,0.12)', halo: 'rgba(226,232,240,0.3)', spark: 'rgba(241,245,249,0.9)' };
+    if (rank === 3)
+      return { emblem: '🥉', banner: 'المركز الثالث', colors: ['#fed7aa', '#ea580c'], ray: 'rgba(234,88,12,0.12)', halo: 'rgba(251,146,60,0.3)', spark: 'rgba(254,215,170,0.9)' };
+    return { emblem: '🌟', banner: null, colors: ['#8de3f5', '#7c5cff'], ray: 'rgba(124,92,255,0.12)', halo: 'rgba(124,92,255,0.35)', spark: 'rgba(165,180,252,0.9)' };
+  }
+
+  /** أشعة احتفالية تنطلق من مركز الشعار */
+  function sunburst(ctx, cx, cy, inner, outer, color) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = color;
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(Math.PI / 6);
+      ctx.beginPath();
+      ctx.moveTo(-16, -inner);
+      ctx.lineTo(16, -inner);
+      ctx.lineTo(52, -outer);
+      ctx.lineTo(-52, -outer);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** نجمة خماسية */
+  function starPath(ctx, cx, cy, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+      const radius = i % 2 === 0 ? r : r * 0.45;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  /** بريق رباعي الرؤوس حول الشعار */
+  function sparkle(ctx, cx, cy, r, color) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.quadraticCurveTo(cx, cy, cx + r, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy + r);
+    ctx.quadraticCurveTo(cx, cy, cx - r, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy - r);
+    ctx.fillStyle = color;
+    ctx.fill();
   }
 
   /** مستطيل بزوايا دائرية */
@@ -808,64 +867,112 @@
 
     // العلامة والعنوان
     ctx.fillStyle = '#eef2ff';
-    ctx.font = `800 60px ${FONT}`;
-    ctx.fillText('⚡ تفاعل', W / 2, 140);
+    ctx.font = `800 56px ${FONT}`;
+    ctx.fillText('⚡ تفاعل', W / 2, 130);
     ctx.fillStyle = '#a3aed0';
-    ctx.font = `600 40px ${FONT}`;
+    ctx.font = `600 38px ${FONT}`;
     const title = s.title || state.info?.title || 'نشاط تفاعلي';
-    ctx.fillText(title.length > 40 ? title.slice(0, 39) + '…' : title, W / 2, 215);
+    ctx.fillText(title.length > 40 ? title.slice(0, 39) + '…' : title, W / 2, 195);
 
-    // الأفاتار داخل دائرة
-    const avatarSize = 300;
-    try {
-      const svg = window.Avatar.toSvg(s.me.avatar, avatarSize);
-      const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = url;
-      });
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(W / 2, 430, avatarSize / 2, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(img, W / 2 - avatarSize / 2, 430 - avatarSize / 2, avatarSize, avatarSize);
-      ctx.restore();
-      ctx.beginPath();
-      ctx.arc(W / 2, 430, avatarSize / 2 + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.lineWidth = 6;
-      ctx.stroke();
-      URL.revokeObjectURL(url);
-    } catch {
-      /* بلا أفاتار إن تعذّر الرسم */
+    // شعار الإنجاز — كأس ذهبي بتاج للأول، ميداليات للثاني والثالث، نجمة متوهجة للبقية
+    const theme = cardTheme(s);
+    const cy = 470;
+
+    sunburst(ctx, W / 2, cy, 190, 430, theme.ray);
+
+    const halo = ctx.createRadialGradient(W / 2, cy, 60, W / 2, cy, 280);
+    halo.addColorStop(0, theme.halo);
+    halo.addColorStop(1, 'transparent');
+    ctx.fillStyle = halo;
+    ctx.fillRect(W / 2 - 290, cy - 290, 580, 580);
+
+    // قرص معدني متدرج بإطار مزدوج
+    const disc = ctx.createLinearGradient(W / 2, cy - 170, W / 2, cy + 170);
+    disc.addColorStop(0, theme.colors[0]);
+    disc.addColorStop(1, theme.colors[1]);
+    ctx.beginPath();
+    ctx.arc(W / 2, cy, 165, 0, Math.PI * 2);
+    ctx.fillStyle = disc;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(W / 2, cy, 138, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(11,16,32,0.22)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // الرمز الكبير + تاج المركز الأول
+    ctx.font = `190px ${FONT}`;
+    ctx.fillText(theme.emblem, W / 2, cy + 12);
+    if (theme.crown) {
+      ctx.font = `90px ${FONT}`;
+      ctx.fillText('👑', W / 2, cy - 212);
+    }
+
+    // بريق حول الشعار
+    for (const [dx, dy, r] of [[-310, -110, 15], [305, -70, 11], [-265, 150, 10], [285, 165, 14], [-190, -235, 9], [215, -245, 12]]) {
+      sparkle(ctx, W / 2 + dx, cy + dy, r, theme.spark);
     }
 
     // الاسم
     ctx.fillStyle = '#eef2ff';
-    ctx.font = `800 68px ${FONT}`;
-    ctx.fillText(s.me.name, W / 2, 650);
+    ctx.font = `800 76px ${FONT}`;
+    ctx.fillText(s.me.name, W / 2, 735);
 
-    // المستوى — كبسولة متدرجة
+    // المراكز الثلاثة الأولى: إعلان المركز بخط معدني كبير متوهج — تشجيع صريح
     const level = levelOf(s);
-    const levelText = `${level.emoji} ${level.label}`;
-    ctx.font = `800 54px ${FONT}`;
-    const lw = ctx.measureText(levelText).width + 90;
-    const lg = ctx.createLinearGradient(W / 2 - lw / 2, 0, W / 2 + lw / 2, 0);
-    lg.addColorStop(0, '#22d3ee');
-    lg.addColorStop(1, '#7c5cff');
-    rr(ctx, W / 2 - lw / 2, 720, lw, 100, 50);
-    ctx.fillStyle = lg;
-    ctx.fill();
-    ctx.fillStyle = '#0b1020';
-    ctx.fillText(levelText, W / 2, 774);
+    if (theme.banner) {
+      ctx.save();
+      const bg = ctx.createLinearGradient(W / 2 - 280, 0, W / 2 + 280, 0);
+      bg.addColorStop(0, theme.colors[1]);
+      bg.addColorStop(0.5, theme.colors[0]);
+      bg.addColorStop(1, theme.colors[1]);
+      ctx.shadowColor = theme.halo;
+      ctx.shadowBlur = 35;
+      ctx.fillStyle = bg;
+      ctx.font = `900 88px ${FONT}`;
+      ctx.fillText(theme.banner, W / 2, 845);
+      ctx.restore();
+    } else {
+      // البقية: لقب تحفيزي في كبسولة متدرجة
+      const levelText = `${level.emoji} ${level.label}`;
+      ctx.font = `800 52px ${FONT}`;
+      const lw = ctx.measureText(levelText).width + 90;
+      const lg = ctx.createLinearGradient(W / 2 - lw / 2, 0, W / 2 + lw / 2, 0);
+      lg.addColorStop(0, '#22d3ee');
+      lg.addColorStop(1, '#7c5cff');
+      rr(ctx, W / 2 - lw / 2, 795, lw, 96, 48);
+      ctx.fillStyle = lg;
+      ctx.fill();
+      ctx.fillStyle = '#0b1020';
+      ctx.fillText(levelText, W / 2, 847);
+    }
+
+    // صف النجوم — الامتلاء بحسب الأداء (٥ للأول، ولا يقل عن واحدة)
+    let starCount = 3;
+    if (s.rank && s.me.score) {
+      const pct = s.rank.of > 1 ? (s.rank.rank - 1) / (s.rank.of - 1) : 0;
+      starCount = Math.max(1, Math.round(5 - pct * 4));
+    }
+    const starY = 965;
+    for (let i = 0; i < 5; i++) {
+      const scx = W / 2 + (i - 2) * 100;
+      const filled = i < starCount;
+      starPath(ctx, scx, starY, filled ? 36 : 30);
+      ctx.fillStyle = filled ? '#fbbf24' : 'rgba(255,255,255,0.08)';
+      ctx.fill();
+      ctx.strokeStyle = filled ? '#b45309' : 'rgba(255,255,255,0.16)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
 
     // النقاط والمركز
-    let y = 880;
+    const y = 1050;
     const pills = [];
     if (s.me.score) pills.push(`⭐ ${s.me.score} نقطة`);
-    if (s.rank) pills.push(`المركز ${s.rank.rank} من ${s.rank.of}`);
+    if (s.rank) pills.push(theme.banner ? `من بين ${s.rank.of} مشاركاً` : `المركز ${s.rank.rank} من ${s.rank.of}`);
     if (pills.length === 2) {
       ctx.font = `700 42px ${FONT}`;
       const w1 = ctx.measureText(pills[0]).width + 56;
@@ -877,30 +984,23 @@
     } else if (pills.length === 1) {
       pill(ctx, pills[0], W / 2, y, `700 42px ${FONT}`, 'rgba(34,197,94,0.18)', 'rgba(34,197,94,0.5)');
     }
-    y += 140;
 
-    // الأوسمة (حتى ثلاثة)
-    const badges = (s.badges || []).slice(0, 3);
+    // الأوسمة في سطر واحد
+    const badges = (s.badges || []).slice(0, 2);
     if (badges.length) {
-      ctx.fillStyle = '#a3aed0';
-      ctx.font = `700 36px ${FONT}`;
-      ctx.fillText('🏅 الأوسمة', W / 2, y);
-      y += 70;
       ctx.fillStyle = '#eef2ff';
-      ctx.font = `600 42px ${FONT}`;
-      for (const badge of badges) {
-        ctx.fillText(`${badge.emoji} ${badge.label}`, W / 2, y);
-        y += 62;
-      }
+      ctx.font = `600 40px ${FONT}`;
+      ctx.fillText(badges.map((b) => `${b.emoji} ${b.label}`).join('   ·   '), W / 2, 1185);
     }
 
     // التذييل
     ctx.fillStyle = '#a3aed0';
-    ctx.font = `600 32px ${FONT}`;
-    ctx.fillText(new Date().toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' }), W / 2, H - 160);
-    ctx.fillStyle = '#7c8db0';
     ctx.font = `600 30px ${FONT}`;
-    ctx.fillText('صُنعت على منصة تفاعل — أسئلة واستطلاعات حية', W / 2, H - 105);
+    const when = new Date().toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' });
+    ctx.fillText(when, W / 2, H - 115);
+    ctx.fillStyle = '#7c8db0';
+    ctx.font = `600 28px ${FONT}`;
+    ctx.fillText('⚡ صُنعت على منصة تفاعل — أسئلة واستطلاعات حية', W / 2, H - 68);
 
     return canvas;
   }
