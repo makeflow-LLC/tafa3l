@@ -154,7 +154,12 @@ function postgresDriver(connectionString) {
     // معظم مزوّدي Postgres المُدارين يتطلبون TLS بشهادة وسيطة
     ssl: /localhost|127\.0\.0\.1/.test(connectionString) ? false : { rejectUnauthorized: false },
     max: 5,
+    // نفشل بسرعة بدل تعليق النشر عند عنوان خاطئ
+    connectionTimeoutMillis: 10000,
   });
+
+  // خطأ في اتصال خامل يجب ألا يُسقط العملية
+  pool.on('error', (err) => console.error('خطأ في اتصال Postgres خامل:', err.message));
 
   const rowToActivity = (r) =>
     r && {
@@ -263,16 +268,83 @@ function postgresDriver(connectionString) {
 // ------------------------------------------------------------------ الواجهة
 
 let driver = null;
+let lastError = null;
+
+/** ترجمة أخطاء الاتصال الشائعة إلى إرشاد عملي (خصوصاً مع Supabase) */
+function explainDbError(err, url) {
+  const code = err.code || '';
+  const supabase = /supabase\.(co|com)/.test(url);
+  const direct = /db\.[a-z0-9]+\.supabase\.co/.test(url);
+
+  if ((code === 'ENETUNREACH' || code === 'EHOSTUNREACH' || code === 'ENOTFOUND') && direct) {
+    return (
+      'تعذّر الوصول إلى قاعدة Supabase عبر الاتصال المباشر. الاتصال المباشر يعمل على IPv6 فقط، ' +
+      'ومعظم المنصات (منها Render) لا تدعمه. استخدم رابط الـ Pooler من Supabase: ' +
+      'Project Settings ← Database ← Connection string ← Session pooler ' +
+      '(المضيف يشبه aws-0-<region>.pooler.supabase.com).'
+    );
+  }
+  if (code === 'ENOTFOUND') return 'اسم مضيف قاعدة البيانات غير صحيح — راجع DATABASE_URL.';
+  if (code === 'ETIMEDOUT' || code === 'ECONNREFUSED') return 'لا يستجيب خادم قاعدة البيانات — تأكد من المضيف والمنفذ وأن المشروع ليس متوقفاً (paused).';
+  if (err.message && /password authentication failed/i.test(err.message)) {
+    return (
+      'كلمة مرور قاعدة البيانات غير صحيحة.' +
+      (supabase ? ' في Supabase استبدل [YOUR-PASSWORD] بكلمة مرور القاعدة، وارمِز الرموز الخاصة (@ تصبح %40).' : '')
+    );
+  }
+  if (err.message && /Tenant or user not found/i.test(err.message)) {
+    return 'اسم المستخدم في رابط الـ Pooler غير صحيح — انسخ الرابط كاملاً من Supabase كما هو (يتضمّن معرّف المشروع).';
+  }
+  return err.message;
+}
 
 async function init() {
   const url = process.env.DATABASE_URL;
-  driver = url ? postgresDriver(url) : fileDriver();
-  await driver.init();
-  if (process.env.PORT !== '0' && process.env.NODE_ENV !== 'test') console.log(`تخزين الحسابات: ${driver.kind} (${driver.location})`);
+  const loud = process.env.PORT !== '0' && process.env.NODE_ENV !== 'test';
+  lastError = null;
 
+  if (url) {
+    const pg = postgresDriver(url);
+    // محاولتان إضافيتان: قواعد البيانات المُدارة قد تستيقظ ببطء
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await pg.init();
+        driver = pg;
+        if (loud) console.log(`تخزين الحسابات: postgres (${pg.location})`);
+        startSweeper();
+        return driver;
+      } catch (err) {
+        lastError = explainDbError(err, url);
+        if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
+      }
+    }
+    // لا نُسقط التطبيق: الجلسات الحية أهم من الحسابات، لكن نُعلن العطل بوضوح
+    if (loud) {
+      console.error('⛔ تعذّر الاتصال بقاعدة البيانات، سنتابع بتخزين ملف مؤقت.');
+      console.error('   السبب: ' + lastError);
+    }
+  }
+
+  driver = fileDriver();
+  await driver.init();
+  if (loud) console.log(`تخزين الحسابات: file (${driver.location})`);
+  startSweeper();
+  return driver;
+}
+
+function startSweeper() {
   const sweep = setInterval(() => driver.sweepAuthSessions().catch(() => {}), 60 * 60 * 1000);
   sweep.unref?.();
-  return driver;
+}
+
+/** حالة التخزين للتشخيص عبر /api/health */
+function status() {
+  return {
+    kind: driver?.kind || null,
+    durable: isDurable(),
+    // نعرض سبب فشل قاعدة البيانات إن وُجد ليظهر في الفحص
+    error: lastError,
+  };
 }
 
 function get() {
@@ -285,4 +357,4 @@ function isDurable() {
   return driver?.kind === 'postgres';
 }
 
-module.exports = { init, get, isDurable, newId, DATA_FILE };
+module.exports = { init, get, isDurable, status, newId, DATA_FILE };

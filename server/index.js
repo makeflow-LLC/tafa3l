@@ -66,6 +66,8 @@ app.get('/api/health', (_req, res) => {
       sessionIdleMinutes: Number(process.env.SESSION_IDLE_MINUTES) || 180,
       sessionEndedMinutes: Number(process.env.SESSION_ENDED_MINUTES) || 30,
     },
+    // حالة تخزين الحسابات — لمعرفة هل ستبقى بعد النشر
+    storage: storage.status(),
   });
 });
 

@@ -1,13 +1,14 @@
 {
   "name": "tafa3l",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "تفاعل — منصة أسئلة واستطلاعات تفاعلية للمدربين والمعلمين (تخزين مؤقت في الذاكرة)",
   "main": "server/index.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:pg": "node test/storage.test.js && node test/account.test.js"
   },
   "engines": {
     "node": ">=18"
