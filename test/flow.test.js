@@ -22,13 +22,28 @@ test.before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 
-test.after(() => server.close());
+// كل الاتصالات المفتوحة، حتى نغلقها بالقوة ولو فشل اختبار في منتصفه
+const openSockets = new Set();
+
+test.after(() => {
+  for (const socket of openSockets) {
+    try {
+      socket.terminate();
+    } catch {
+      /* تجاهل */
+    }
+  }
+  server.closeAllConnections?.();
+  server.close();
+});
 
 // ------------------------------------------------------------------ أدوات
 
 function ws() {
   const url = base.replace('http', 'ws') + '/ws';
   const socket = new WebSocket(url);
+  openSockets.add(socket);
+  socket.on('close', () => openSockets.delete(socket));
   const queue = [];
   const waiters = [];
   socket.on('message', (raw) => {
@@ -85,7 +100,8 @@ async function post(path, body, headers) {
 
 const QUIZ = {
   title: 'اختبار تجريبي',
-  settings: { requireName: true, allowLateJoin: true, showLeaderboard: true },
+  // العدّاد مطفأ في معظم الاختبارات حتى لا ننتظر ٣ ثوانٍ قبل كل سؤال
+  settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: false },
   questions: [
     {
       type: 'mc',
@@ -300,6 +316,320 @@ test('إعادة الاتصال تحافظ على النقاط والإجابا�
   host.close();
   again.close();
   impostor.close();
+});
+
+test('عدّاد «استعد» يمنع الإجابة المبكرة ويفتح السؤال بعده', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'مع عدّاد',
+    settings: { countdown: true },
+    questions: [
+      {
+        // مدة قصيرة: لو بدأ العدّ من لحظة «ابدأ» بدل لحظة الفتح لضاع أكثر من نصف الوقت
+        type: 'mc',
+        text: 'س؟',
+        timeLimit: 6,
+        points: 1000,
+        options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }],
+        correct: ['o0'],
+      },
+    ],
+  });
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'ريم' });
+  await p.next('joined');
+
+  host.send({ t: 'host:start' });
+  const q = await p.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.ok(q.opensAt > Date.now(), 'يجب أن يكون وقت الفتح في المستقبل');
+
+  // إجابة أثناء العدّاد تُرفض
+  p.send({ t: 'answer', questionId: q.question.id, value: 'o0' });
+  const early = await p.next('answer:rejected');
+  assert.match(early.message, /لم يبدأ/);
+
+  // وبعد انتهاء العدّاد تُقبل
+  await new Promise((resolve) => setTimeout(resolve, q.opensAt - Date.now() + 120));
+  p.send({ t: 'answer', questionId: q.question.id, value: 'o0' });
+  const accepted = await p.next('answer:accepted');
+  assert.equal(accepted.correct, true);
+  // الزمن يُحسب من لحظة الفتح لا من لحظة الضغط على «ابدأ»:
+  // إجابة فورية ⇒ النقاط شبه كاملة (لو عُدّ زمن العدّاد لهبطت إلى ~٧٠٠)
+  assert.ok(accepted.points > 900, 'النقاط: ' + accepted.points);
+  assert.ok(accepted.points <= 1000, 'النقاط لا تتجاوز قيمة السؤال: ' + accepted.points);
+
+  host.close();
+  p.close();
+});
+
+test('التفاعلات تصل للمضيف وتُحدّ من التكرار السريع', async () => {
+  const { data: created } = await post('/api/sessions', QUIZ);
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'ندى' });
+  await p.next('joined');
+  host.send({ t: 'host:start' });
+  await p.next((m) => m.t === 'state' && m.phase === 'question');
+
+  p.send({ t: 'reaction', emoji: '👏' });
+  const reaction = await host.next('reaction');
+  assert.equal(reaction.emoji, '👏');
+
+  // إيموجي غير مسموح، ورشقة سريعة: لا شيء منها يصل
+  p.send({ t: 'reaction', emoji: '💣' });
+  p.send({ t: 'reaction', emoji: '🔥' });
+  await assert.rejects(() => host.next('reaction', 700));
+
+  host.close();
+  p.close();
+});
+
+test('القوالب المشتركة صالحة على الخادم والمتصفح', async () => {
+  const templates = await fetch(base + '/api/templates').then((r) => r.json());
+  assert.ok(templates.templates.length >= 3);
+  for (const template of templates.templates) {
+    assert.ok(template.key && template.name && template.title);
+    assert.ok(Array.isArray(template.questions) && template.questions.length > 0);
+    // كل قالب يجب أن يُنشئ جلسة فعلياً
+    const { status } = await post('/api/sessions', template);
+    assert.equal(status, 201, 'فشل القالب: ' + template.key);
+  }
+});
+
+// ------------------------------------------- أوضاع التقدّم ونظام التحفيز
+
+test('الوضع التلقائي ينتقل وحده بعد عرض النتائج', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'تلقائي',
+    settings: { pace: 'auto', autoAdvanceSec: 2, showLeaderboard: false, countdown: false },
+    questions: [
+      { type: 'poll', text: 'س١', timeLimit: 0, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }] },
+      { type: 'poll', text: 'س٢', timeLimit: 0, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }] },
+    ],
+  });
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code: created.code, name: 'سامي' });
+  await p.next('joined');
+
+  host.send({ t: 'host:start' });
+  const q1 = await p.next((m) => m.t === 'state' && m.phase === 'question' && m.index === 0);
+  p.send({ t: 'answer', questionId: q1.question.id, value: 'o0' });
+  await p.next('answer:accepted');
+
+  // أجاب الجميع ⇒ نتائج، ثم انتقال تلقائي بلا أي تدخّل من المضيف
+  await p.next((m) => m.t === 'state' && m.phase === 'results', 3000);
+  const q2 = await p.next((m) => m.t === 'state' && m.phase === 'question' && m.index === 1, 6000);
+  assert.equal(q2.question.text, 'س٢');
+
+  host.close();
+  p.close();
+});
+
+test('الوضع الحر: كل متدرب يتقدّم بسرعته وبمؤقّت خاص به', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'حر',
+    settings: { pace: 'self', countdown: false },
+    questions: [
+      {
+        type: 'mc',
+        text: 'س١',
+        timeLimit: 0,
+        points: 1000,
+        options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }],
+        correct: ['o0'],
+      },
+      { type: 'word', text: 'س٢', timeLimit: 0 },
+    ],
+  });
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const a = ws();
+  const b = ws();
+  await Promise.all([a.ready, b.ready]);
+  a.send({ t: 'join', code: created.code, name: 'أمل' });
+  b.send({ t: 'join', code: created.code, name: 'بدر' });
+  await a.next('joined');
+  await b.next('joined');
+
+  host.send({ t: 'host:start' });
+  const q1 = await a.next((m) => m.t === 'state' && m.phase === 'question');
+  await b.next((m) => m.t === 'state' && m.phase === 'question');
+
+  // «أمل» تجيب وتنتقل، بينما «بدر» ما زال على السؤال الأول
+  a.send({ t: 'answer', questionId: q1.question.id, value: 'o0' });
+  const ack = await a.next('answer:accepted');
+  assert.equal(ack.correct, true);
+  const feedback = await a.next((m) => m.t === 'state' && m.phase === 'feedback');
+  assert.equal(feedback.index, 0, 'يبقى على سؤاله حتى يضغط التالي');
+
+  a.send({ t: 'next' });
+  const q2 = await a.next((m) => m.t === 'state' && m.phase === 'question' && m.index === 1);
+  assert.equal(q2.question.text, 'س٢');
+
+  const hostView = await host.next((m) => m.t === 'state' && m.participants.some((p) => p.at === 2));
+  const amal = hostView.participants.find((p) => p.name === 'أمل');
+  const badr = hostView.participants.find((p) => p.name === 'بدر');
+  assert.equal(amal.at, 2, 'أمل على السؤال الثاني');
+  assert.equal(badr.at, 1, 'بدر ما زال على الأول');
+
+  // لا يمكن القفز قبل الإجابة
+  b.send({ t: 'next' });
+  await b.next('answer:rejected');
+
+  // إنهاء المسار كاملاً ⇒ حالة «انتهى»
+  a.send({ t: 'answer', questionId: q2.question.id, value: 'رائع' });
+  await a.next('answer:accepted');
+  a.send({ t: 'next' });
+  const done = await a.next((m) => m.t === 'state' && m.phase === 'final');
+  assert.ok(done.rank, 'يظهر ترتيبه عند الانتهاء');
+  assert.ok(Array.isArray(done.badges));
+
+  host.close();
+  a.close();
+  b.close();
+});
+
+test('احتساب النقاط: ثابتة، وبلا نقاط، ومضاعف السلاسل', async () => {
+  async function runOnce(settings) {
+    const { data } = await post('/api/sessions', {
+      title: 'نقاط',
+      settings: { countdown: false, ...settings },
+      questions: [0, 1, 2].map((i) => ({
+        type: 'mc',
+        text: 'س' + i,
+        timeLimit: 20,
+        points: 1000,
+        options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }],
+        correct: ['o0'],
+      })),
+    });
+    const host = ws();
+    await host.ready;
+    host.send({ t: 'host:hello', code: data.code, hostToken: data.hostToken });
+    await host.next('state');
+    const p = ws();
+    await p.ready;
+    p.send({ t: 'join', code: data.code, name: 'لينا' });
+    await p.next('joined');
+    host.send({ t: 'host:start' });
+
+    const points = [];
+    for (let i = 0; i < 3; i++) {
+      const q = await p.next((m) => m.t === 'state' && m.phase === 'question' && m.index === i);
+      p.send({ t: 'answer', questionId: q.question.id, value: 'o0' });
+      const ack = await p.next('answer:accepted');
+      points.push(ack.points);
+      if (i < 2) host.send({ t: 'host:skip' });
+    }
+    host.close();
+    p.close();
+    return points;
+  }
+
+  // ثابتة بلا مضاعف: نفس القيمة رغم اختلاف السرعة
+  const flat = await runOnce({ scoring: 'flat', streakBonus: false });
+  assert.deepEqual(flat, [1000, 1000, 1000]);
+
+  // بلا نقاط إطلاقاً
+  const none = await runOnce({ scoring: 'none' });
+  assert.deepEqual(none, [0, 0, 0]);
+
+  // مضاعف السلاسل: ×1 ثم ×1.1 ثم ×1.2
+  const streak = await runOnce({ scoring: 'flat', streakBonus: true });
+  assert.deepEqual(streak, [1000, 1100, 1200]);
+});
+
+test('الأوسمة تُمنح حسب الأداء الفعلي', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'أوسمة',
+    settings: { countdown: false, scoring: 'flat', streakBonus: false },
+    questions: [0, 1, 2].map((i) => ({
+      type: 'mc',
+      text: 'س' + i,
+      timeLimit: 20,
+      points: 1000,
+      options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }],
+      correct: ['o0'],
+    })),
+  });
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const a = ws();
+  const b = ws();
+  await Promise.all([a.ready, b.ready]);
+  a.send({ t: 'join', code: created.code, name: 'نور' });
+  b.send({ t: 'join', code: created.code, name: 'زيد' });
+  await a.next('joined');
+  await b.next('joined');
+  host.send({ t: 'host:start' });
+
+  for (let i = 0; i < 3; i++) {
+    const q = await a.next((m) => m.t === 'state' && m.phase === 'question' && m.index === i);
+    a.send({ t: 'answer', questionId: q.question.id, value: 'o0' }); // نور: كلها صحيحة وأسرع
+    await a.next('answer:accepted');
+    b.send({ t: 'answer', questionId: q.question.id, value: 'o1' }); // زيد: كلها خاطئة
+    await b.next('answer:accepted');
+    if (i < 2) host.send({ t: 'host:skip' });
+  }
+
+  host.send({ t: 'host:end' });
+  const final = await a.next((m) => m.t === 'state' && m.status === 'ended');
+  const labels = final.badges.map((badge) => badge.label);
+  assert.ok(labels.includes('دقة كاملة'), 'أوسمة نور: ' + labels.join('، '));
+  assert.ok(labels.includes('أطول سلسلة (3)'), 'أوسمة نور: ' + labels.join('، '));
+
+  const zaid = await b.next((m) => m.t === 'state' && m.status === 'ended');
+  assert.ok(!zaid.badges.some((badge) => badge.label === 'دقة كاملة'), 'زيد لا يستحق وسام الدقة');
+
+  host.close();
+  a.close();
+  b.close();
+});
+
+test('نبضة إبقاء الخادم مستيقظاً تعمل فقط عند وجود جلسات', async () => {
+  const { pingOnce } = require('../server/keepalive');
+  const store = require('../server/store');
+
+  // نظّف أي جلسات سابقة حتى يكون العدّ صفراً
+  for (const code of [...store.sessions.keys()]) store.deleteSession(code);
+  assert.equal(await pingOnce(base, store), false, 'بلا جلسات: لا نبضة (حتى لا نستهلك ساعات الخطة المجانية)');
+
+  const { data } = await post('/api/sessions', QUIZ);
+  const before = await fetch(base + '/api/health').then((r) => r.json());
+  assert.equal(await pingOnce(base, store), true, 'مع وجود جلسة: تُرسل نبضة');
+
+  // النبضة وصلت فعلاً إلى الخادم عبر HTTP
+  const after = await fetch(base + '/api/health').then((r) => r.json());
+  assert.ok(after.uptime >= before.uptime);
+  assert.equal(after.config.sessionIdleMinutes, 180, 'الإعدادات مكشوفة للتشخيص');
+
+  await fetch(`${base}/api/sessions/${data.code}?hostToken=${encodeURIComponent(data.hostToken)}`, { method: 'DELETE' });
 });
 
 test('توليد رمز QR بصيغة SVG', async () => {

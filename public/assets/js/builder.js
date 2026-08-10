@@ -2,7 +2,7 @@
 (function (global) {
   'use strict';
 
-  const { $, el, toast, api, store, TYPE_LABELS, TYPE_EMOJI } = global.T;
+  const { el, toast, store, TYPE_LABELS, TYPE_EMOJI } = global.T;
 
   const DRAFT_KEY = 'tafa3l:draft';
   const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open'];
@@ -27,7 +27,16 @@
   function defaultDraft() {
     return {
       title: '',
-      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true },
+      settings: {
+        requireName: true,
+        allowLateJoin: true,
+        showLeaderboard: true,
+        countdown: true,
+        pace: 'host',
+        autoAdvanceSec: 6,
+        scoring: 'speed',
+        streakBonus: true,
+      },
       questions: [blankQuestion('mc')],
     };
   }
@@ -73,6 +82,42 @@
           switchRow('طلب الاسم أو الكنية', 'requireName', 'أطفئه لاستطلاع مجهول بلا أسماء'),
           switchRow('السماح بالدخول المتأخر', 'allowLateJoin', 'يستطيع الطلاب الدخول بعد بدء النشاط'),
           switchRow('عرض لوحة الترتيب', 'showLeaderboard', 'يظهر ترتيب المشاركين بين الأسئلة'),
+          switchRow('عدّاد «استعد ٣٢١»', 'countdown', 'ينطلق الجميع معاً في الأسئلة المؤقتة'),
+        ])
+      );
+
+      // ---- وضع التقدّم ونظام التحفيز
+      root.append(
+        el('div', { class: 'card stack' }, [
+          el('h2', { text: '٢. سير النشاط والتحفيز' }),
+          el('label', { text: 'من ينقل إلى السؤال التالي؟' }),
+          choiceGroup(
+            'pace',
+            [
+              { value: 'host', emoji: '🎛️', title: 'المدرب', hint: 'أنت تنقل الشرائح وتتحكم بالإيقاع' },
+              { value: 'auto', emoji: '⏱️', title: 'تلقائي', hint: 'الجميع معاً، وينتقل وحده بعد النتائج' },
+              { value: 'self', emoji: '🏃', title: 'حر', hint: 'كل متدرب يتقدّم بسرعته الخاصة' },
+            ],
+            () => update()
+          ),
+          draft.settings.pace === 'auto' ? autoDelayRow() : null,
+          draft.settings.pace === 'self'
+            ? el('p', { class: 'muted small', style: { margin: 0 }, text: 'في الوضع الحر تظهر لك لوحة تتابع فيها موقع كل متدرب ونتائجه أولاً بأول.' })
+            : null,
+
+          el('label', { text: 'احتساب النقاط', style: { marginTop: '6px' } }),
+          choiceGroup(
+            'scoring',
+            [
+              { value: 'speed', emoji: '⚡', title: 'بالسرعة', hint: 'كاملة للأسرع وتتناقص حتى النصف' },
+              { value: 'flat', emoji: '🎯', title: 'ثابتة', hint: 'نفس النقاط لكل إجابة صحيحة' },
+              { value: 'none', emoji: '🕊️', title: 'بلا نقاط', hint: 'تعلّم بلا منافسة ولا ترتيب' },
+            ],
+            () => update()
+          ),
+          draft.settings.scoring !== 'none'
+            ? switchRow('مضاعف السلاسل 🔥', 'streakBonus', 'كل إجابة صحيحة متتالية تزيد النقاط ١٠٪ حتى ٥٠٪')
+            : null,
         ])
       );
 
@@ -91,7 +136,7 @@
       root.append(
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row between' }, [
-            el('h2', { text: `٢. الأسئلة (${draft.questions.length})`, style: { margin: 0 } }),
+            el('h2', { text: `٣. الأسئلة (${draft.questions.length})`, style: { margin: 0 } }),
           ]),
           list,
           el('label', { text: 'إضافة سؤال جديد', style: { marginTop: '4px' } }),
@@ -146,6 +191,36 @@
           ),
         ])
       );
+    }
+
+    /** مجموعة خيارات على شكل بطاقات (وضع التقدّم، احتساب النقاط) */
+    function choiceGroup(key, options, onPick) {
+      const group = el('div', { class: 'types' });
+      options.forEach((option) => {
+        const on = (draft.settings[key] || options[0].value) === option.value;
+        const button = el('button', { class: 'type-btn' + (on ? ' on' : ''), type: 'button', title: option.hint }, [
+          el('span', { class: 'em', text: option.emoji }),
+          el('span', { text: option.title }),
+        ]);
+        button.addEventListener('click', () => {
+          draft.settings[key] = option.value;
+          saveDraft(draft);
+          onPick?.();
+        });
+        group.append(button);
+      });
+      const current = options.find((option) => option.value === (draft.settings[key] || options[0].value));
+      return el('div', {}, [group, el('div', { class: 'muted small', style: { marginTop: '6px' }, text: current ? current.hint : '' })]);
+    }
+
+    function autoDelayRow() {
+      const select = el('select', {}, [3, 5, 6, 8, 10, 15].map((sec) => el('option', { value: String(sec) }, sec + ' ثوانٍ')));
+      select.value = String(draft.settings.autoAdvanceSec || 6);
+      select.addEventListener('change', () => {
+        draft.settings.autoAdvanceSec = Number(select.value);
+        saveDraft(draft);
+      });
+      return el('div', {}, [el('label', { text: 'مدة عرض النتائج قبل الانتقال' }), select]);
     }
 
     function switchRow(label, key, hint) {
@@ -429,26 +504,35 @@
       return card;
     }
 
-    async function loadTemplates(row) {
-      try {
-        const { templates } = await api('/api/templates');
-        row.innerHTML = '';
-        templates.forEach((template) => {
-          const button = el('button', { class: 'btn sm ghost', type: 'button', title: template.description }, template.name);
-          button.addEventListener('click', () => {
-            if (!confirm(`استبدال المسودة الحالية بقالب «${template.name}»؟`)) return;
-            draft.title = template.title;
-            draft.settings = { ...template.settings };
-            draft.questions = template.questions.map((question) => ({ ...blankQuestion(question.type), ...question, id: uid() }));
-            openIndex = 0;
-            update();
-          });
-          row.append(button);
-        });
-      } catch {
-        row.innerHTML = '';
-        row.append(el('span', { class: 'muted small', text: 'تعذّر تحميل القوالب' }));
+    /** القوالب محمّلة مع الصفحة (window.TEMPLATES) — لا تعتمد على الشبكة إطلاقاً */
+    function loadTemplates(row) {
+      const templates = global.TEMPLATES || [];
+      row.innerHTML = '';
+      if (!templates.length) {
+        row.append(el('span', { class: 'muted small', text: 'لا توجد قوالب' }));
+        return;
       }
+      templates.forEach((template) => {
+        const button = el('button', { class: 'btn sm ghost', type: 'button', title: template.description }, template.name);
+        button.addEventListener('click', () => {
+          if (!confirm(`استبدال المسودة الحالية بقالب «${template.name}»؟`)) return;
+          applyTemplate(template);
+        });
+        row.append(button);
+      });
+    }
+
+    function applyTemplate(template) {
+      draft.title = template.title;
+      // ندمج مع الافتراضيات حتى لا ينقص القالب أي إعداد جديد
+      draft.settings = { ...defaultDraft().settings, ...template.settings };
+      draft.questions = template.questions.map((question) => ({
+        ...blankQuestion(question.type),
+        ...JSON.parse(JSON.stringify(question)),
+        id: uid(),
+      }));
+      openIndex = 0;
+      update();
     }
 
     draw();
@@ -473,5 +557,5 @@
     return null;
   }
 
-  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, DRAFT_KEY };
+  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, DRAFT_KEY };
 })(window);

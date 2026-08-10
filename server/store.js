@@ -11,9 +11,10 @@ const { Session } = require('./session');
 /** @type {Map<string, Session>} */
 const sessions = new Map();
 
-// تُحذف الجلسة بعد ٣ ساعات من آخر نشاط، أو بعد ٣٠ دقيقة من إنهائها.
-const IDLE_TTL_MS = 3 * 60 * 60 * 1000;
-const ENDED_TTL_MS = 30 * 60 * 1000;
+// تُحذف الجلسة بعد مدة خمول (٣ ساعات افتراضياً) أو بعد إنهائها بمدة (٣٠ دقيقة).
+// يمكن تمديدهما بمتغيرات البيئة للمحاضرات الطويلة.
+const IDLE_TTL_MS = Math.max(5, Number(process.env.SESSION_IDLE_MINUTES) || 180) * 60 * 1000;
+const ENDED_TTL_MS = Math.max(1, Number(process.env.SESSION_ENDED_MINUTES) || 30) * 60 * 1000;
 const SWEEP_INTERVAL_MS = 60 * 1000;
 const MAX_SESSIONS = 500;
 

@@ -34,26 +34,90 @@
   function toast(message, kind) {
     const existing = $('.toast');
     if (existing) existing.remove();
-    const node = el('div', { class: 'toast ' + (kind || ''), text: message });
+    const long = String(message).length > 60;
+    const node = el('div', { class: 'toast ' + (kind || '') + (long ? ' long' : ''), text: message });
     document.body.append(node);
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => node.remove(), 2600);
+    toastTimer = setTimeout(() => node.remove(), long ? 6000 : 2600);
   }
 
+  /** هل الصفحة مفتوحة كملف بدل الخادم؟ (سبب شائع لفشل كل الطلبات) */
+  function isFileProtocol() {
+    return location.protocol === 'file:';
+  }
+
+  const OFFLINE_HINT =
+    'تعذّر الوصول إلى خادم تفاعل — هذه الصفحة تُقدَّم كملفات ثابتة فقط. ' +
+    'محلياً شغّل «npm start»، وللنشر استخدم استضافة تشغّل Node دائماً (Render أو Railway أو Fly.io) ' +
+    'لأن منصات serverless مثل Vercel لا تدعم WebSocket.';
+
   async function api(path, options) {
-    const response = await fetch(path, {
-      headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
-      ...options,
-      body: options?.body ? JSON.stringify(options.body) : undefined,
-    });
+    if (isFileProtocol()) {
+      throw Object.assign(new Error(OFFLINE_HINT), { offline: true });
+    }
+    let response;
+    try {
+      response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
+        ...options,
+        body: options?.body ? JSON.stringify(options.body) : undefined,
+      });
+    } catch {
+      // فشل الشبكة نفسه: الخادم متوقف أو الصفحة تُقدَّم من مكان آخر
+      throw Object.assign(new Error(OFFLINE_HINT), { offline: true });
+    }
     let data = null;
     try {
       data = await response.json();
     } catch {
       /* لا شيء */
     }
-    if (!response.ok) throw new Error(data?.error || 'تعذّر تنفيذ الطلب');
+    if (!response.ok) {
+      // خادم ملفات ثابت يردّ HTML على مسارات API — نفس العلاج
+      if (!data && (response.status === 404 || response.status === 405 || response.status >= 500)) {
+        throw Object.assign(new Error(OFFLINE_HINT), { offline: true });
+      }
+      throw new Error(data?.error || `تعذّر تنفيذ الطلب (${response.status})`);
+    }
     return data;
+  }
+
+  /** فحص وجود الخادم — يعيد true/false بلا رمي استثناء */
+  async function serverAlive() {
+    if (isFileProtocol()) return false;
+    try {
+      const response = await fetch('/api/health', { cache: 'no-store' });
+      if (!response.ok) return false;
+      const data = await response.json();
+      return data?.ok === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** شريط تحذير ثابت أعلى الصفحة يشرح كيف يشغّل المستخدم الخادم */
+  function showOfflineBanner(container) {
+    if (document.querySelector('#offlineBanner')) return;
+    const banner = el('div', { class: 'banner', id: 'offlineBanner', style: { marginBottom: '12px' } }, [
+      el('strong', { text: '⚠️ الخادم غير متصل — الوضع التجريبي' }),
+      el('div', { class: 'small', style: { marginTop: '4px' } }, [
+        'يمكنك تجهيز الأسئلة الآن، لكن بدء جلسة مباشرة يحتاج خادماً يعمل. محلياً: ',
+        el('code', { text: 'npm install && npm start', style: { direction: 'ltr', display: 'inline-block' } }),
+        ' ثم ',
+        el('code', { text: 'http://localhost:3000', style: { direction: 'ltr', display: 'inline-block' } }),
+        '.',
+      ]),
+      el('div', { class: 'small', style: { marginTop: '4px' } }, [
+        'للنشر على الإنترنت استخدم استضافة تشغّل عملية Node دائمة (Render أو Railway أو Fly.io). ',
+        'منصات serverless مثل Vercel و Netlify و GitHub Pages تخدم الملفات الثابتة فقط ولا تدعم WebSocket، ',
+        'لذلك لن تعمل الجلسات المباشرة عليها.',
+      ]),
+    ]);
+    (container || document.querySelector('#app') || document.body).prepend(banner);
+  }
+
+  function hideOfflineBanner() {
+    document.querySelector('#offlineBanner')?.remove();
   }
 
   /** اتصال ويب سوكت مع إعادة اتصال تلقائية (مهم على شبكات الجوال) */
@@ -195,5 +259,24 @@
     }
   }
 
-  global.T = { $, $$, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, escapeHtml, vibrate };
+  global.T = {
+    $,
+    $$,
+    el,
+    avatarNode,
+    toast,
+    api,
+    connect,
+    store,
+    TYPE_LABELS,
+    TYPE_EMOJI,
+    fmtMs,
+    escapeHtml,
+    vibrate,
+    serverAlive,
+    showOfflineBanner,
+    hideOfflineBanner,
+    isFileProtocol,
+    OFFLINE_HINT,
+  };
 })(window);
