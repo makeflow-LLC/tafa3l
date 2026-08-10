@@ -737,7 +737,8 @@
     exitBtn.addEventListener('click', () => {
       const live = state.last && state.last.status !== 'ended';
       if (live && !confirm('هل تريد الخروج من النشاط؟ ستفقد نقاطك ولن تعود إلا بالدخول من جديد.')) return;
-      socket.send({ t: 'leave' });
+      // لا نرسل «مغادرة» قبل الانضمام أصلاً حتى لا تظهر رسالة خطأ
+      if (state.joined) socket.send({ t: 'leave' });
       store.del(SESSION_KEY);
       socket.close();
       location.href = '/';

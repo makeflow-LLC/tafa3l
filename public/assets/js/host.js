@@ -93,6 +93,13 @@
     bar.innerHTML = '';
     app.innerHTML = '';
     const root = el('div', { class: 'stack' });
+    // زر رجوع صريح — لا يكفي الأيقونة الصغيرة في الشريط العلوي
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الصفحة الرئيسية'),
+        el('span', { class: 'muted small', text: 'مسودتك تُحفظ تلقائياً' }),
+      ])
+    );
     app.append(el('h1', { text: 'إنشاء نشاط تفاعلي' }));
     app.append(root);
 
