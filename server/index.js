@@ -12,12 +12,12 @@ const templates = require('./templates');
 const { startKeepAlive, keepAliveUrl } = require('./keepalive');
 const storage = require('./storage');
 const auth = require('./auth');
-const { accountRoutes } = require('./routes-account');
+const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -76,13 +76,16 @@ app.get('/api/templates', (_req, res) => {
 });
 
 /** إنشاء جلسة جديدة — يعيد رمز الدخول ومفتاح المضيف */
-app.post('/api/sessions', (req, res) => {
+app.post('/api/sessions', async (req, res) => {
   try {
     const session = store.createSession(req.body || {});
-    // ننسب الجلسة لصاحبها إن كان مسجّل الدخول، لتظهر «مباشر الآن» في لوحته
+    let activityId = null;
+    // المدرب المسجّل: تُحفظ أسئلته تلقائياً في نشاطاته مع كل إطلاق —
+    // فلا يضيع نشاط لمجرد أنه نسي زر الحفظ، وإنهاء الجلسة لا يحذفه
     if (req.user) {
       session.ownerId = req.user.id;
-      if (req.body?.activityId) session.activityId = String(req.body.activityId);
+      activityId = await syncLaunchedActivity(req.user, session, req.body?.activityId);
+      if (activityId) session.activityId = activityId;
     }
     res.status(201).json({
       code: session.code,
@@ -90,6 +93,7 @@ app.post('/api/sessions', (req, res) => {
       title: session.title,
       questionCount: session.questions.length,
       joinUrl: joinUrl(req, session.code),
+      activityId,
     });
   } catch (err) {
     fail(res, err);

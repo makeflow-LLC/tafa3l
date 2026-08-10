@@ -768,6 +768,8 @@ class Session {
         correct: scoredQ ? correct : null,
         accuracy: scoredQ && answers.length ? Math.round((correct / answers.length) * 100) : null,
         avgMs: answers.length ? Math.round(answers.reduce((s, a) => s + a.ms, 0) / answers.length) : 0,
+        // النتائج المجمّعة (سحابة الكلمات، أعمدة المقياس…) لعرضها في لوحة التحكم والوضع الحر
+        results: answers.length ? this.aggregate(i) : null,
       };
     });
 
