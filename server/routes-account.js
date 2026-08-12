@@ -8,75 +8,60 @@
 const express = require('express');
 const storage = require('./storage');
 const auth = require('./auth');
+const google = require('./google-auth');
 const { normalizeQuiz } = require('./session');
 
 const MAX_ACTIVITIES = 200;
 
+/** يقبل فقط مساراً داخلياً نسبياً — يمنع التحويل إلى موقع خارجي عبر next= */
+function safeNext(value) {
+  const requested = String(value || '/host.html#/mine');
+  return /^\/[^/]/.test(requested) ? requested : '/host.html#/mine';
+}
+
 function accountRoutes(store) {
   const router = express.Router();
 
-  const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name });
+  // ----------------------------------------------------------- المصادقة عبر جوجل فقط
 
-  // ----------------------------------------------------------- المصادقة
-
-  router.post('/auth/signup', async (req, res) => {
-    try {
-      const email = auth.validateEmail(req.body?.email);
-      if (!email) return res.status(400).json({ error: 'البريد الإلكتروني غير صالح' });
-
-      const name = String(req.body?.name || '').trim().slice(0, 60);
-      if (name.length < 2) return res.status(400).json({ error: 'اكتب اسمك (حرفان على الأقل)' });
-
-      const check = auth.validatePassword(req.body?.password);
-      if (check.error) return res.status(400).json({ error: check.error });
-
-      if (await storage.get().findUserByEmail(email)) {
-        return res.status(409).json({ error: 'هذا البريد مسجّل مسبقاً — سجّل الدخول بدلاً من ذلك' });
-      }
-
-      const { hash, salt } = await auth.hashPassword(check.password);
-      const user = await storage.get().createUser({
-        id: storage.newId('u_'),
-        email,
-        name,
-        passwordHash: hash,
-        salt,
-        createdAt: Date.now(),
-      });
-
-      await auth.startSession(req, res, user.id);
-      res.status(201).json({ user: publicUser(user) });
-    } catch (err) {
-      console.error('signup:', err);
-      res.status(500).json({ error: 'تعذّر إنشاء الحساب' });
+  /** يبدأ تسجيل الدخول: يحوّل المتصفح إلى صفحة اختيار حساب جوجل */
+  router.get('/auth/google', (req, res) => {
+    if (!google.isConfigured()) {
+      return res.status(503).json({ error: 'تسجيل الدخول عبر جوجل غير مُفعّل على هذا الخادم' });
     }
+    const next = safeNext(req.query.next);
+    const { authUrl, cookiePayload } = google.buildAuthUrl(req, next);
+    google.setStateCookie(req, res, cookiePayload);
+    res.redirect(authUrl);
   });
 
-  router.post('/auth/login', async (req, res) => {
+  /** عودة جوجل بعد موافقة المستخدم — يُنشئ الجلسة ويعيده إلى وجهته */
+  router.get('/auth/google/callback', async (req, res) => {
+    const bounce = (reason) => {
+      google.clearStateCookie(req, res);
+      res.redirect('/login.html?error=' + encodeURIComponent(reason));
+    };
     try {
-      const email = auth.validateEmail(req.body?.email);
-      const password = String(req.body?.password || '');
-      if (!email || !password) return res.status(400).json({ error: 'أدخل البريد وكلمة المرور' });
+      if (!google.isConfigured()) return bounce('تسجيل الدخول عبر جوجل غير مُفعّل على هذا الخادم');
 
-      const key = auth.throttleKey(req, email);
-      if (auth.tooManyAttempts(key)) {
-        return res.status(429).json({ error: 'محاولات كثيرة فاشلة — انتظر عشر دقائق ثم أعد المحاولة' });
+      const saved = google.readStateCookie(req);
+      if (!saved || !req.query.state || saved.state !== req.query.state) {
+        return bounce('انتهت صلاحية محاولة الدخول — أعد المحاولة');
       }
+      if (req.query.error) return bounce('أُلغي تسجيل الدخول عبر جوجل');
+      if (!req.query.code) return bounce('لم يصل رمز من جوجل');
 
-      const user = await storage.get().findUserByEmail(email);
-      // رسالة واحدة للحالتين حتى لا نكشف البريد المسجّل من غيره
-      const ok = user && (await auth.verifyPassword(password, user.passwordHash, user.salt));
-      if (!ok) {
-        auth.recordFailure(key);
-        return res.status(401).json({ error: 'البريد أو كلمة المرور غير صحيحة' });
-      }
+      const profile = await google.resolveUser(req, String(req.query.code));
+      const email = auth.validateEmail(profile.email);
+      if (!email) return bounce('بريد حساب جوجل غير صالح');
 
-      auth.clearFailures(key);
+      const user = await storage.get().upsertUser({ email, name: profile.name, googleId: profile.googleId });
+      google.clearStateCookie(req, res);
       await auth.startSession(req, res, user.id);
-      res.json({ user: publicUser(user) });
+      res.redirect(safeNext(saved.next));
     } catch (err) {
-      console.error('login:', err);
-      res.status(500).json({ error: 'تعذّر تسجيل الدخول' });
+      console.error('دخول جوجل:', err.message);
+      bounce('تعذّر تسجيل الدخول عبر جوجل — حاول مجدداً');
     }
   });
 
@@ -86,7 +71,7 @@ function accountRoutes(store) {
   });
 
   router.get('/auth/me', (req, res) => {
-    res.json({ user: req.user || null, durable: storage.isDurable() });
+    res.json({ user: req.user || null, durable: storage.isDurable(), googleConfigured: google.isConfigured() });
   });
 
   // ------------------------------------------------------ الأنشطة المحفوظة

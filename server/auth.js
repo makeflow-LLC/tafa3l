@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * مصادقة المدربين: كلمة مرور مُجزَّأة بـ scrypt، وجلسة عبر كوكي HttpOnly.
- * بلا أي اعتماد خارجي — كل شيء من وحدة crypto المدمجة.
+ * جلسة المدرب بعد الدخول عبر جوجل: كوكي HttpOnly + SameSite=Lax، بلا كلمات مرور.
+ * آلية الدخول نفسها (تدفّق OAuth) في server/google-auth.js.
  */
 
 const crypto = require('crypto');
@@ -10,27 +10,6 @@ const storage = require('./storage');
 
 const COOKIE = 'tafa3l_sid';
 const SESSION_DAYS = 30;
-const SCRYPT_KEYLEN = 64;
-const MIN_PASSWORD = 8;
-
-// ------------------------------------------------------------ كلمة المرور
-
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  return new Promise((resolve, reject) => {
-    crypto.scrypt(password, salt, SCRYPT_KEYLEN, (err, derived) => {
-      if (err) return reject(err);
-      resolve({ hash: derived.toString('hex'), salt });
-    });
-  });
-}
-
-async function verifyPassword(password, expectedHash, salt) {
-  const { hash } = await hashPassword(password, salt);
-  const a = Buffer.from(hash, 'hex');
-  const b = Buffer.from(expectedHash, 'hex');
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
-}
 
 // ------------------------------------------------------------- الكوكيز
 
@@ -119,64 +98,11 @@ function validateEmail(value) {
   return email;
 }
 
-function validatePassword(value) {
-  const password = String(value || '');
-  if (password.length < MIN_PASSWORD) return { error: `كلمة المرور يجب ألا تقل عن ${MIN_PASSWORD} أحرف` };
-  if (password.length > 200) return { error: 'كلمة المرور طويلة جداً' };
-  return { password };
-}
-
-// -------------------------------------------- حدّ محاولات الدخول الفاشلة
-
-const attempts = new Map(); // مفتاح → { count, until }
-const MAX_ATTEMPTS = 8;
-const WINDOW_MS = 10 * 60 * 1000;
-
-function throttleKey(req, email) {
-  const ip = (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim();
-  return `${ip}|${email}`;
-}
-
-function tooManyAttempts(key) {
-  const entry = attempts.get(key);
-  if (!entry) return false;
-  if (entry.until < Date.now()) {
-    attempts.delete(key);
-    return false;
-  }
-  return entry.count >= MAX_ATTEMPTS;
-}
-
-function recordFailure(key) {
-  const entry = attempts.get(key) || { count: 0, until: Date.now() + WINDOW_MS };
-  entry.count += 1;
-  entry.until = Date.now() + WINDOW_MS;
-  attempts.set(key, entry);
-}
-
-function clearFailures(key) {
-  attempts.delete(key);
-}
-
-const sweepAttempts = setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of attempts) if (entry.until < now) attempts.delete(key);
-}, 10 * 60 * 1000);
-sweepAttempts.unref?.();
-
 module.exports = {
   COOKIE,
-  MIN_PASSWORD,
-  hashPassword,
-  verifyPassword,
   startSession,
   endSession,
   attachUser,
   requireUser,
   validateEmail,
-  validatePassword,
-  throttleKey,
-  tooManyAttempts,
-  recordFailure,
-  clearFailures,
 };

@@ -1,6 +1,6 @@
 'use strict';
 
-/** اختبار حسابات المدربين والأنشطة المحفوظة: التسجيل، الدخول، الملكية، الإطلاق. */
+/** اختبار حسابات المدربين والأنشطة المحفوظة: الدخول عبر جوجل، الملكية، الإطلاق. */
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -10,6 +10,9 @@ const path = require('node:path');
 
 process.env.PORT = '0';
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tafa3l-acct-'));
+// بلا هذين، مسار /api/auth/google يرفض الطلب فوراً (503) قبل أن نصل حتى إلى جوجل المزيّفة
+process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 const { server, ready } = require('../server/index');
 
 let base;
@@ -33,6 +36,9 @@ function client() {
     get cookie() {
       return cookie;
     },
+    set cookie(v) {
+      cookie = v;
+    },
     async request(method, path, body) {
       const res = await fetch(base + path, {
         method,
@@ -53,8 +59,56 @@ function client() {
       }
       return { status: res.status, data };
     },
-    get: (p) => client.prototype, // غير مستخدم
   };
+}
+
+let uniq = 0;
+const email = () => `teacher${++uniq}.${Date.now()}@example.com`;
+
+/** يستبدل fetch العام مؤقتاً بردود جوجل مزيّفة — يعيد دالة استعادة */
+function mockGoogle({ email, name, sub = 'g_' + Math.random().toString(36).slice(2), emailVerified = true }) {
+  const original = global.fetch;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.startsWith('https://oauth2.googleapis.com/token')) {
+      return { ok: true, json: async () => ({ access_token: 'tok_' + Math.random().toString(36).slice(2) }) };
+    }
+    if (u.startsWith('https://www.googleapis.com/oauth2/v3/userinfo')) {
+      return { ok: true, json: async () => ({ sub, email, email_verified: emailVerified, name }) };
+    }
+    return original(url, opts);
+  };
+  return () => {
+    global.fetch = original;
+  };
+}
+
+/**
+ * يُنفّذ تدفّق OAuth كاملاً كما يفعل المتصفح: طلب /auth/google، اتّباع
+ * كوكي الحالة إلى /auth/google/callback، ثم تثبيت كوكي الجلسة الناتج على c.
+ */
+async function loginViaGoogle(c, profile) {
+  const restore = mockGoogle(profile);
+  try {
+    const start = await fetch(base + '/api/auth/google?next=' + encodeURIComponent('/host.html#/mine'), { redirect: 'manual' });
+    assert.equal(start.status, 302, 'يحوّل إلى صفحة اختيار حساب جوجل');
+    const location = start.headers.get('location');
+    assert.match(location, /^https:\/\/accounts\.google\.com\//);
+
+    const stateCookie = (start.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_oauth='));
+    assert.ok(stateCookie, 'كوكي حالة OAuth يجب أن يُضبط');
+    const state = new URL(location).searchParams.get('state');
+
+    const callback = await fetch(`${base}/api/auth/google/callback?code=fake-code&state=${state}`, {
+      redirect: 'manual',
+      headers: { Cookie: stateCookie.split(';')[0] },
+    });
+    const sessionCookie = (callback.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_sid='));
+    if (sessionCookie) c.cookie = sessionCookie.split(';')[0];
+    return callback;
+  } finally {
+    restore();
+  }
 }
 
 const QUIZ = {
@@ -66,54 +120,76 @@ const QUIZ = {
   ],
 };
 
-let uniq = 0;
-const email = () => `teacher${++uniq}.${Date.now()}@example.com`;
-
 // ------------------------------------------------------------- الاختبارات
 
-test('التسجيل ينشئ حساباً ويفتح جلسة دخول', async () => {
+test('الدخول عبر جوجل ينشئ حساباً ويفتح جلسة دخول', async () => {
   const c = client();
   const mail = email();
-  const { status, data } = await c.request('POST', '/api/auth/signup', { email: mail, name: 'أ. محمد', password: 'sirr12345' });
-  assert.equal(status, 201);
-  assert.equal(data.user.email, mail);
+  const callback = await loginViaGoogle(c, { email: mail, name: 'أ. محمد' });
+  assert.equal(callback.status, 302, 'يعيد التوجيه إلى الوجهة بعد النجاح');
+  assert.match(callback.headers.get('location'), /\/host\.html#\/mine$/);
   assert.ok(c.cookie.startsWith('tafa3l_sid='), 'يجب ضبط كوكي الجلسة');
-  assert.ok(!('passwordHash' in data.user), 'لا تُسرَّب بيانات كلمة المرور');
 
   const me = await c.request('GET', '/api/auth/me');
   assert.equal(me.data.user.name, 'أ. محمد');
+  assert.equal(me.data.user.email, mail);
+  assert.ok(!('googleId' in me.data.user), 'لا يُسرَّب معرّف جوجل الداخلي للعميل');
 });
 
-test('رفض المدخلات غير الصالحة والبريد المكرر', async () => {
-  const c = client();
+test('نفس بريد جوجل يعطي نفس الحساب دائماً — لا حسابات مكرّرة لنفس الشخص', async () => {
   const mail = email();
-  assert.equal((await c.request('POST', '/api/auth/signup', { email: 'ليس بريداً', name: 'x', password: 'sirr12345' })).status, 400);
-  assert.equal((await c.request('POST', '/api/auth/signup', { email: mail, name: 'اسم', password: 'قصيرة' })).status, 400);
-  assert.equal((await c.request('POST', '/api/auth/signup', { email: mail, name: 'ا', password: 'sirr12345' })).status, 400);
+  const first = client();
+  await loginViaGoogle(first, { email: mail, name: 'الاسم الأول', sub: 'g-fixed-1' });
+  const firstMe = await first.request('GET', '/api/auth/me');
 
-  await c.request('POST', '/api/auth/signup', { email: mail, name: 'اسم', password: 'sirr12345' });
-  const dup = await client().request('POST', '/api/auth/signup', { email: mail, name: 'آخر', password: 'sirr12345' });
-  assert.equal(dup.status, 409);
+  // دخول ثانٍ لاحقاً بنفس بريد جوجل (ربما بعد تحديث اسمه في جوجل)
+  const second = client();
+  await loginViaGoogle(second, { email: mail, name: 'الاسم بعد التحديث', sub: 'g-fixed-1' });
+  const secondMe = await second.request('GET', '/api/auth/me');
+
+  assert.equal(secondMe.data.user.id, firstMe.data.user.id, 'نفس معرّف الحساب — بلا تكرار');
+  assert.equal(secondMe.data.user.name, 'الاسم بعد التحديث', 'يُحدَّث الاسم من جوجل عند كل دخول');
 });
 
-test('الدخول يتحقق من كلمة المرور ويرفض الخاطئة برسالة واحدة', async () => {
-  const mail = email();
-  await client().request('POST', '/api/auth/signup', { email: mail, name: 'سعاد', password: 'sirr12345' });
-
-  const wrong = await client().request('POST', '/api/auth/login', { email: mail, password: 'wrong-pass' });
-  assert.equal(wrong.status, 401);
-  const missing = await client().request('POST', '/api/auth/login', { email: 'nobody' + mail, password: 'wrong-pass' });
-  assert.equal(missing.data.error, wrong.data.error, 'نفس الرسالة حتى لا يُكشف البريد المسجّل');
-
+test('بريد جوجل غير المُتحقَّق منه يُرفض', async () => {
   const c = client();
-  const ok = await c.request('POST', '/api/auth/login', { email: mail, password: 'sirr12345' });
-  assert.equal(ok.status, 200);
-  assert.equal((await c.request('GET', '/api/auth/me')).data.user.email, mail);
+  const callback = await loginViaGoogle(c, { email: email(), name: 'مشكوك فيه', emailVerified: false });
+  assert.equal(callback.status, 302);
+  assert.match(callback.headers.get('location'), /^\/login\.html\?error=/);
+  assert.equal(c.cookie, '', 'لا جلسة تُفتح لبريد غير موثّق');
+});
+
+test('state خاطئ أو منتهي يُرفض ولا يفتح جلسة', async () => {
+  const restore = mockGoogle({ email: email(), name: 'مهاجم محتمل' });
+  try {
+    const callback = await fetch(`${base}/api/auth/google/callback?code=fake&state=state-غير-موجود`, { redirect: 'manual' });
+    assert.equal(callback.status, 302);
+    assert.match(callback.headers.get('location'), /^\/login\.html\?error=/);
+    assert.ok(!(callback.headers.getSetCookie?.() || []).some((h) => h.startsWith('tafa3l_sid=')));
+  } finally {
+    restore();
+  }
+});
+
+test('بلا GOOGLE_CLIENT_ID/SECRET يرفض بدء تسجيل الدخول برسالة واضحة', async () => {
+  const prevId = process.env.GOOGLE_CLIENT_ID;
+  const prevSecret = process.env.GOOGLE_CLIENT_SECRET;
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  try {
+    const res = await fetch(base + '/api/auth/google', { redirect: 'manual' });
+    assert.equal(res.status, 503);
+    const me = await fetch(base + '/api/auth/me').then((r) => r.json());
+    assert.equal(me.googleConfigured, false);
+  } finally {
+    process.env.GOOGLE_CLIENT_ID = prevId;
+    process.env.GOOGLE_CLIENT_SECRET = prevSecret;
+  }
 });
 
 test('تسجيل الخروج يُبطل الجلسة', async () => {
   const c = client();
-  await c.request('POST', '/api/auth/signup', { email: email(), name: 'ماجد', password: 'sirr12345' });
+  await loginViaGoogle(c, { email: email(), name: 'ماجد' });
   await c.request('POST', '/api/auth/logout');
   assert.equal((await c.request('GET', '/api/auth/me')).data.user, null);
   assert.equal((await c.request('GET', '/api/activities')).status, 401, 'الأنشطة محمية بعد الخروج');
@@ -121,7 +197,7 @@ test('تسجيل الخروج يُبطل الجلسة', async () => {
 
 test('حفظ الأنشطة وتعديلها وحذفها', async () => {
   const c = client();
-  await c.request('POST', '/api/auth/signup', { email: email(), name: 'ليلى', password: 'sirr12345' });
+  await loginViaGoogle(c, { email: email(), name: 'ليلى' });
 
   const created = await c.request('POST', '/api/activities', QUIZ);
   assert.equal(created.status, 201);
@@ -155,8 +231,8 @@ test('حفظ الأنشطة وتعديلها وحذفها', async () => {
 test('لا يرى المدرب أنشطة غيره ولا يعدّلها', async () => {
   const a = client();
   const b = client();
-  await a.request('POST', '/api/auth/signup', { email: email(), name: 'أحمد', password: 'sirr12345' });
-  await b.request('POST', '/api/auth/signup', { email: email(), name: 'بدر', password: 'sirr12345' });
+  await loginViaGoogle(a, { email: email(), name: 'أحمد' });
+  await loginViaGoogle(b, { email: email(), name: 'بدر' });
 
   const mine = await a.request('POST', '/api/activities', QUIZ);
   const id = mine.data.activity.id;
@@ -179,7 +255,7 @@ test('الأنشطة محمية بلا تسجيل دخول', async () => {
 
 test('إطلاق جلسة من نشاط محفوظ يعمل ويظهر «مباشر» في القائمة', async () => {
   const c = client();
-  await c.request('POST', '/api/auth/signup', { email: email(), name: 'هند', password: 'sirr12345' });
+  await loginViaGoogle(c, { email: email(), name: 'هند' });
   const id = (await c.request('POST', '/api/activities', QUIZ)).data.activity.id;
 
   const launched = await c.request('POST', `/api/activities/${id}/launch`);
@@ -203,14 +279,14 @@ test('إطلاق جلسة من نشاط محفوظ يعمل ويظهر «مبا�
 
 test('النشاط المحفوظ يُرفض إن كان بلا أسئلة صالحة', async () => {
   const c = client();
-  await c.request('POST', '/api/auth/signup', { email: email(), name: 'وسام', password: 'sirr12345' });
+  await loginViaGoogle(c, { email: email(), name: 'وسام' });
   const bad = await c.request('POST', '/api/activities', { title: 'فارغ', questions: [] });
   assert.equal(bad.status, 400);
 });
 
 test('الإطلاق المباشر من المحرّر يحفظ النشاط تلقائياً بلا تكرار', async () => {
   const c = client();
-  await c.request('POST', '/api/auth/signup', { email: email(), name: 'ريم', password: 'sirr12345' });
+  await loginViaGoogle(c, { email: email(), name: 'ريم' });
 
   // إطلاق أول: يجب أن يُحفظ النشاط تلقائياً ويعود معرّفه
   const first = await c.request('POST', '/api/sessions', QUIZ);
@@ -248,7 +324,7 @@ test('الإطلاق بلا تسجيل دخول لا يحفظ شيئاً (الو
 
 test('استنساخ نشاط يعطي نسخة مستقلة', async () => {
   const c = client();
-  await c.request('POST', '/api/auth/signup', { email: email(), name: 'جود', password: 'sirr12345' });
+  await loginViaGoogle(c, { email: email(), name: 'جود' });
   const id = (await c.request('POST', '/api/activities', QUIZ)).data.activity.id;
 
   const dup = await c.request('POST', `/api/activities/${id}/duplicate`);
@@ -266,22 +342,6 @@ test('استنساخ نشاط يعطي نسخة مستقلة', async () => {
 
   // ولا يستنسخ أحدٌ نشاط غيره
   const other = client();
-  await other.request('POST', '/api/auth/signup', { email: email(), name: 'غيث', password: 'sirr12345' });
+  await loginViaGoogle(other, { email: email(), name: 'غيث' });
   assert.equal((await other.request('POST', `/api/activities/${id}/duplicate`)).status, 404);
-});
-
-test('كلمات المرور تُخزَّن مجزّأة لا كنص صريح', async () => {
-  const storage = require('../server/storage');
-  const mail = email();
-  await client().request('POST', '/api/auth/signup', { email: mail, name: 'نايف', password: 'sirr12345' });
-  const user = await storage.get().findUserByEmail(mail);
-  assert.ok(user.passwordHash && user.salt);
-  assert.ok(!user.passwordHash.includes('sirr12345'), 'لا تظهر كلمة المرور في التجزئة');
-  assert.equal(user.passwordHash.length, 128, 'scrypt بطول 64 بايت');
-
-  // نفس كلمة المرور لمستخدمين مختلفين تعطي تجزئة مختلفة (ملح عشوائي)
-  const mail2 = email();
-  await client().request('POST', '/api/auth/signup', { email: mail2, name: 'نوف', password: 'sirr12345' });
-  const user2 = await storage.get().findUserByEmail(mail2);
-  assert.notEqual(user.passwordHash, user2.passwordHash);
 });
