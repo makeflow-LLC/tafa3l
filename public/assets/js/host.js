@@ -32,6 +32,9 @@
     premium: null, // { isPremium, isAdmin, premiumUntil, plan }
     editingActivityId: store.local.get(EDITING_KEY, null), // النشاط المحفوظ الجاري تعديله — يبقى بعد تحديث الصفحة
     dashOpenQ: null, // سؤال مفتوح النتائج في جدول لوحة التحكم
+    analyticsData: null, // ملف النتائج الكامل الذي تُبنى منه الرسوم والتوصيات
+    analyticsLoading: false,
+    analyticsError: null,
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -337,7 +340,10 @@
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الصفحة الرئيسية'),
-        el('span', { class: 'muted small', text: 'مسودتك تُحفظ تلقائياً' }),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '/help.html' }, '📖 دليل المعلّم'),
+          el('span', { class: 'muted small', text: 'مسودتك تُحفظ تلقائياً' }),
+        ]),
       ])
     );
     app.append(el('h1', { text: 'إنشاء نشاط تفاعلي' }));
@@ -850,12 +856,14 @@
     const tabs = el('div', { class: 'tabs', style: { marginBottom: '12px' } }, [
       tabBtn('stage', '🎬 العرض'),
       tabBtn('dashboard', '📊 لوحة التحكم'),
+      tabBtn('analytics', '📈 التحليل'),
       tabBtn('share', '🔗 المشاركة'),
     ]);
     app.append(tabs);
 
     if (state.tab === 'stage') renderStage(s);
     else if (state.tab === 'dashboard') renderDashboard();
+    else if (state.tab === 'analytics') renderAnalytics();
     else renderShare(s);
 
     renderBar(s);
@@ -866,6 +874,7 @@
     button.addEventListener('click', () => {
       state.tab = key;
       if (key === 'dashboard') send('host:dashboard');
+      if (key === 'analytics') loadAnalytics(true);
       renderLive();
     });
     return button;
@@ -1426,6 +1435,63 @@
       el('p', { class: 'muted small', style: { margin: 0 } }, `العلامة القصوى ${item.maxPoints} — ضع «صح» أو «خطأ» أو علامة بينهما. لا يرى الطالب نتيجته قبل تصحيحك.`),
       rows.length ? el('div', { class: 'stack tight' }, rows) : el('p', { class: 'muted center', text: 'لا توجد إجابات بعد' }),
     ]);
+  }
+
+  // ------------------------------------------------------- تحليل النتائج
+
+  /** يجلب ملف النتائج الكامل — منه تُبنى الرسوم والتوصيات والتقرير المطبوع */
+  async function loadAnalytics(force) {
+    if (state.analyticsLoading) return;
+    if (state.analyticsData && !force) return;
+    state.analyticsLoading = true;
+    try {
+      state.analyticsData = await api(`/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`);
+      state.analyticsAt = Date.now();
+    } catch (err) {
+      state.analyticsError = err.message || 'تعذّر جلب النتائج';
+    } finally {
+      state.analyticsLoading = false;
+      if (state.tab === 'analytics') renderLive();
+    }
+  }
+
+  function renderAnalytics() {
+    if (state.analyticsLoading || (!state.analyticsData && !state.analyticsError)) {
+      app.append(el('div', { class: 'card center' }, el('div', { class: 'spinner' })));
+      if (!state.analyticsData) loadAnalytics();
+      return;
+    }
+    if (state.analyticsError && !state.analyticsData) {
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('h2', { text: 'تعذّر جلب التحليل' }),
+          el('p', { class: 'muted small', text: state.analyticsError }),
+          el('button', { class: 'btn ghost', type: 'button', onclick: () => loadAnalytics(true) }, 'إعادة المحاولة'),
+        ])
+      );
+      return;
+    }
+
+    const analysis = window.Analytics.compute(state.analyticsData);
+    const head = el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+      el('div', { class: 'stack tight' }, [
+        el('h2', { style: { margin: 0 }, text: '📈 تحليل النتائج' }),
+        el('span', {
+          class: 'muted small',
+          text: `${analysis.title} · ${new Date(analysis.startedAt).toLocaleString('ar')} · ${analysis.durationMinutes} دقيقة`,
+        }),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => loadAnalytics(true) }, '🔄 تحديث'),
+        el('button', { class: 'btn ok sm', type: 'button', onclick: () => exportAs('pdf') }, '📄 تقرير PDF'),
+        el('button', { class: 'btn ok sm', type: 'button', onclick: () => exportAs('excel') }, '📊 Excel'),
+      ]),
+    ]);
+    app.append(head);
+
+    const box = el('div');
+    box.innerHTML = window.Analytics.reportHtml(analysis);
+    app.append(box);
   }
 
   function renderDashboard() {

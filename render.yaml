@@ -55,4 +55,4 @@ services:
       # - key: PREMIUM_WHATSAPP
       #   value: "970597034066"
       # - key: PREMIUM_PRICE_USD
-      #   value: "3"
+      #   value: "5"

@@ -174,6 +174,9 @@
 
   // -------------------------------------------------------- بناء الأوراق
 
+  const PACE_AR = { host: 'المدرب ينقل الأسئلة', auto: 'انتقال تلقائي', self: 'كل طالب بسرعته' };
+  const SCORING_AR = { speed: 'نقاط حسب السرعة', flat: 'نقاط ثابتة', none: 'بلا نقاط' };
+
   const TYPE_AR = {
     mc: 'اختيار من متعدد',
     truefalse: 'صح/خطأ',
@@ -187,25 +190,66 @@
   /** يحوّل مخرجات /api/sessions/:code/export إلى أوراق جاهزة */
   function buildSheets(data) {
     const questions = data.questions || [];
-    const participants = (data.participants || []).slice().sort((a, b) => b.score - a.score);
+    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const analysis = global.Analytics ? global.Analytics.compute(data) : null;
+    const started = new Date(data.startedAt || data.exportedAt);
+    const ended = new Date(data.endedAt || data.exportedAt);
 
-    const summary = [
-      ['نشاط', data.title],
+    // ورقة التعريف: كل ما يسأل عنه المعلّم قبل أن ينظر في الدرجات
+    const info = [
+      ['اسم النشاط', data.title],
       ['رمز الجلسة', data.code],
+      ['التاريخ', started.toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' })],
+      ['وقت البدء', started.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })],
+      ['وقت الانتهاء', ended.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })],
+      ['مدة النشاط (دقيقة)', data.durationMinutes || 1],
+      ['عدد الطلاب', data.participantCount ?? participants.length],
+      ['عدد الأسئلة', data.questionCount ?? questions.length],
+      ['العلامة الكاملة', data.maxScore || 0],
+      ['نمط العرض', PACE_AR[data.settings?.pace] || '—'],
+      ['احتساب النقاط', SCORING_AR[data.settings?.scoring] || '—'],
       ['تاريخ التصدير', new Date(data.exportedAt).toLocaleString('ar')],
-      ['عدد الأسئلة', questions.length],
-      ['عدد المشاركين', participants.length],
     ];
+    if (analysis) {
+      info.push([]);
+      info.push(['متوسط الصف (٪)', analysis.avgPercent ?? '—']);
+      info.push(['وسيط الدرجات (٪)', analysis.median ?? '—']);
+      info.push(['نسبة المشاركة (٪)', analysis.participation]);
+      info.push(['أصعب سؤال', analysis.hardest ? `${analysis.hardest.text} (${analysis.hardest.accuracy}٪)` : '—']);
+      info.push(['أسهل سؤال', analysis.easiest ? `${analysis.easiest.text} (${analysis.easiest.accuracy}٪)` : '—']);
+      info.push(['الأسرع إجابةً', analysis.fastest ? `${analysis.fastest.text} (${analysis.fastest.avgSeconds}ث)` : '—']);
+      info.push(['الأبطأ إجابةً', analysis.slowest ? `${analysis.slowest.text} (${analysis.slowest.avgSeconds}ث)` : '—']);
+      info.push(['إجابات تنتظر التصحيح', analysis.pendingTotal]);
+      info.push([]);
+      info.push(['التوصيات', '']);
+      analysis.recommendations.forEach((rec, i) => info.push([`توصية ${i + 1}`, rec.text]));
+    }
 
-    const people = [['الترتيب', 'المشارك', 'النقاط', 'عدد الإجابات', 'إجابات صحيحة', 'متوسط الزمن (ث)']];
+    const people = [
+      ['الترتيب', 'الطالب', 'الفريق', 'الدرجة', 'العلامة الكاملة', 'النسبة ٪', 'أجاب', 'لم يجب', 'صحيحة', 'جزئية', 'خاطئة', 'بانتظار التصحيح', 'أطول سلسلة', 'متوسط الزمن (ث)'],
+    ];
     participants.forEach((p, i) => {
-      const answers = (p.answers || []).filter(Boolean);
-      const correct = answers.filter((a) => a.correct === true).length;
-      const seconds = answers.length ? answers.reduce((sum, a) => sum + (a.seconds || 0), 0) / answers.length : 0;
-      people.push([i + 1, p.name, p.score, answers.length, correct, Math.round(seconds * 10) / 10]);
+      people.push([
+        p.rank ?? i + 1,
+        p.name,
+        p.team || '—',
+        p.score,
+        p.maxScore ?? data.maxScore ?? 0,
+        p.percent === null || p.percent === undefined ? '—' : p.percent,
+        p.answered ?? 0,
+        p.unanswered ?? 0,
+        p.correctCount ?? 0,
+        p.partialCount ?? 0,
+        p.wrongCount ?? 0,
+        p.pendingCount ?? 0,
+        p.bestStreak ?? 0,
+        p.avgSeconds ?? 0,
+      ]);
     });
 
-    const qRows = [['#', 'النوع', 'السؤال', 'الخيارات', 'الإجابة الصحيحة', 'عدد الإجابات']];
+    const qRows = [
+      ['#', 'النوع', 'السؤال', 'الخيارات', 'الإجابة الصحيحة', 'العلامة', 'عدد الإجابات', 'صحيحة', 'جزئية', 'خاطئة', 'الدقة ٪', 'متوسط الزمن (ث)'],
+    ];
     questions.forEach((q) => {
       qRows.push([
         q.index,
@@ -213,12 +257,18 @@
         q.text,
         (q.options || []).join(' | '),
         (q.correct || []).join(' | ') || (q.blanks || []).filter(Boolean).join(' | '),
-        q.results?.total || 0,
+        q.maxPoints || 0,
+        q.responses ?? q.results?.total ?? 0,
+        q.correctCount ?? 0,
+        q.partialCount ?? 0,
+        q.wrongCount ?? 0,
+        q.accuracy === null || q.accuracy === undefined ? '—' : q.accuracy,
+        q.avgSeconds ?? 0,
       ]);
     });
 
     // كل إجابة في سطر: هذا ما يريده المعلّم للتحليل في Excel
-    const detail = [['المشارك', '#', 'السؤال', 'إجابته', 'صحيحة؟', 'النقاط', 'الزمن (ث)']];
+    const detail = [['الطالب', '#', 'السؤال', 'إجابته', 'صحيحة؟', 'النقاط', 'من', 'الزمن (ث)']];
     participants.forEach((p) => {
       (p.answers || []).forEach((a, i) => {
         if (!a) return;
@@ -227,22 +277,25 @@
           i + 1,
           a.question,
           Array.isArray(a.answer) ? a.answer.join(' + ') : a.answer,
-          a.correct === null || a.correct === undefined
-            ? '—'
-            : a.correct === 'partial'
-              ? 'جزئي'
-              : a.correct
-                ? 'نعم'
-                : 'لا',
+          a.pending
+            ? 'بانتظار التصحيح'
+            : a.correct === null || a.correct === undefined
+              ? '—'
+              : a.correct === 'partial'
+                ? 'جزئي'
+                : a.correct
+                  ? 'نعم'
+                  : 'لا',
           a.points || 0,
+          a.maxPoints || 0,
           a.seconds || 0,
         ]);
       });
     });
 
     return [
-      { name: 'ملخّص', rows: summary },
-      { name: 'المشاركون', rows: people },
+      { name: 'بطاقة النشاط', rows: info },
+      { name: 'الطلاب', rows: people },
       { name: 'الأسئلة', rows: qRows },
       { name: 'الإجابات', rows: detail },
     ];
@@ -265,18 +318,64 @@
 
   // ------------------------------------------------------------------ pdf
 
+  /** أنماط التقرير المطبوع — مستقلة عن صفحة التطبيق لأن النافذة جديدة */
+  const PRINT_CSS = `
+  body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color: #16162a; margin: 24px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { font-size: 18px; margin: 22px 0 10px; }
+  h3 { margin: 0 0 10px; font-size: 15px; }
+  .meta { color: #61657d; margin: 0 0 6px; font-size: 13px; }
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0 18px; }
+  .meta-grid div { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+  .meta-grid strong { display: block; font-size: 15px; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 18px; }
+  th, td { border: 1px solid #d7dae6; padding: 6px 8px; text-align: right; font-size: 13px; }
+  th { background: #f1f3f9; }
+  .q { break-inside: avoid; margin-bottom: 12px; border: 1px solid #e3e6ef; border-radius: 10px; padding: 10px 14px; }
+  .q h3 { margin: 0 0 6px; font-size: 14px; }
+  .ok { color: #128a4d; margin: 0 0 6px; font-size: 13px; }
+  ul { margin: 4px 0; padding-inline-start: 20px; font-size: 13px; }
+  .chart-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .chart-stat { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px; text-align: center; }
+  .chart-stat strong { display: block; font-size: 20px; font-weight: 800; }
+  .chart-stat span { font-size: 11px; color: #61657d; }
+  .chart-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+  .chart-card { flex: 1 1 260px; border: 1px solid #e3e6ef; border-radius: 10px; padding: 12px; margin-bottom: 12px; break-inside: avoid; }
+  .chart-card.grow { flex: 3 1 320px; }
+  .chart-donut { display: block; width: 150px; margin: 0 auto; color: #16162a; }
+  .chart-bars { display: grid; gap: 6px; }
+  .chart-bar { display: grid; grid-template-columns: minmax(90px, 36%) 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
+  .chart-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #61657d; }
+  .chart-track { display: block; height: 12px; border-radius: 999px; background: #f1f3f9; overflow: hidden; }
+  .chart-track i { display: block; height: 100%; border-radius: 999px; }
+  .chart-value { font-weight: 700; }
+  .chart-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .chart-highlight { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px 10px; border-inline-start: 4px solid #5b45e0; display: grid; gap: 2px; break-inside: avoid; }
+  .chart-highlight.bad { border-inline-start-color: #cc2f2f; }
+  .chart-highlight.ok { border-inline-start-color: #128a4d; }
+  .chart-highlight.warn { border-inline-start-color: #a45c00; }
+  .chart-highlight .t, .chart-highlight .v { font-size: 11px; color: #61657d; }
+  .chart-table { width: 100%; }
+  .rec-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .rec { padding: 8px 10px; border-radius: 8px; background: #f6f7fb; border-inline-start: 4px solid #5b45e0; font-size: 13px; line-height: 1.7; break-inside: avoid; }
+  .rec.ok { border-inline-start-color: #128a4d; background: rgba(18,138,77,0.08); }
+  .rec.warn { border-inline-start-color: #a45c00; background: rgba(164,92,0,0.08); }
+  .rec.bad { border-inline-start-color: #cc2f2f; background: rgba(204,47,47,0.08); }
+  .muted { color: #61657d; }
+  .small { font-size: 12px; }
+  .foot { margin-top: 20px; font-size: 11px; color: #8a8ea3; text-align: center; }
+  @media print { body { margin: 12mm; } }`;
+
+
+  /**
+   * تقرير المعلّم الكامل: بطاقة تعريف النشاط، ثم التحليل والرسوم والتوصيات
+   * (من نفس محرّك لوحة التحليل)، ثم تفصيل كل سؤال وكل طالب.
+   */
   function pdfHtml(data) {
     const questions = data.questions || [];
-    const participants = (data.participants || []).slice().sort((a, b) => b.score - a.score);
-    const row = (cells, tag = 'td') => `<tr>${cells.map((c) => `<${tag}>${esc(c)}</${tag}>`).join('')}</tr>`;
-
-    const peopleRows = participants
-      .map((p, i) => {
-        const answers = (p.answers || []).filter(Boolean);
-        const correct = answers.filter((a) => a.correct === true).length;
-        return row([i + 1, p.name, p.score, `${correct}/${answers.length}`]);
-      })
-      .join('');
+    const analysis = global.Analytics ? global.Analytics.compute(data) : null;
+    const started = new Date(data.startedAt || data.exportedAt);
+    const ended = new Date(data.endedAt || data.exportedAt);
 
     const questionBlocks = questions
       .map((q) => {
@@ -291,41 +390,51 @@
         } else if (results.average !== undefined && results.average !== null) {
           body = `<p>المتوسط: ${results.average}</p>`;
         } else if (results.responses) {
-          // الإجابات النصّية: نص كل مشارك مع اسمه إن كان النشاط بأسماء
           body = `<ul>${results.responses
             .map((r) => `<li>${esc(r.text)}${r.name ? ` — <strong>${esc(r.name)}</strong>` : ''}</li>`)
             .join('')}</ul>`;
         }
-        return `<div class="q"><h3>${q.index}. ${esc(q.text)} <small>(${esc(TYPE_AR[q.type] || q.type)})</small></h3>${
-          q.correct && q.correct.length ? `<p class="ok">الإجابة الصحيحة: ${esc(q.correct.join('، '))}</p>` : ''
-        }${body}</div>`;
+        const stats = [
+          `أجاب ${q.responses}`,
+          q.accuracy === null || q.accuracy === undefined ? null : `دقة ${q.accuracy}٪`,
+          q.avgSeconds ? `${q.avgSeconds}ث وسطياً` : null,
+          q.maxPoints ? `العلامة ${q.maxPoints}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return `<div class="q"><h3>${q.index}. ${esc(q.text)} <small>(${esc(TYPE_AR[q.type] || q.type)})</small></h3>
+          <p class="meta">${esc(stats)}</p>
+          ${q.correct && q.correct.length ? `<p class="ok">الإجابة الصحيحة: ${esc(q.correct.join('، '))}</p>` : ''}
+          ${q.blanks && q.blanks.filter(Boolean).length ? `<p class="ok">الإجابات المتوقعة: ${esc(q.blanks.filter(Boolean).join(' · '))}</p>` : ''}
+          ${body}</div>`;
       })
       .join('');
 
+    const metaGrid = `<div class="meta-grid">
+      <div><strong>${esc(data.code)}</strong>رمز الجلسة</div>
+      <div><strong>${esc(started.toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' }))}</strong>التاريخ</div>
+      <div><strong>${esc(started.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' }))} — ${esc(
+        ended.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })
+      )}</strong>وقت البدء والانتهاء</div>
+      <div><strong>${data.durationMinutes || 1} دقيقة</strong>مدة النشاط</div>
+      <div><strong>${data.participantCount ?? (data.participants || []).length}</strong>عدد الطلاب</div>
+      <div><strong>${data.questionCount ?? questions.length}</strong>عدد الأسئلة</div>
+      <div><strong>${data.maxScore || 0}</strong>العلامة الكاملة</div>
+      <div><strong>${esc(PACE_AR[data.settings?.pace] || '—')}</strong>نمط العرض</div>
+      <div><strong>${esc(SCORING_AR[data.settings?.scoring] || '—')}</strong>احتساب النقاط</div>
+    </div>`;
+
     return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <title>تقرير ${esc(data.title)} — Tapio</title>
-<style>
-  body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color: #16162a; margin: 28px; }
-  h1 { margin: 0 0 4px; }
-  .meta { color: #61657d; margin-bottom: 18px; }
-  table { border-collapse: collapse; width: 100%; margin-bottom: 22px; }
-  th, td { border: 1px solid #d7dae6; padding: 7px 9px; text-align: right; font-size: 14px; }
-  th { background: #f1f3f9; }
-  .q { break-inside: avoid; margin-bottom: 14px; border: 1px solid #e3e6ef; border-radius: 10px; padding: 10px 14px; }
-  .q h3 { margin: 0 0 6px; font-size: 15px; }
-  .ok { color: #128a4d; margin: 0 0 6px; font-size: 13px; }
-  ul { margin: 4px 0; padding-inline-start: 20px; font-size: 14px; }
-  @media print { body { margin: 12mm; } }
-</style></head><body>
+<style>${PRINT_CSS}</style></head><body>
 <h1>${esc(data.title)}</h1>
-<p class="meta">رمز الجلسة ${esc(data.code)} · ${participants.length} مشاركاً · ${questions.length} سؤالاً · ${esc(
-      new Date(data.exportedAt).toLocaleString('ar')
-    )}</p>
-<h2>ترتيب المشاركين</h2>
-<table><thead>${row(['الترتيب', 'المشارك', 'النقاط', 'إجابات صحيحة'], 'th')}</thead><tbody>${peopleRows}</tbody></table>
-<h2>نتائج الأسئلة</h2>
+<p class="meta">تقرير نتائج · منصة Tapio · صدر في ${esc(new Date(data.exportedAt).toLocaleString('ar'))}</p>
+${metaGrid}
+${analysis ? `<h2>تحليل النتائج والتوصيات</h2>${global.Analytics.reportHtml(analysis, { print: true })}` : ''}
+<h2>تفصيل الأسئلة</h2>
 ${questionBlocks}
-<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });<\/script>
+<p class="foot">Tapio — tapio.fun · بيانات الطلاب مؤقتة ولا تُحفظ على الخادم بعد انتهاء الجلسة.</p>
+<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 400); });<\/script>
 </body></html>`;
   }
 

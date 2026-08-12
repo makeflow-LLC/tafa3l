@@ -12,7 +12,7 @@ const DEFAULT_ADMIN = 'jihad@makeflow.tech';
 
 const PLAN = {
   whatsapp: process.env.PREMIUM_WHATSAPP || '970597034066',
-  priceUsd: Number(process.env.PREMIUM_PRICE_USD) || 3,
+  priceUsd: Number(process.env.PREMIUM_PRICE_USD) || 5,
   perks: ['تصميم النشاط بالذكاء الاصطناعي', 'تصدير النتائج PDF و Excel'],
 };
 

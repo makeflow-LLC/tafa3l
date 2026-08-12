@@ -409,3 +409,81 @@ test('لا يمكن تصحيح سؤال غير مخصّص للتصحيح الي�
   host.close();
   a.close();
 });
+
+test('ملف النتائج يحمل بطاقة النشاط وإحصاء كل سؤال ودرجة كل طالب بنسبتها', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'اختبار التقرير',
+    settings: { pace: 'host', requireName: true, countdown: false, scoring: 'flat', streakBonus: false },
+    questions: [
+      { type: 'mc', text: 'ما عاصمة الأردن؟', timeLimit: 0, points: 10, options: [{ id: 'o0', text: 'عمّان' }, { id: 'o1', text: 'إربد' }], correct: ['o0'] },
+      { type: 'mc', text: 'كم يساوي ٢+٢؟', timeLimit: 0, points: 10, options: [{ id: 'o0', text: '٤' }, { id: 'o1', text: '٥' }], correct: ['o0'] },
+    ],
+  });
+
+  const a = ws();
+  const b = ws();
+  await a.ready;
+  await b.ready;
+  a.send({ t: 'join', code: created.code, name: 'ليان', avatar: { seed: 'l' } });
+  b.send({ t: 'join', code: created.code, name: 'عمر', avatar: { seed: 'o' } });
+  await a.next('joined');
+  await b.next('joined');
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+  host.send({ t: 'host:start' });
+
+  const q1 = await a.next((m) => m.t === 'state' && m.phase === 'question');
+  a.send({ t: 'answer', questionId: q1.question.id, value: 'o0' });
+  await a.next('answer:accepted');
+  b.send({ t: 'answer', questionId: q1.question.id, value: 'o1' });
+  await b.next('answer:accepted');
+
+  host.send({ t: 'host:skip' });
+  const q2 = await a.next((m) => m.t === 'state' && m.phase === 'question' && m.index === 1);
+  a.send({ t: 'answer', questionId: q2.question.id, value: 'o0' });
+  await a.next('answer:accepted');
+  host.send({ t: 'host:end' });
+  await a.next((m) => m.t === 'state' && m.status === 'ended');
+
+  const report = await fetch(`${base}/api/sessions/${created.code}/export?hostToken=${created.hostToken}`).then((r) => r.json());
+
+  // بطاقة النشاط
+  assert.equal(report.title, 'اختبار التقرير');
+  assert.equal(report.questionCount, 2);
+  assert.equal(report.participantCount, 2);
+  assert.equal(report.maxScore, 20, 'مجموع علامات الأسئلة المصحَّحة');
+  assert.ok(report.durationMinutes >= 1);
+  assert.ok(Date.parse(report.startedAt) > 0 && Date.parse(report.endedAt) > 0);
+  assert.equal(report.settings.scoring, 'flat');
+
+  // إحصاء الأسئلة
+  const first = report.questions[0];
+  assert.equal(first.responses, 2);
+  assert.equal(first.correctCount, 1);
+  assert.equal(first.wrongCount, 1);
+  assert.equal(first.accuracy, 50);
+  assert.equal(first.maxPoints, 10);
+  const second = report.questions[1];
+  assert.equal(second.responses, 1, 'سؤال أجاب عنه واحد فقط');
+  assert.equal(second.accuracy, 100);
+
+  // الطلاب: درجة ونسبة وترتيب
+  const lian = report.participants.find((p) => p.name === 'ليان');
+  const omar = report.participants.find((p) => p.name === 'عمر');
+  assert.equal(lian.score, 20);
+  assert.equal(lian.percent, 100);
+  assert.equal(lian.rank, 1);
+  assert.equal(lian.answered, 2);
+  assert.equal(lian.correctCount, 2);
+  assert.equal(omar.rank, 2);
+  assert.equal(omar.percent, 0);
+  assert.equal(omar.unanswered, 1);
+  assert.equal(omar.answers[0].maxPoints, 10);
+
+  host.close();
+  a.close();
+  b.close();
+});
