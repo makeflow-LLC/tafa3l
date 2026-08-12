@@ -104,7 +104,7 @@ test('المالك يرى المدربين ويمدّد ويخصم ويلغي', 
   const before = await teacher.request('GET', '/api/auth/me');
   assert.equal(before.data.premium.isPremium, false, 'يبدأ حساباً مجانياً');
   assert.equal(before.data.premium.plan.whatsapp, '970597034066');
-  assert.equal(before.data.premium.plan.priceUsd, 3);
+  assert.equal(before.data.premium.plan.priceUsd, 5);
 
   const owner = client();
   await owner.login('owner@tapio.fun', 'المالك');

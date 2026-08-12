@@ -223,6 +223,7 @@ class Session {
 
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
+    this.startedAt = null;
     this.endedAt = null;
 
     this.status = 'lobby'; // lobby | live | ended
@@ -329,6 +330,8 @@ class Session {
   start() {
     if (this.status === 'ended') return;
     this.status = 'live';
+    // لحظة الانطلاق الفعلية — منها تُحسب مدة النشاط في التقارير
+    if (!this.startedAt) this.startedAt = Date.now();
     if (this.settings.pace === 'self') {
       // كل متدرب يبدأ من سؤاله الأول بسرعته الخاصة
       this.currentIndex = 0;
@@ -1013,12 +1016,36 @@ class Session {
   }
 
   /** تصدير النتائج (يبقى مؤقتاً — ينزّله المدرب إن أراد الاحتفاظ به) */
+  /**
+   * تصدير كامل للنتائج: بطاقة تعريف النشاط (اسم، تاريخ، مدة، إعدادات)،
+   * وإحصاء كل سؤال، ودرجة كل طالب بنسبتها وترتيبها. تُبنى منه ملفات Excel
+   * وتقارير PDF والتحليلات، فكل ما تحتاجه تلك الشاشات يجب أن يكون هنا.
+   */
   export() {
-    return {
-      title: this.title,
-      code: this.code,
-      exportedAt: new Date().toISOString(),
-      questions: this.questions.map((q, i) => ({
+    const participants = [...this.participants.values()];
+    const startedAt = this.startedAt || this.createdAt;
+    const endedAt = this.endedAt || Date.now();
+    // العلامة الكاملة الممكنة: المصحَّح آلياً + المصحَّح يدوياً
+    const maxScore = this.questions.reduce((sum, q) => {
+      if (q.manual) return sum + q.points;
+      if (SCORED_TYPES.has(q.type) && q.correct.length > 0) return sum + q.points;
+      return sum;
+    }, 0);
+
+    const ranked = participants
+      .slice()
+      .sort((a, b) => b.score - a.score || a.joinedAt - b.joinedAt)
+      .map((p, i) => ({ id: p.id, rank: i + 1 }));
+    const rankOf = new Map(ranked.map((r) => [r.id, r.rank]));
+
+    const questionStat = (q, i) => {
+      const answers = participants.map((p) => p.answers.get(q.id)).filter(Boolean);
+      const graded = answers.filter((a) => a.correct !== null && a.correct !== undefined);
+      const fullyCorrect = answers.filter((a) => a.correct === true).length;
+      const partial = answers.filter((a) => a.correct === 'partial').length;
+      const wrong = graded.length - fullyCorrect - partial;
+      const scoredQ = q.manual || (SCORED_TYPES.has(q.type) && q.correct.length > 0);
+      return {
         index: i + 1,
         text: q.text,
         type: q.type,
@@ -1026,21 +1053,80 @@ class Session {
         correct: q.correct.map((c) => q.options.find((o) => o.id === c)?.text).filter(Boolean),
         // «أكمل الفراغ»: الإجابات المتوقعة تُصدَّر مكان الإجابة الصحيحة
         blanks: q.type === 'blank' ? q.blanks : undefined,
-        maxPoints: q.manual ? q.points : undefined,
+        maxPoints: scoredQ ? q.points : 0,
+        scored: scoredQ,
+        manual: !!q.manual,
+        timeLimit: q.timeLimit,
+        responses: answers.length,
+        pending: answers.filter((a) => a.pending).length,
+        correctCount: fullyCorrect,
+        partialCount: partial,
+        wrongCount: Math.max(0, wrong),
+        accuracy: scoredQ && graded.length ? Math.round((fullyCorrect / graded.length) * 100) : null,
+        avgSeconds: answers.length ? Math.round((answers.reduce((sum, a) => sum + a.ms, 0) / answers.length) / 100) / 10 : 0,
         results: this.aggregate(i),
-      })),
-      participants: [...this.participants.values()].map((p) => ({
-        name: this.settings.requireName ? p.name : 'مجهول',
-        score: p.score,
-        answers: this.questions.map((q) => {
-          const a = p.answers.get(q.id);
-          if (!a) return null;
-          const label = Array.isArray(a.value)
-            ? a.value.map((v) => q.options.find((o) => o.id === v)?.text ?? v).join(' + ')
-            : a.value;
-          return { question: q.text, answer: label, correct: a.correct, points: a.points, seconds: Math.round(a.ms / 100) / 10 };
-        }),
-      })),
+      };
+    };
+
+    return {
+      title: this.title,
+      code: this.code,
+      exportedAt: new Date().toISOString(),
+      startedAt: new Date(startedAt).toISOString(),
+      endedAt: new Date(endedAt).toISOString(),
+      // مدة النشاط الفعلية بالدقائق — أول ما يسأل عنه المعلّم في التقرير
+      durationMinutes: Math.max(1, Math.round((endedAt - startedAt) / 60000)),
+      status: this.status,
+      settings: {
+        pace: this.settings.pace,
+        scoring: this.settings.scoring,
+        requireName: this.settings.requireName,
+        showLeaderboard: this.settings.showLeaderboard,
+        teamMode: this.settings.teamMode,
+      },
+      questionCount: this.questions.length,
+      participantCount: participants.length,
+      maxScore,
+      questions: this.questions.map(questionStat),
+      participants: participants.map((p) => {
+        const answered = this.questions.filter((q) => p.answers.has(q.id)).length;
+        const values = [...p.answers.values()];
+        const correctCount = values.filter((a) => a.correct === true).length;
+        const partialCount = values.filter((a) => a.correct === 'partial').length;
+        const totalMs = values.reduce((sum, a) => sum + a.ms, 0);
+        return {
+          name: this.settings.requireName ? p.name : 'مجهول',
+          team: this.teamOf(p)?.name || null,
+          score: p.score,
+          maxScore,
+          percent: maxScore ? Math.round((p.score / maxScore) * 100) : null,
+          rank: rankOf.get(p.id) || null,
+          answered,
+          unanswered: this.questions.length - answered,
+          correctCount,
+          partialCount,
+          wrongCount: values.filter((a) => a.correct === false).length,
+          pendingCount: values.filter((a) => a.pending).length,
+          bestStreak: p.bestStreak,
+          avgSeconds: values.length ? Math.round((totalMs / values.length) / 100) / 10 : 0,
+          answers: this.questions.map((q) => {
+            const a = p.answers.get(q.id);
+            if (!a) return null;
+            const label = Array.isArray(a.value)
+              ? a.value.map((v) => q.options.find((o) => o.id === v)?.text ?? v).join(' + ')
+              : a.value;
+            return {
+              question: q.text,
+              answer: label,
+              correct: a.correct,
+              points: a.points,
+              maxPoints: a.maxPoints || (SCORED_TYPES.has(q.type) && q.correct.length ? q.points : 0),
+              pending: !!a.pending,
+              seconds: Math.round(a.ms / 100) / 10,
+            };
+          }),
+        };
+      }),
     };
   }
 

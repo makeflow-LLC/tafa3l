@@ -219,7 +219,7 @@ test('الحساب المجاني يُمنع بلطف مع رقم الواتسا
     const res = await c.request('POST', '/api/ai/design', { messages: [{ role: 'user', content: 'مرحباً' }] });
     assert.equal(res.status, 402, 'ميزة بريميوم');
     assert.match(res.data.error, /970597034066/);
-    assert.equal(res.data.upgrade.priceUsd, 3);
+    assert.equal(res.data.upgrade.priceUsd, 5);
     assert.equal(mock.seen.azureRequests.length, 0, 'لا ننادي أزور أصلاً لحساب مجاني');
   } finally {
     mock.restore();
