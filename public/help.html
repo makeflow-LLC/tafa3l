@@ -8,12 +8,12 @@
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.23.0" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.24.0" />
   </head>
   <body>
     <div class="topbar">
       <a class="brand" href="/" style="text-decoration: none; color: inherit">
-        <img class="logo light-only" src="/assets/logo.svg?v=1.23.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.23.0" alt="Tapio" width="249" height="159" />
+        <img class="logo light-only" src="/assets/logo.svg?v=1.24.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.24.0" alt="Tapio" width="249" height="159" />
       </a>
       <div class="row" style="gap: 6px">
         <a class="btn ghost sm" href="/host.html">➕ نشاط جديد</a>
@@ -33,10 +33,11 @@
           <a class="btn ghost sm" href="#types">٢. أنواع الأسئلة</a>
           <a class="btn ghost sm" href="#scoring">٣. احتساب النقاط</a>
           <a class="btn ghost sm" href="#grading">٤. التصحيح اليدوي</a>
-          <a class="btn ghost sm" href="#modes">٥. أنماط العرض</a>
-          <a class="btn ghost sm" href="#results">٦. النتائج والتحليل</a>
-          <a class="btn ghost sm" href="#practices">٧. أفضل الممارسات</a>
-          <a class="btn ghost sm" href="#faq">٨. أسئلة شائعة</a>
+          <a class="btn ghost sm" href="#schedule">٥. الجدولة والمدة</a>
+          <a class="btn ghost sm" href="#modes">٦. أنماط العرض</a>
+          <a class="btn ghost sm" href="#results">٧. النتائج والتحليل</a>
+          <a class="btn ghost sm" href="#practices">٨. أفضل الممارسات</a>
+          <a class="btn ghost sm" href="#faq">٩. أسئلة شائعة</a>
         </div>
       </div>
 
@@ -114,8 +115,26 @@
       </div>
 
       <!-- ٥ -->
+      <div class="card stack" id="schedule">
+        <h2 style="margin: 0">٥. جدولة الاختبار ومدّته ⏰</h2>
+        <p style="margin: 0">في إعدادات النشاط قسم <strong>«الجدولة والمدة»</strong>:</p>
+        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
+          <li><strong>موعد فتح الاختبار</strong>: اختر التاريخ والساعة (بتوقيت جهازك). أطلق الجلسة مبكراً
+            وشارك الرمز، فيرى الطلاب <em>عدّاداً تنازلياً</em> حتى الموعد، ثم <strong>يفتح الاختبار وحده</strong>
+            بلا أي ضغطة منك — على شاشات الطلاب وعلى البروجكتر معاً.</li>
+          <li><strong>مدة الاختبار بالدقائق</strong>: عند انتهائها <strong>يُقفل الاختبار تلقائياً</strong> للجميع
+            وتظهر النتائج. يظهر للطالب وللمعلّم شريط «⏳ ينتهي الاختبار خلال …».</li>
+        </ul>
+        <p style="margin: 0">الاثنان اختياريان ومستقلان: تقدر تضع موعداً بلا مدة، أو مدة بلا موعد، أو الاثنين معاً.</p>
+        <p class="muted small" style="margin: 0">
+          تستطيع دائماً البدء قبل الموعد من زر «بدء النشاط» — وعندها تُحسب المدة من لحظة بدئك الفعلي.
+          المدة الكلية شيء مختلف عن <em>مؤقّت السؤال</em>: الأول يقفل الاختبار كله، والثاني ينهي سؤالاً واحداً.
+        </p>
+      </div>
+
+      <!-- ٦ -->
       <div class="card stack" id="modes">
-        <h2 style="margin: 0">٥. أنماط العرض: أيها تختار؟</h2>
+        <h2 style="margin: 0">٦. أنماط العرض: أيها تختار؟</h2>
         <div class="table-wrap">
           <table>
             <thead><tr><th>النمط</th><th>كيف يعمل</th><th>الأنسب لـ</th></tr></thead>
@@ -132,7 +151,7 @@
 
       <!-- ٦ -->
       <div class="card stack" id="results">
-        <h2 style="margin: 0">٦. النتائج والتحليل</h2>
+        <h2 style="margin: 0">٧. النتائج والتحليل</h2>
         <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
           <li><strong>لوحة التحكم</strong>: تقدّم كل طالب سؤالاً بسؤال، ونتائج كل سؤال، وبطاقات التصحيح.</li>
           <li><strong>تبويب التحليل 📈</strong>: متوسط الصف والوسيط ونسبة المشاركة، توزيع الدرجات، دقة كل سؤال، متوسط زمن الإجابة، و<strong>أصعب سؤال / أسهل سؤال / الأسرع / الأبطأ / الأكثر تخطّياً</strong>، مع <strong>توصيات مكتوبة</strong> مبنية على أرقام نشاطك أنت.</li>
@@ -144,7 +163,7 @@
 
       <!-- ٧ -->
       <div class="card stack" id="practices">
-        <h2 style="margin: 0">٧. أفضل الممارسات</h2>
+        <h2 style="margin: 0">٨. أفضل الممارسات</h2>
         <h3 style="margin: 6px 0 0">في تصميم الأسئلة</h3>
         <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
           <li><strong>مفهوم واحد لكل سؤال.</strong> إن أخطأ الطالب تعرف تماماً أين الخلل.</li>
@@ -178,10 +197,11 @@
 
       <!-- ٨ -->
       <div class="card stack" id="faq">
-        <h2 style="margin: 0">٨. أسئلة شائعة</h2>
+        <h2 style="margin: 0">٩. أسئلة شائعة</h2>
         <p style="margin: 0"><strong>هل يحتاج الطالب حساباً؟</strong> لا. يدخل بالرمز أو الـ QR ويكتب اسمه فقط.</p>
         <p style="margin: 0"><strong>هل تُحفظ إجابات الطلاب؟</strong> لا. كل شيء في ذاكرة الخادم ويُمحى بعد الجلسة — لذا التنزيل مهم.</p>
         <p style="margin: 0"><strong>انقطع النت عن طالب.</strong> يعيد فتح الرابط فيعود بنفس اسمه ونقاطه ما دامت الجلسة قائمة.</p>
+        <p style="margin: 0"><strong>هل يبقى الاختبار المجدول محفوظاً حتى موعده؟</strong> نعم — الجلسة المجدولة لا تُمسح بالخمول قبل موعدها، فتقدر تُطلقها اليوم لموعد بعد أيام وتوزّع الرمز مسبقاً.</p>
         <p style="margin: 0"><strong>هل أستطيع تعديل نشاط أطلقته؟</strong> نعم — كل نشاط تطلقه يُحفظ في «نشاطاتي» تلقائياً، وإنهاء الجلسة لا يحذفه. عدّله أو استنسخه وأطلقه من جديد.</p>
         <p style="margin: 0"><strong>ما الفرق بين المجاني والبريميوم؟</strong> كل الأنشطة والأسئلة والجلسات مجانية بلا حدود. البريميوم يفتح: <strong>تصميم النشاط بالذكاء الاصطناعي</strong>، و<strong>صور الأسئلة</strong>، و<strong>تصدير النتائج Excel و PDF</strong>.</p>
         <div class="row" style="margin-top: 4px">
@@ -193,7 +213,7 @@
       <p class="footer">Tapio — منصة أسئلة واستطلاعات تفاعلية للمعلّمين والمدرّبين.</p>
     </div>
 
-    <script src="/assets/js/common.js?v=1.23.0"></script>
+    <script src="/assets/js/common.js?v=1.24.0"></script>
     <script>
       // رقم الواتساب والسعر يأتيان من الخادم كي يبقى الدليل مطابقاً للإعدادات
       window.T.api('/api/auth/me')

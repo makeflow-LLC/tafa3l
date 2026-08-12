@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, serverAlive, showOfflineBanner } =
+  const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner } =
     window.T;
   const Fx = window.Fx;
 
@@ -32,6 +32,8 @@
     premium: null, // { isPremium, isAdmin, premiumUntil, plan }
     editingActivityId: store.local.get(EDITING_KEY, null), // النشاط المحفوظ الجاري تعديله — يبقى بعد تحديث الصفحة
     dashOpenQ: null, // سؤال مفتوح النتائج في جدول لوحة التحكم
+    stopSchedule: null, // عدّاد موعد الفتح
+    stopDeadline: null, // عدّاد انتهاء مدة الاختبار
     analyticsData: null, // ملف النتائج الكامل الذي تُبنى منه الرسوم والتوصيات
     analyticsLoading: false,
     analyticsError: null,
@@ -894,6 +896,11 @@
 
   function renderStage(s) {
     if (s.status === 'lobby') return renderLobby(s);
+    if (s.deadlineAt && s.deadlineAt > serverTime()) {
+      const value = el('strong', {});
+      app.append(el('div', { class: 'deadline-bar' }, [el('span', { text: '⏳ ينتهي الاختبار خلال' }), value]));
+      state.stopDeadline = countdownTo(value, s.deadlineAt);
+    }
     if (s.status === 'ended' || s.phase === 'final') return renderFinal(s);
     if (s.pace === 'self') return renderSelfStage(s);
     if (s.phase === 'leaderboard') return renderBoard(s);
@@ -980,12 +987,38 @@
   }
 
   function renderLobby(s) {
+    const card = scheduleCard(s);
+    if (card) app.append(card);
     app.append(
       el('div', { class: 'card' }, [
         el('div', { class: 'joinbox' }, [qrBox(), joinInfo(s)]),
       ])
     );
     app.append(peopleCard(s));
+  }
+
+  /** بطاقة الجدولة: متى يفتح الاختبار تلقائياً وكم مدته */
+  function scheduleCard(s) {
+    const opensAt = s.scheduledAt && s.scheduledAt > serverTime() ? s.scheduledAt : null;
+    const duration = s.durationMinutes || 0;
+    if (!opensAt && !duration) return null;
+
+    const value = opensAt ? el('strong', { class: 'countdown-big' }) : null;
+    if (value) state.stopSchedule = countdownTo(value, opensAt, () => renderLive());
+
+    return el('div', { class: 'card stack schedule-card' }, [
+      opensAt ? el('span', { class: 'badge', text: '⏰ اختبار مجدول' }) : el('span', { class: 'badge', text: '⏳ مدة محددة' }),
+      opensAt ? el('p', { class: 'muted', style: { margin: 0 }, text: 'يفتح تلقائياً بعد' }) : null,
+      value,
+      opensAt
+        ? el('span', {
+            class: 'muted small',
+            text: new Date(opensAt).toLocaleString('ar', { dateStyle: 'full', timeStyle: 'short' }),
+          })
+        : null,
+      duration ? el('span', { class: 'badge' }, `مدة الاختبار ${duration} دقيقة — يُقفل تلقائياً بعدها`) : null,
+      opensAt ? el('span', { class: 'muted small', text: 'يمكنك البدء قبل الموعد من زر «بدء النشاط».' }) : null,
+    ]);
   }
 
   function qrBox() {
@@ -1825,6 +1858,10 @@
     state.autoTimer = null;
     state.cancelCountdown?.();
     state.cancelCountdown = null;
+    state.stopSchedule?.();
+    state.stopSchedule = null;
+    state.stopDeadline?.();
+    state.stopDeadline = null;
   }
 
   /**
