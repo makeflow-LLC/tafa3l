@@ -298,6 +298,56 @@ test('شاشة العرض المنفصلة: تتطلب مفتاح المضيف،
   p.close();
 });
 
+test('وضع الفرق: يصل معلوم الفريق للمشارك وللمضيف، وترتيب الفرق في مرحلة الترتيب', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'اختبار الفرق',
+    settings: { requireName: true, countdown: false, showLeaderboard: true, teamMode: true, teamCount: 2, scoring: 'flat' },
+    questions: [
+      { type: 'mc', text: 'س', timeLimit: 0, points: 1000, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] },
+    ],
+  });
+  const code = created.code;
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code, hostToken: created.hostToken });
+  const hostState = await host.next('state');
+  assert.equal(hostState.teams.length, 2);
+  assert.equal(hostState.teams[0].name, 'الفريق الوردي');
+
+  const a = ws();
+  const b = ws();
+  await Promise.all([a.ready, b.ready]);
+  a.send({ t: 'join', code, name: 'سالم' });
+  b.send({ t: 'join', code, name: 'ريم' });
+  await a.next('joined');
+  await b.next('joined');
+
+  const stateA = await a.next((m) => m.t === 'state' && m.phase === 'lobby');
+  assert.ok(stateA.me.team, 'المشارك يرى فريقه فور الانضمام');
+  assert.equal(stateA.me.team.id, 0);
+
+  host.send({ t: 'host:start' });
+  const qA = await a.next((m) => m.t === 'state' && m.phase === 'question');
+  a.send({ t: 'answer', questionId: qA.question.id, value: 'o0' });
+  await a.next('answer:accepted');
+  b.send({ t: 'answer', questionId: qA.question.id, value: 'o1' });
+  await b.next('answer:accepted');
+
+  host.send({ t: 'host:leaderboard' });
+  const board = await a.next((m) => m.t === 'state' && m.phase === 'leaderboard');
+  assert.equal(board.teamLeaderboard.length, 2);
+  const mine = board.teamLeaderboard.find((t) => t.id === 0);
+  assert.equal(mine.score, 1000, 'فريق سالم يحمل نقاطه الصحيحة');
+
+  const hostBoard = await host.next((m) => m.t === 'state' && m.phase === 'leaderboard');
+  assert.equal(hostBoard.teamLeaderboard.length, 2);
+
+  host.close();
+  a.close();
+  b.close();
+});
+
 test('الاستطلاع المجهول لا يطلب اسماً ولا يكشف هوية المجيبين', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'استطلاع',

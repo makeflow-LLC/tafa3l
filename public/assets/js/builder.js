@@ -38,6 +38,8 @@
         streakBonus: true,
         revealAnswer: true,
         autoStart: true,
+        teamMode: false,
+        teamCount: 4,
       },
       questions: [blankQuestion('mc')],
     };
@@ -360,6 +362,10 @@
             'revealAnswer',
             'بعد إجابة المتدرب يرى الإجابة الصحيحة وشرحها إن كتبته'
           ),
+
+          el('label', { text: 'وضع الفرق 🏳️', style: { marginTop: '6px' } }),
+          switchRow('تقسيم تلقائي إلى فرق', 'teamMode', 'كل مشارك يُوزَّع على فريق ملوّن عند الانضمام، ونقاط الفريق مجموع أعضائه'),
+          draft.settings.teamMode ? teamCountRow() : null,
         ])
       );
 
@@ -526,12 +532,23 @@
       return el('div', {}, [el('label', { text: 'مدة عرض النتائج قبل الانتقال' }), select]);
     }
 
+    function teamCountRow() {
+      const select = el('select', {}, [2, 3, 4, 5, 6, 7, 8].map((n) => el('option', { value: String(n) }, n + ' فرق')));
+      select.value = String(draft.settings.teamCount || 4);
+      select.addEventListener('change', () => {
+        draft.settings.teamCount = Number(select.value);
+        saveDraft(draft);
+      });
+      return el('div', {}, [el('label', { text: 'عدد الفرق' }), select]);
+    }
+
     function switchRow(label, key, hint) {
       const input = el('input', { type: 'checkbox' });
       input.checked = draft.settings[key] !== false;
       input.addEventListener('change', () => {
         draft.settings[key] = input.checked;
-        saveDraft(draft);
+        // بعض المفاتيح تُظهر أو تُخفي عناصر إعداد أخرى (مثل عدد الفرق) فيجب إعادة الرسم
+        update();
       });
       return el('label', { class: 'switch' }, [
         el('span', { class: 'grow' }, [el('span', { text: label }), el('div', { class: 'muted small', text: hint })]),
