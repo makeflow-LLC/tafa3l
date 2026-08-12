@@ -101,7 +101,10 @@
     const people = el('div', { class: 'people' });
     if (!s.participants.length) people.append(el('span', { class: 'muted', text: 'بانتظار انضمام المشاركين…' }));
     s.participants.forEach((p) => {
-      people.append(el('span', { class: 'chip' + (p.connected ? '' : ' off') }, [avatarNode(p.avatar, 'sm'), el('span', { text: p.name })]));
+      const team = s.teams && p.teamId != null ? s.teams[p.teamId] : null;
+      people.append(
+        el('span', { class: 'chip' + (p.connected ? '' : ' off') }, [avatarNode(p.avatar, 'sm'), el('span', { text: (team ? team.emoji + ' ' : '') + p.name })])
+      );
     });
     return el('div', { class: 'card stack' }, [el('h2', { text: `المشاركون (${s.participants.length})`, style: { margin: 0 } }), people]);
   }
@@ -245,6 +248,25 @@
     } else {
       app.append(el('div', { class: 'card center' }, el('p', { class: 'muted', text: 'لا توجد نتائج بعد' })));
     }
+    const teamCard = teamBoard(s.teamLeaderboard);
+    if (teamCard) app.append(teamCard);
+  }
+
+  /** ترتيب الفرق */
+  function teamBoard(list) {
+    if (!list?.length) return null;
+    const board = el('div', { class: 'board' });
+    list.forEach((team) => {
+      board.append(
+        el('div', { class: 'item' }, [
+          el('span', { class: 'rank', text: String(team.rank) }),
+          el('span', { style: { fontSize: '1.3rem' }, text: team.emoji }),
+          el('span', { class: 'grow', text: `${team.name} (${team.members})` }),
+          el('span', { class: 'score', text: String(team.score) }),
+        ])
+      );
+    });
+    return el('div', { class: 'card stack' }, [el('h2', { text: '🏳️ ترتيب الفرق', style: { margin: 0 } }), board]);
   }
 
   function podium(board) {
@@ -320,6 +342,8 @@
       app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 منصة التتويج', style: { margin: 0 } }), podium(board)]));
       if (board.length > 3) app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'بقية الترتيب' }), boardList(board.slice(3))]));
     }
+    const teamCard = teamBoard(s.teamLeaderboard);
+    if (teamCard) app.append(teamCard);
     if (s.badgeList?.length) {
       app.append(
         el('div', { class: 'card stack' }, [

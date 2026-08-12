@@ -740,10 +740,11 @@
       people.append(el('span', { class: 'muted small', text: 'لم ينضم أحد بعد…' }));
     }
     s.participants.forEach((participant) => {
+      const team = s.teams && participant.teamId != null ? s.teams[participant.teamId] : null;
       const chip = el(
         'span',
         { class: 'chip' + (participant.answeredCurrent ? ' answered' : '') + (participant.connected ? '' : ' off') },
-        [avatarNode(participant.avatar, 'sm'), el('span', { text: participant.name })]
+        [avatarNode(participant.avatar, 'sm'), el('span', { text: (team ? team.emoji + ' ' : '') + participant.name })]
       );
       chip.title = 'اضغط مطولاً للإخراج';
       chip.addEventListener('dblclick', () => {
@@ -912,6 +913,25 @@
   function renderBoard(s) {
     app.append(el('h2', { class: 'center', text: '🏆 لوحة الترتيب' }));
     app.append(el('div', { class: 'card' }, boardList(s.leaderboard || [])));
+    const teamCard = teamBoard(s.teamLeaderboard);
+    if (teamCard) app.append(teamCard);
+  }
+
+  /** ترتيب الفرق — يظهر إلى جانب ترتيب الأفراد عندما يكون وضع الفرق مفعّلاً */
+  function teamBoard(list) {
+    if (!list?.length) return null;
+    const board = el('div', { class: 'board' });
+    list.forEach((team) => {
+      board.append(
+        el('div', { class: 'item' }, [
+          el('span', { class: 'rank', text: String(team.rank) }),
+          el('span', { style: { fontSize: '1.3rem' }, text: team.emoji }),
+          el('span', { class: 'grow', text: `${team.name} (${team.members})` }),
+          el('span', { class: 'score', text: String(team.score) }),
+        ])
+      );
+    });
+    return el('div', { class: 'card stack' }, [el('h2', { text: '🏳️ ترتيب الفرق', style: { margin: 0 } }), board]);
   }
 
   function renderFinal(s) {
@@ -956,6 +976,8 @@
       app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 منصة التتويج', style: { margin: 0 } }), podium(board)]));
       if (board.length > 3) app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'بقية الترتيب' }), boardList(board.slice(3))]));
     }
+    const teamCard = teamBoard(s.teamLeaderboard);
+    if (teamCard) app.append(teamCard);
 
     // أوسمة تحفيزية: تُبرز نجاحات لا يلتقطها الترتيب وحده
     if (s.badgeList?.length) {

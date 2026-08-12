@@ -17,6 +17,17 @@ const STREAK_STEP = 0.1;
 const STREAK_MAX = 0.5;
 /** الأنواع التي تُحتسب لها نقاط (لها إجابة صحيحة) */
 const SCORED_TYPES = new Set(['mc', 'truefalse']);
+/** فرق افتراضية — نفس الألوان الثمانية المستخدمة أصلاً لخيارات الأسئلة (c0..c7) لتناسق بصري كامل */
+const TEAMS = [
+  { name: 'الفريق الوردي', emoji: '🩷' },
+  { name: 'الفريق الأزرق', emoji: '🔵' },
+  { name: 'الفريق الأصفر', emoji: '🟡' },
+  { name: 'الفريق الأخضر', emoji: '🟢' },
+  { name: 'الفريق البنفسجي', emoji: '🟣' },
+  { name: 'الفريق البرتقالي', emoji: '🟠' },
+  { name: 'الفريق الفيروزي', emoji: '🩵' },
+  { name: 'الفريق الأحمر', emoji: '🔴' },
+];
 /** الأنواع التي لا تُظهر هوية المشارك في النتائج */
 const LIMITS = {
   title: 120,
@@ -154,6 +165,10 @@ function normalizeQuiz(payload) {
       streakBonus: payload?.settings?.streakBonus !== false,
       // إظهار الإجابة الصحيحة وشرحها للمتدرب فور إجابته
       revealAnswer: payload?.settings?.revealAnswer !== false,
+
+      // وضع الفرق: يُقسَّم المشاركون تلقائياً إلى فرق ملوّنة، ونقاطهم تُجمع لترتيب جماعي
+      teamMode: payload?.settings?.teamMode === true,
+      teamCount: clamp(payload?.settings?.teamCount, 2, TEAMS.length, 4),
     },
   };
 }
@@ -188,6 +203,11 @@ class Session {
     this.hostSockets = new Set();
     /** @type {Set<any>} سوكِتات شاشة العرض المنفصلة (بروجكتر) — قراءة فقط، بلا أزرار تحكم */
     this.screenSockets = new Set();
+
+    // فرق ثابتة العدد تُنشأ مرة واحدة عند إنشاء الجلسة — التوزيع يتم عند انضمام كل مشارك
+    this.teams = this.settings.teamMode
+      ? TEAMS.slice(0, this.settings.teamCount).map((t, i) => ({ id: i, name: t.name, emoji: t.emoji }))
+      : null;
   }
 
   touch() {
@@ -234,6 +254,8 @@ class Session {
       lastReaction: 0,
       sockets: new Set(),
       answers: new Map(), // qid -> { value, at, ms, correct, points }
+      // فريقه إن كان وضع الفرق مفعّلاً — يُحسب قبل الإضافة حتى يوازن العدد الحالي
+      teamId: this.teams ? this.smallestTeam() : null,
     };
     this.participants.set(participant.id, participant);
 
@@ -656,6 +678,37 @@ class Session {
     };
   }
 
+  // ------------------------------------------------------------- الفرق
+
+  /** أصغر فريق عدداً الآن — لتوزيع متوازن مع كل انضمام جديد */
+  smallestTeam() {
+    const counts = new Array(this.settings.teamCount).fill(0);
+    for (const p of this.participants.values()) if (p.teamId !== null && p.teamId !== undefined) counts[p.teamId] += 1;
+    let min = 0;
+    for (let i = 1; i < counts.length; i++) if (counts[i] < counts[min]) min = i;
+    return min;
+  }
+
+  teamOf(participant) {
+    if (!this.teams || participant.teamId === null || participant.teamId === undefined) return null;
+    const team = this.teams[participant.teamId];
+    return team ? { id: team.id, name: team.name, emoji: team.emoji } : null;
+  }
+
+  /** ترتيب الفرق بمجموع نقاط أعضائها — null إن كان وضع الفرق مطفأً */
+  teamLeaderboard() {
+    if (!this.teams) return null;
+    const scores = this.teams.map((t) => ({ ...t, score: 0, members: 0 }));
+    for (const p of this.participants.values()) {
+      if (p.teamId === null || p.teamId === undefined) continue;
+      scores[p.teamId].score += p.score;
+      scores[p.teamId].members += 1;
+    }
+    return scores
+      .sort((a, b) => b.score - a.score || a.id - b.id)
+      .map((t, i) => ({ rank: i + 1, ...t }));
+  }
+
   leaderboard(limit = 100) {
     return [...this.participants.values()]
       .filter((p) => p.score > 0 || this.hasScoredQuestions())
@@ -838,6 +891,7 @@ class Session {
       },
       perQuestion,
       participants: rows,
+      teamLeaderboard: this.teamLeaderboard(),
     };
   }
 
@@ -920,6 +974,7 @@ class Session {
         avatar: participant.avatar,
         score: participant.score,
         streak: participant.streak,
+        team: this.teamOf(participant),
       },
       participants: this.participants.size,
       answered: answer ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier } : null,
@@ -932,7 +987,10 @@ class Session {
     if (done) {
       state.rank = this.rankOf(participant.id);
       state.badges = this.badgesFor(participant.id);
-      if (this.settings.showLeaderboard) state.leaderboard = this.leaderboard(10);
+      if (this.settings.showLeaderboard) {
+        state.leaderboard = this.leaderboard(10);
+        state.teamLeaderboard = this.teamLeaderboard();
+      }
       return state;
     }
     if (q) {
@@ -968,6 +1026,7 @@ class Session {
         avatar: participant.avatar,
         score: participant.score,
         streak: participant.streak,
+        team: this.teamOf(participant),
       },
       participants: this.participants.size,
       answered: answer
@@ -987,7 +1046,10 @@ class Session {
       state.rank = this.rankOf(participant.id);
       // كم مركزاً صعد أو هبط منذ السؤال السابق
       if (participant.prevRank && state.rank) state.rankDelta = participant.prevRank - state.rank.rank;
-      if (this.settings.showLeaderboard) state.leaderboard = this.leaderboard(10);
+      if (this.settings.showLeaderboard) {
+        state.leaderboard = this.leaderboard(10);
+        state.teamLeaderboard = this.teamLeaderboard();
+      }
       if (this.phase === 'final') state.badges = this.badgesFor(participant.id);
     }
     return state;
@@ -1021,11 +1083,13 @@ class Session {
         // في الوضع الحر: أين وصل كل متدرب
         at: p.phase === 'done' ? this.questions.length : p.index + 1,
         done: p.phase === 'done',
+        teamId: p.teamId,
       })),
       answeredCount: q ? [...this.participants.values()].filter((p) => p.answers.has(q.id)).length : 0,
       pace: this.settings.pace,
       autoNextAt: this._autoTimer ? this._autoAt : null,
       finishedCount: [...this.participants.values()].filter((p) => p.phase === 'done').length,
+      teams: this.teams,
     };
     if (q) {
       state.question = publicQuestion(q, true);
@@ -1033,6 +1097,7 @@ class Session {
     }
     if (this.phase === 'leaderboard' || this.phase === 'final' || this.settings.pace === 'self') {
       state.leaderboard = this.leaderboard(20);
+      state.teamLeaderboard = this.teamLeaderboard();
     }
     if (this.phase === 'final') {
       const badges = this.badges();

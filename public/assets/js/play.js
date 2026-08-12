@@ -8,6 +8,7 @@
   const app = $('#app');
   const connBadge = $('#conn');
   const scoreBadge = $('#scoreBadge');
+  const teamBadge = $('#teamBadge');
 
   const code = (new URLSearchParams(location.search).get('code') || '').replace(/\D/g, '').slice(0, 6);
   if (!code) {
@@ -208,6 +209,8 @@
 
     scoreBadge.classList.toggle('hidden', !(s.me && s.me.score > 0));
     if (s.me) scoreBadge.textContent = '⭐ ' + s.me.score;
+    teamBadge.classList.toggle('hidden', !s.me?.team);
+    if (s.me?.team) teamBadge.textContent = `${s.me.team.emoji} ${s.me.team.name}`;
     if (s.title) $('#quizTitle').textContent = s.title;
 
     // مفتاح لتفادي إعادة البناء غير الضرورية أثناء المؤقّت
@@ -676,6 +679,8 @@
       );
     }
     if (s.leaderboard?.length) app.append(boardList(s.leaderboard, s.me.id));
+    const teamCard = teamBoard(s.teamLeaderboard, s.me?.team?.id);
+    if (teamCard) app.append(teamCard);
     if (s.rank?.rank === 1) Fx.confetti(80);
     app.append(reactionBar());
     app.append(el('p', { class: 'footer', text: 'في انتظار السؤال التالي…' }));
@@ -712,6 +717,8 @@
     }
 
     if (s.leaderboard?.length) app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 الأوائل' }), boardList(s.leaderboard, s.me?.id)]));
+    const teamCard = teamBoard(s.teamLeaderboard, s.me?.team?.id);
+    if (teamCard) app.append(teamCard);
     app.append(el('p', { class: 'footer', text: 'شكراً لمشاركتك! لم تُحفظ أي بيانات — كل شيء مؤقت.' }));
     store.del(SESSION_KEY);
   }
@@ -1102,6 +1109,23 @@
       );
     });
     return board;
+  }
+
+  /** ترتيب الفرق — يظهر بجانب ترتيب الأفراد عندما يكون وضع الفرق مفعّلاً */
+  function teamBoard(list, myTeamId) {
+    if (!list?.length) return null;
+    const board = el('div', { class: 'board' });
+    list.forEach((team) => {
+      board.append(
+        el('div', { class: 'item' + (team.id === myTeamId ? ' me' : '') }, [
+          el('span', { class: 'rank', text: String(team.rank) }),
+          el('span', { style: { fontSize: '1.3rem' }, text: team.emoji }),
+          el('span', { class: 'grow', text: team.name }),
+          el('span', { class: 'score', text: String(team.score) }),
+        ])
+      );
+    });
+    return el('div', { class: 'card stack' }, [el('h2', { text: '🏳️ ترتيب الفرق', style: { margin: 0 } }), board]);
   }
 
   // ------------------------------------------------------------- المؤقّت
