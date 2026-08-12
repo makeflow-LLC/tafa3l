@@ -1095,10 +1095,9 @@ class Session {
       state.question = publicQuestion(q, true);
       state.results = this.aggregate(this.currentIndex);
     }
-    if (this.phase === 'leaderboard' || this.phase === 'final' || this.settings.pace === 'self') {
-      state.leaderboard = this.leaderboard(20);
-      state.teamLeaderboard = this.teamLeaderboard();
-    }
+    // الترتيب دائماً: شاشة العرض تعرضه بين الأسئلة وبعد النتائج لا في مرحلة الترتيب فقط
+    state.leaderboard = this.leaderboard(20);
+    state.teamLeaderboard = this.teamLeaderboard();
     if (this.phase === 'final') {
       const badges = this.badges();
       state.badgeList = [...this.participants.values()]
@@ -1110,13 +1109,17 @@ class Session {
 
   broadcastState() {
     const state = this.hostState();
-    const dashboard = this.hostSockets.size ? { t: 'dashboard', data: this.dashboard() } : null;
+    // شاشة العرض تحتاج لوحة الإحصاءات أيضاً — نتائج كل سؤال في الوضع الحر تأتي منها
+    const dashboard =
+      this.hostSockets.size || this.screenSockets.size ? { t: 'dashboard', data: this.dashboard() } : null;
     for (const socket of this.hostSockets) {
       this.send(socket, state);
       if (dashboard) this.send(socket, dashboard);
     }
-    // شاشة العرض تعرض نفس حالة المضيف، بلا لوحة الإحصاءات التفصيلية
-    for (const socket of this.screenSockets) this.send(socket, state);
+    for (const socket of this.screenSockets) {
+      this.send(socket, state);
+      if (dashboard) this.send(socket, dashboard);
+    }
     for (const p of this.participants.values()) {
       const payload = this.participantState(p);
       for (const socket of p.sockets) this.send(socket, payload);

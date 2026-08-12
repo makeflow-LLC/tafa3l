@@ -14,6 +14,7 @@
 
   const state = {
     live: null,
+    dashboard: null, // لوحة الإحصاءات — نتائج كل سؤال في الوضع الحر تأتي منها
     clockOffset: 0,
     tickTimer: null,
     cancelCountdown: null,
@@ -47,6 +48,10 @@
           if (msg.serverNow) state.clockOffset = Date.now() - msg.serverNow;
           state.live = msg;
           render();
+        } else if (msg.t === 'dashboard') {
+          state.dashboard = msg.data;
+          // مسرح الوضع الحر يرسم نتائجه من هذه البيانات
+          if (state.live?.pace === 'self') render();
         } else if (msg.t === 'reaction') {
           Fx.floatEmoji(msg.emoji);
         } else if (msg.t === 'error') {
@@ -156,8 +161,12 @@
     }
     app.append(head);
 
-    // أثناء الإجابة تظهر الخيارات بلا كشف — بعد النتائج تظهر الأعمدة والنسب
-    if (s.phase === 'question' && q.options?.length) {
+    if (s.phase === 'question' && q.scored) {
+      /**
+       * سؤال مصحَّح أثناء الإجابة: لا نعرض الأعداد الحية (حتى لا يقلّد
+       * المتأخرون إجابة الأغلبية) — نعرض الخيارات، وتحتها أسماء المشاركين
+       * تضيء فور وصول إجابة كل منهم.
+       */
       const options = el('div', { class: 'options' });
       q.options.forEach((option, index) => {
         options.append(
@@ -168,28 +177,60 @@
         );
       });
       app.append(options);
+      app.append(answeredChips(s));
     } else {
-      app.append(resultsView(q, results));
+      // استطلاع/كلمات/مقياس/مفتوح: النتائج تنمو حيّة أمام القاعة أثناء التصويت.
+      // وبعد «عرض النتائج» (phase=results) تُكشف الإجابة الصحيحة للمصحَّح.
+      app.append(resultsView(q, results, s.phase === 'results'));
+      if (s.phase === 'results') {
+        const top = topBoard(s);
+        if (top) app.append(top);
+      }
     }
 
     if (s.phase === 'question') startTick(s, q);
   }
 
-  function resultsView(q, results) {
+  /** أسماء المشاركين تضيء فور إجابتهم — يرى الطالب وصول إجابته على الشاشة الكبيرة */
+  function answeredChips(s) {
+    if (!s.participants.length) return el('div');
+    const people = el('div', { class: 'people', style: { justifyContent: 'center' } });
+    s.participants.forEach((p) => {
+      people.append(
+        el('span', { class: 'chip' + (p.answeredCurrent ? ' answered' : '') + (p.connected ? '' : ' off') }, [
+          avatarNode(p.avatar, 'sm'),
+          el('span', { text: p.name }),
+          p.answeredCurrent ? el('span', { text: '✓' }) : null,
+        ])
+      );
+    });
+    return el('div', { class: 'card stack' }, [people]);
+  }
+
+  /** الأوائل الخمسة بعد كشف النتائج — يبقي الحماس بين الأسئلة */
+  function topBoard(s) {
+    const board = (s.leaderboard || []).slice(0, 5);
+    if (!board.length) return null;
+    return el('div', { class: 'card stack' }, [el('h2', { text: '🏆 الأوائل', style: { margin: 0 } }), boardList(board)]);
+  }
+
+  function resultsView(q, results, reveal) {
     const card = el('div', { class: 'card stack' });
     if (!results || results.total === 0) {
       card.append(el('p', { class: 'muted center', text: 'لا توجد إجابات بعد…' }));
       return card;
     }
     if (results.options) {
+      // التمييز (صحيح/باهت) للأسئلة المصحَّحة عند الكشف فقط — الاستطلاع أعمدة متساوية الوضوح
+      const scored = !!q?.scored && reveal;
       const options = el('div', { class: 'options' });
       results.options.forEach((option, index) => {
         options.append(
-          el('div', { class: `opt c${index % 8}` + (option.correct ? ' correct' : ' dim') }, [
+          el('div', { class: `opt c${index % 8}` + (scored ? (option.correct ? ' correct' : ' dim') : '') }, [
             el('i', { class: 'bar', style: { width: option.percent + '%' } }),
             el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
             el('span', { class: 'grow', text: option.text }),
-            option.correct ? el('span', { class: 'badge ok', text: '✓' }) : null,
+            scored && option.correct ? el('span', { class: 'badge ok', text: '✓' }) : null,
             el('span', { class: 'count', text: `${option.percent}٪ · ${option.count}` }),
           ])
         );
@@ -326,6 +367,52 @@
       );
     });
     app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'من وصل إلى أين؟', style: { margin: 0 } }), people]));
+
+    // نتائج السؤال الذي عنده أغلب المتدربين الآن — تتبع القاعة وحدها بلا أي نقرة
+    const row = busiestQuestion(s);
+    if (row) {
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('div', { class: 'row between' }, [
+            el('h2', { text: `نتائج السؤال ${row.index + 1}`, style: { margin: 0 } }),
+            el('span', { class: 'badge' }, `${TYPE_EMOJI[row.type]} أجاب ${row.responses} من ${row.reached}`),
+          ]),
+          el('h1', { class: 'big-q', text: row.text }),
+          row.results && row.results.total > 0
+            ? resultsView({ scored: row.correct !== null }, row.results, true)
+            : el('p', { class: 'muted center', text: 'لا توجد إجابات على هذا السؤال بعد…' }),
+        ])
+      );
+    }
+
+    const board = (s.leaderboard || []).slice(0, 10);
+    if (board.length) app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 الترتيب', style: { margin: 0 } }), boardList(board)]));
+    const teamCard = teamBoard(s.teamLeaderboard);
+    if (teamCard) app.append(teamCard);
+  }
+
+  /**
+   * أي سؤال يُعرض في الوضع الحر؟ السؤال الذي عنده أكبر عدد من المتدربين الآن،
+   * وعند انتهاء الجميع آخرُ سؤال أجاب عليه أحد.
+   */
+  function busiestQuestion(s) {
+    const per = state.dashboard?.perQuestion;
+    if (!per?.length) return null;
+    const counts = new Array(per.length).fill(0);
+    let anyActive = false;
+    s.participants.forEach((p) => {
+      if (p.done) return;
+      const at = Math.min(per.length - 1, Math.max(0, p.at - 1));
+      counts[at] += 1;
+      anyActive = true;
+    });
+    if (anyActive) {
+      let best = 0;
+      for (let i = 1; i < counts.length; i++) if (counts[i] > counts[best]) best = i;
+      return per[best];
+    }
+    const answeredRows = per.filter((row) => row.responses > 0);
+    return answeredRows.length ? answeredRows[answeredRows.length - 1] : per[0];
   }
 
   // ------------------------------------------------------------- النهاية
