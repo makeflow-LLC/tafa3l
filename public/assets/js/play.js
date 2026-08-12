@@ -758,7 +758,7 @@
       return { emblem: '🥈', banner: 'المركز الثاني', colors: ['#f8fafc', '#94a3b8'], ray: 'rgba(148,163,184,0.12)', halo: 'rgba(226,232,240,0.3)', spark: 'rgba(241,245,249,0.9)' };
     if (rank === 3)
       return { emblem: '🥉', banner: 'المركز الثالث', colors: ['#fed7aa', '#ea580c'], ray: 'rgba(234,88,12,0.12)', halo: 'rgba(251,146,60,0.3)', spark: 'rgba(254,215,170,0.9)' };
-    return { emblem: '🌟', banner: null, colors: ['#8de3f5', '#7c5cff'], ray: 'rgba(124,92,255,0.12)', halo: 'rgba(124,92,255,0.35)', spark: 'rgba(165,180,252,0.9)' };
+    return { emblem: '🌟', banner: null, colors: ['#8de3f5', '#8b73ff'], ray: 'rgba(139,115,255,0.12)', halo: 'rgba(139,115,255,0.35)', spark: 'rgba(165,180,252,0.9)' };
   }
 
   /** أشعة احتفالية تنطلق من مركز الشعار */
@@ -829,7 +829,7 @@
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-    ctx.fillStyle = '#eef2ff';
+    ctx.fillStyle = '#f5f4ff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, cx, y + h / 2 + 2);
@@ -848,15 +848,15 @@
     ctx.direction = 'rtl';
 
     // الخلفية بنفس هوية التطبيق: ليل داكن مع توهجين
-    ctx.fillStyle = '#0b1020';
+    ctx.fillStyle = '#12102e';
     ctx.fillRect(0, 0, W, H);
     let glow = ctx.createRadialGradient(W * 0.85, 0, 0, W * 0.85, 0, 700);
-    glow.addColorStop(0, 'rgba(124,92,255,0.35)');
+    glow.addColorStop(0, 'rgba(139,115,255,0.32)');
     glow.addColorStop(1, 'transparent');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
     glow = ctx.createRadialGradient(0, H, 0, 0, H, 700);
-    glow.addColorStop(0, 'rgba(34,211,238,0.22)');
+    glow.addColorStop(0, 'rgba(53,214,239,0.2)');
     glow.addColorStop(1, 'transparent');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
@@ -873,10 +873,10 @@
     ctx.textBaseline = 'middle';
 
     // العلامة والعنوان
-    ctx.fillStyle = '#eef2ff';
+    ctx.fillStyle = '#f5f4ff';
     ctx.font = `800 56px ${FONT}`;
     ctx.fillText('⚡ Tapio', W / 2, 130);
-    ctx.fillStyle = '#a3aed0';
+    ctx.fillStyle = '#a9a5cc';
     ctx.font = `600 38px ${FONT}`;
     const title = s.title || state.info?.title || 'نشاط تفاعلي';
     ctx.fillText(title.length > 40 ? title.slice(0, 39) + '…' : title, W / 2, 195);
@@ -906,7 +906,7 @@
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(W / 2, cy, 138, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(11,16,32,0.22)';
+    ctx.strokeStyle = 'rgba(18,16,46,0.22)';
     ctx.lineWidth = 4;
     ctx.stroke();
 
@@ -924,7 +924,7 @@
     }
 
     // الاسم
-    ctx.fillStyle = '#eef2ff';
+    ctx.fillStyle = '#f5f4ff';
     ctx.font = `800 76px ${FONT}`;
     ctx.fillText(s.me.name, W / 2, 735);
 
@@ -948,12 +948,12 @@
       ctx.font = `800 52px ${FONT}`;
       const lw = ctx.measureText(levelText).width + 90;
       const lg = ctx.createLinearGradient(W / 2 - lw / 2, 0, W / 2 + lw / 2, 0);
-      lg.addColorStop(0, '#22d3ee');
-      lg.addColorStop(1, '#7c5cff');
+      lg.addColorStop(0, '#35d6ef');
+      lg.addColorStop(1, '#8b73ff');
       rr(ctx, W / 2 - lw / 2, 795, lw, 96, 48);
       ctx.fillStyle = lg;
       ctx.fill();
-      ctx.fillStyle = '#0b1020';
+      ctx.fillStyle = '#12102e';
       ctx.fillText(levelText, W / 2, 847);
     }
 
@@ -995,17 +995,17 @@
     // الأوسمة في سطر واحد
     const badges = (s.badges || []).slice(0, 2);
     if (badges.length) {
-      ctx.fillStyle = '#eef2ff';
+      ctx.fillStyle = '#f5f4ff';
       ctx.font = `600 40px ${FONT}`;
       ctx.fillText(badges.map((b) => `${b.emoji} ${b.label}`).join('   ·   '), W / 2, 1185);
     }
 
     // التذييل
-    ctx.fillStyle = '#a3aed0';
+    ctx.fillStyle = '#a9a5cc';
     ctx.font = `600 30px ${FONT}`;
     const when = new Date().toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' });
     ctx.fillText(when, W / 2, H - 115);
-    ctx.fillStyle = '#7c8db0';
+    ctx.fillStyle = '#8f8ab5';
     ctx.font = `600 28px ${FONT}`;
     ctx.fillText('⚡ صُنعت على منصة Tapio — أسئلة واستطلاعات حية', W / 2, H - 68);
 
