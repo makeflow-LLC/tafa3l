@@ -12,7 +12,7 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [] };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -20,6 +20,8 @@
       ];
     }
     if (type === 'poll' || type === 'word' || type === 'open' || type === 'scale') q.timeLimit = 0;
+    // السؤال المفتوح: صفر يعني رأياً حرّاً، وأي علامة أكبر تعني تصحيحاً يدوياً من المدرب
+    if (type === 'poll' || type === 'word' || type === 'open' || type === 'scale') q.points = 0;
     if (type === 'scale') q.scale = { min: 1, max: 5, minLabel: 'غير موافق', maxLabel: 'موافق تماماً' };
     return q;
   }
@@ -87,16 +89,68 @@
     }
 
     question.correct = Array.isArray(raw.correct) ? raw.correct.map(String) : [];
+    question.image = typeof raw.image === 'string' && raw.image.startsWith('data:image/') ? raw.image : null;
     if (question.type === 'scale') question.scale = { ...fresh.scale, ...(raw.scale && typeof raw.scale === 'object' ? raw.scale : {}) };
 
     return question;
   }
 
+  let quotaWarned = false;
+
   function saveDraft(draft) {
-    store.local.set(DRAFT_KEY, draft);
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      quotaWarned = false;
+    } catch {
+      // صور كثيرة تتجاوز سعة المتصفح — نُخبر المدرب بدل أن تضيع مسودته صامتة
+      if (!quotaWarned) {
+        quotaWarned = true;
+        toast('⚠️ سعة المتصفح امتلأت — الصور كثيرة. أطلق النشاط أو احفظه في حسابك الآن، فالمسودة لن تُحفظ محلياً.', 'bad');
+      }
+    }
   }
 
   // ------------------------------------------------------ استيراد من JSON
+
+  // ------------------------------------------------------- صورة السؤال
+
+  const IMAGE_MAX_SIDE = 1280;
+  const IMAGE_MAX_BYTES = 600 * 1024;
+
+  /**
+   * يقرأ ملف صورة ويصغّره داخل المتصفح قبل الرفع: أقصى ضلع 1280 بكسل،
+   * ثم يخفض الجودة تدريجياً حتى ينزل الحجم تحت 600 كيلوبايت.
+   * يعيد data URL جاهزاً للحفظ داخل السؤال.
+   */
+  function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      if (!/^image\//.test(file.type)) return reject(new Error('اختر ملف صورة'));
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('تعذّرت قراءة الملف'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('تعذّر فتح الصورة'));
+        img.onload = () => {
+          const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          // الشفافية تضيع مع jpeg، لكنها الصيغة الوحيدة التي تضمن حجماً صغيراً للصور الفوتوغرافية
+          let quality = 0.82;
+          let out = canvas.toDataURL('image/jpeg', quality);
+          while (out.length * 0.75 > IMAGE_MAX_BYTES && quality > 0.4) {
+            quality -= 0.12;
+            out = canvas.toDataURL('image/jpeg', quality);
+          }
+          if (out.length * 0.75 > IMAGE_MAX_BYTES) return reject(new Error('الصورة كبيرة جداً — جرّب صورة أصغر'));
+          resolve(out);
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 
   /** أسماء بديلة شائعة تكتبها المساعدات الذكية لكل نوع */
   const TYPE_ALIASES = {
@@ -176,6 +230,7 @@
       return null;
     }
     out.explanation = String(q.explanation ?? q.reason ?? q.why ?? '').trim();
+    if (typeof q.image === 'string' && q.image.startsWith('data:image/')) out.image = q.image;
     if (q.timeLimit != null || q.time != null || q.seconds != null) {
       const t = Number(q.timeLimit ?? q.time ?? q.seconds);
       out.timeLimit = Number.isFinite(t) ? Math.max(0, Math.round(t)) : out.timeLimit;
@@ -612,6 +667,57 @@
       });
       body.append(el('div', {}, [el('label', { text: 'نص السؤال' }), text]));
 
+      // ---- صورة السؤال (اختيارية): تُصغَّر في المتصفح قبل الحفظ
+      const imageBox = el('div', { class: 'stack tight' });
+      const drawImage = () => {
+        imageBox.innerHTML = '';
+        imageBox.append(el('label', { text: 'صورة السؤال (اختيارية)' }));
+        if (question.image) {
+          imageBox.append(
+            el('div', { class: 'img-edit' }, [
+              el('img', { src: question.image, alt: 'صورة السؤال' }),
+              el(
+                'button',
+                {
+                  class: 'btn sm danger',
+                  type: 'button',
+                  onclick: () => {
+                    question.image = null;
+                    saveDraft(draft);
+                    drawImage();
+                  },
+                },
+                '🗑 إزالة الصورة'
+              ),
+            ])
+          );
+          return;
+        }
+        const picker = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+        const pick = el('button', { class: 'btn ghost sm', type: 'button', onclick: () => picker.click() }, '🖼 إضافة صورة');
+        picker.addEventListener('change', async () => {
+          const file = picker.files && picker.files[0];
+          if (!file) return;
+          pick.disabled = true;
+          pick.textContent = 'جارٍ تجهيز الصورة…';
+          try {
+            question.image = await compressImage(file);
+            saveDraft(draft);
+            drawImage();
+          } catch (err) {
+            alert(err.message || 'تعذّر تجهيز الصورة');
+            pick.disabled = false;
+            pick.textContent = '🖼 إضافة صورة';
+          }
+          picker.value = '';
+        });
+        imageBox.append(
+          el('div', { class: 'row' }, [pick, picker, el('span', { class: 'muted small', text: 'تُصغَّر تلقائياً لتصل بسرعة لكل الأجهزة' })])
+        );
+      };
+      drawImage();
+      body.append(imageBox);
+
       // الخيارات
       if (question.type === 'mc' || question.type === 'poll') {
         const optionsBox = el('div', { class: 'stack' });
@@ -737,6 +843,56 @@
       });
 
       const timeAndPoints = el('div', { class: 'grid two' }, [el('div', {}, [el('label', { text: 'مدة الإجابة' }), timeSelect])]);
+
+      if (question.type === 'open') {
+        // علامة السؤال النصّي: صفر = رأي حرّ بلا تصحيح، وأكبر من صفر = يصحّحه المدرب بنفسه
+        const marks = el('input', {
+          type: 'number',
+          min: 0,
+          max: 100,
+          step: 1,
+          inputmode: 'numeric',
+          value: String(question.points ?? 0),
+        });
+        const hint = el('div', { class: 'muted small', style: { marginTop: '4px' } });
+        const paintHint = () => {
+          hint.textContent = question.points > 0
+            ? `يصحّحه المدرب يدوياً: يمنح من 0 إلى ${question.points} علامة لكل إجابة، ولا يرى الطالب نتيجته قبل التصحيح.`
+            : 'صفر = سؤال رأي حرّ بلا علامة ولا تصحيح.';
+        };
+        marks.addEventListener('input', () => {
+          const value = Number(marks.value);
+          question.points = Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0;
+          paintHint();
+          saveDraft(draft);
+        });
+        paintHint();
+        timeAndPoints.append(
+          el('div', {}, [
+            el('label', { text: 'علامة السؤال (للتصحيح اليدوي)' }),
+            marks,
+            el('div', { class: 'row', style: { gap: '6px', marginTop: '6px' } },
+              [0, 3, 5, 10].map((value) =>
+                el(
+                  'button',
+                  {
+                    class: 'btn sm ghost',
+                    type: 'button',
+                    onclick: () => {
+                      question.points = value;
+                      marks.value = String(value);
+                      paintHint();
+                      saveDraft(draft);
+                    },
+                  },
+                  value === 0 ? 'بلا علامة' : String(value)
+                )
+              )
+            ),
+            hint,
+          ])
+        );
+      }
 
       if (question.type === 'mc' || question.type === 'truefalse') {
         // علامة حرة لكل سؤال — يضع المدرب ما يشاء
