@@ -18,7 +18,7 @@ const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -154,7 +154,7 @@ app.get('/api/sessions/:code/export', (req, res) => {
   const session = requireHost(req, res);
   if (!session) return;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="tafa3l-${session.code}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="tapio-${session.code}.json"`);
   res.end(JSON.stringify(session.export(), null, 2));
 });
 
@@ -512,7 +512,7 @@ const ready = storage
     () =>
       new Promise((resolve) => {
         server.listen(PORT, () => {
-          log(`تفاعل — يعمل على http://localhost:${server.address().port}`);
+          log(`Tapio — يعمل على http://localhost:${server.address().port}`);
           startKeepAlive(store);
           resolve();
         });

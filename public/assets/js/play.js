@@ -107,7 +107,7 @@
   async function boot() {
     try {
       state.info = await api('/api/sessions/' + code);
-      document.title = state.info.title + ' — تفاعل';
+      document.title = state.info.title + ' — Tapio';
       $('#quizTitle').textContent = state.info.title;
       if (!store.get(SESSION_KEY, null)) renderJoin();
     } catch (err) {
@@ -746,7 +746,7 @@
     const perf = bits.length ? ' — ' + bits.join(' · ') : '';
     // أصحاب المنصة يتصدّر مركزهم النص؛ والبقية بلقب تحفيزي
     const lead = theme.banner ? `${theme.emblem} حصلت على ${theme.banner}` : `${level.emoji} حصلت على لقب «${level.label}»`;
-    return `${lead} في «${title}» على منصة تفاعل${perf} 🎊`;
+    return `${lead} في «${title}» على منصة Tapio${perf} 🎊`;
   }
 
   /** هوية البطاقة بحسب الترتيب — ذهبية للأول، فضية للثاني، برونزية للثالث */
@@ -875,7 +875,7 @@
     // العلامة والعنوان
     ctx.fillStyle = '#eef2ff';
     ctx.font = `800 56px ${FONT}`;
-    ctx.fillText('⚡ تفاعل', W / 2, 130);
+    ctx.fillText('⚡ Tapio', W / 2, 130);
     ctx.fillStyle = '#a3aed0';
     ctx.font = `600 38px ${FONT}`;
     const title = s.title || state.info?.title || 'نشاط تفاعلي';
@@ -1007,7 +1007,7 @@
     ctx.fillText(when, W / 2, H - 115);
     ctx.fillStyle = '#7c8db0';
     ctx.font = `600 28px ${FONT}`;
-    ctx.fillText('⚡ صُنعت على منصة تفاعل — أسئلة واستطلاعات حية', W / 2, H - 68);
+    ctx.fillText('⚡ صُنعت على منصة Tapio — أسئلة واستطلاعات حية', W / 2, H - 68);
 
     return canvas;
   }
@@ -1031,17 +1031,17 @@
     const level = levelOf(s);
     const text = shareText(s, level);
     const url = URL.createObjectURL(blob);
-    const img = el('img', { class: 'share-card-img', src: url, alt: 'بطاقة نتيجتي في تفاعل' });
+    const img = el('img', { class: 'share-card-img', src: url, alt: 'بطاقة نتيجتي في Tapio' });
 
     const buttons = el('div', { class: 'row', style: { justifyContent: 'center', gap: '8px', flexWrap: 'wrap' } });
 
     // المشاركة الأصلية (الجوال): تفتح واتساب وكل التطبيقات مع الصورة نفسها
-    const file = new File([blob], 'tafa3l-result.png', { type: 'image/png' });
+    const file = new File([blob], 'tapio-result.png', { type: 'image/png' });
     if (navigator.canShare?.({ files: [file] })) {
       const share = el('button', { class: 'btn primary', type: 'button' }, '📤 مشاركة البطاقة');
       share.addEventListener('click', async () => {
         try {
-          await navigator.share({ files: [file], text, title: 'نتيجتي في تفاعل' });
+          await navigator.share({ files: [file], text, title: 'نتيجتي في Tapio' });
         } catch {
           /* أُلغيت المشاركة */
         }
@@ -1054,7 +1054,7 @@
       );
     }
 
-    buttons.append(el('a', { class: 'btn ghost', href: url, download: 'tafa3l-نتيجتي.png' }, '⬇ حفظ الصورة'));
+    buttons.append(el('a', { class: 'btn ghost', href: url, download: 'tapio-نتيجتي.png' }, '⬇ حفظ الصورة'));
 
     const copyBtn = el('button', { class: 'btn ghost', type: 'button' }, '📋 نسخ النص');
     copyBtn.addEventListener('click', async () => {

@@ -46,14 +46,14 @@
     return location.protocol === 'file:';
   }
 
-  const OFFLINE_HINT =
-    'تعذّر الوصول إلى خادم تفاعل — هذه الصفحة تُقدَّم كملفات ثابتة فقط. ' +
-    'محلياً شغّل «npm start»، وللنشر استخدم استضافة تشغّل Node دائماً (Render أو Railway أو Fly.io) ' +
-    'لأن منصات serverless مثل Vercel لا تدعم WebSocket.';
+  /** النص الافتراضي عربي دائماً؛ الصفحات المُترجمة (المحمَّل فيها i18n.js) تستبدله بلغتها الحالية */
+  function offlineHint() {
+    return global.I18n ? global.I18n.t('offlineHint') : 'تعذّر الوصول إلى خادم Tapio — هذه الصفحة تُقدَّم كملفات ثابتة فقط. محلياً شغّل «npm start»، وللنشر استخدم استضافة تشغّل Node دائماً (Render أو Railway أو Fly.io) لأن منصات serverless مثل Vercel لا تدعم WebSocket.';
+  }
 
   async function api(path, options) {
     if (isFileProtocol()) {
-      throw Object.assign(new Error(OFFLINE_HINT), { offline: true });
+      throw Object.assign(new Error(offlineHint()), { offline: true });
     }
     let response;
     try {
@@ -64,7 +64,7 @@
       });
     } catch {
       // فشل الشبكة نفسه: الخادم متوقف أو الصفحة تُقدَّم من مكان آخر
-      throw Object.assign(new Error(OFFLINE_HINT), { offline: true });
+      throw Object.assign(new Error(offlineHint()), { offline: true });
     }
     let data = null;
     try {
@@ -75,9 +75,10 @@
     if (!response.ok) {
       // خادم ملفات ثابت يردّ HTML على مسارات API — نفس العلاج
       if (!data && (response.status === 404 || response.status === 405 || response.status >= 500)) {
-        throw Object.assign(new Error(OFFLINE_HINT), { offline: true });
+        throw Object.assign(new Error(offlineHint()), { offline: true });
       }
-      throw new Error(data?.error || `تعذّر تنفيذ الطلب (${response.status})`);
+      const fallback = global.I18n ? global.I18n.t('requestFailed', { status: response.status }) : `تعذّر تنفيذ الطلب (${response.status})`;
+      throw new Error(data?.error || fallback);
     }
     return data;
   }
@@ -98,19 +99,19 @@
   /** شريط تحذير ثابت أعلى الصفحة يشرح كيف يشغّل المستخدم الخادم */
   function showOfflineBanner(container) {
     if (document.querySelector('#offlineBanner')) return;
+    const I = global.I18n;
     const banner = el('div', { class: 'banner', id: 'offlineBanner', style: { marginBottom: '12px' } }, [
-      el('strong', { text: '⚠️ الخادم غير متصل — الوضع التجريبي' }),
+      el('strong', { text: I ? I.t('offlineTitle') : '⚠️ الخادم غير متصل — الوضع التجريبي' }),
       el('div', { class: 'small', style: { marginTop: '4px' } }, [
-        'يمكنك تجهيز الأسئلة الآن، لكن بدء جلسة مباشرة يحتاج خادماً يعمل. محلياً: ',
+        I ? I.t('offlineBody1') : 'يمكنك تجهيز الأسئلة الآن، لكن بدء جلسة مباشرة يحتاج خادماً يعمل. محلياً: ',
         el('code', { text: 'npm install && npm start', style: { direction: 'ltr', display: 'inline-block' } }),
-        ' ثم ',
+        I ? I.t('offlineBody1End') : ' ثم ',
         el('code', { text: 'http://localhost:3000', style: { direction: 'ltr', display: 'inline-block' } }),
         '.',
       ]),
       el('div', { class: 'small', style: { marginTop: '4px' } }, [
-        'للنشر على الإنترنت استخدم استضافة تشغّل عملية Node دائمة (Render أو Railway أو Fly.io). ',
-        'منصات serverless مثل Vercel و Netlify و GitHub Pages تخدم الملفات الثابتة فقط ولا تدعم WebSocket، ',
-        'لذلك لن تعمل الجلسات المباشرة عليها.',
+        I ? I.t('offlineBody2') : 'للنشر على الإنترنت استخدم استضافة تشغّل عملية Node دائمة (Render أو Railway أو Fly.io). ',
+        I ? I.t('offlineBody2End') : 'منصات serverless مثل Vercel و Netlify و GitHub Pages تخدم الملفات الثابتة فقط ولا تدعم WebSocket، لذلك لن تعمل الجلسات المباشرة عليها.',
       ]),
     ]);
     (container || document.querySelector('#app') || document.body).prepend(banner);
@@ -277,6 +278,6 @@
     showOfflineBanner,
     hideOfflineBanner,
     isFileProtocol,
-    OFFLINE_HINT,
+    OFFLINE_HINT: offlineHint,
   };
 })(window);

@@ -3,28 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>تفاعل — أسئلة واستطلاعات حية</title>
+    <title>Tapio</title>
     <meta name="description" content="منصة خفيفة لإنشاء أسئلة تفاعلية واستطلاعات حية للمدربين والمعلمين. بلا تسجيل وبلا تخزين دائم." />
     <meta name="theme-color" content="#0b1020" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.13.0" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.14.0" />
+    <script src="/assets/js/i18n.js?v=1.14.0"></script>
   </head>
   <body>
     <div class="wrap narrow">
-      <div class="center" style="padding: 26px 0 18px">
+      <div class="row" style="justify-content: flex-end; padding-top: 10px" id="langRow"></div>
+      <div class="center" style="padding: 10px 0 18px">
         <div class="brand" style="justify-content: center">
           <span class="dot">⚡</span>
-          <span>تفاعل</span>
+          <span>Tapio</span>
         </div>
-        <p class="muted small" style="margin-top: 8px">أسئلة تفاعلية واستطلاعات حية — بلا حسابات وبلا تخزين دائم</p>
+        <p class="muted small" style="margin-top: 8px" id="tagline"></p>
       </div>
 
       <div class="card">
-        <h2>ادخل إلى نشاط</h2>
+        <h2 id="joinTitle"></h2>
         <form id="joinForm" class="stack">
           <div>
-            <label for="code">رمز الدخول</label>
+            <label for="code" id="codeLabel"></label>
             <input
               id="code"
               class="code-input"
@@ -33,44 +35,61 @@
               maxlength="6"
               autocomplete="off"
               placeholder="000000"
-              aria-label="رمز الدخول المكوّن من ستة أرقام"
             />
           </div>
-          <button class="btn primary block" type="submit">دخول</button>
-          <p class="muted small center" style="margin: 0">أو امسح رمز QR الذي يعرضه المدرب</p>
+          <button class="btn primary block" type="submit" id="joinBtn"></button>
+          <p class="muted small center" style="margin: 0" id="orScan"></p>
         </form>
       </div>
 
       <div class="card">
-        <h2>أنت مدرب أو معلم؟</h2>
-        <p class="muted small">أنشئ اختباراً أو استطلاعاً خلال دقيقة، اعرض رمز QR لطلابك، وتابع تقدّمهم مباشرة على لوحة التحكم.</p>
-        <a class="btn accent block" href="/host.html">إنشاء نشاط جديد</a>
-        <a class="btn ghost block" href="/host.html#/demo" style="margin-top: 8px">⚡ تجربة سريعة بضغطة واحدة</a>
-        <a class="btn ghost block" id="accountLink" href="/login.html" style="margin-top: 8px">🔐 دخول المدرب — احفظ أنشطتك</a>
+        <h2 id="teacherTitle"></h2>
+        <p class="muted small" id="teacherBody"></p>
+        <a class="btn accent block" href="/host.html" id="createBtn"></a>
+        <a class="btn ghost block" href="/host.html#/demo" style="margin-top: 8px" id="demoBtn"></a>
+        <a class="btn ghost block" id="accountLink" href="/login.html" style="margin-top: 8px"></a>
         <div id="resume" class="hidden" style="margin-top: 10px">
-          <a class="btn ghost block" id="resumeLink" href="#">استئناف جلستي السابقة</a>
+          <a class="btn ghost block" id="resumeLink" href="#"></a>
         </div>
       </div>
 
       <div class="card">
-        <h3>لماذا تفاعل؟</h3>
-        <ul class="muted small" style="margin: 0; padding-inline-start: 20px; line-height: 2">
-          <li>خفيف وسريع على الجوال — بلا تطبيق وبلا تسجيل.</li>
-          <li>اسم أو كنية + أفاتار عشوائي، أو دخول مجهول تماماً للاستطلاعات.</li>
-          <li>لوحة تحكم مباشرة: تقدّم المشاركين، نسب الإجابة، والترتيب.</li>
-          <li>التخزين مؤقت في الذاكرة فقط — لا تُحفظ نتائج المشاركين.</li>
-        </ul>
+        <h3 id="whyTitle"></h3>
+        <ul class="muted small" id="whyList" style="margin: 0; padding-inline-start: 20px; line-height: 2"></ul>
       </div>
 
-      <p class="footer">التخزين مؤقت: تُحذف الجلسة تلقائياً بعد انتهائها أو عند خمولها.</p>
+      <p class="footer" id="pageFooter"></p>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.13.0"></script>
-    <script src="/assets/js/common.js?v=1.13.0"></script>
+    <script src="/assets/js/avatar.js?v=1.14.0"></script>
+    <script src="/assets/js/common.js?v=1.14.0"></script>
     <script>
       (function () {
         const { $, api, toast, store, serverAlive, showOfflineBanner } = window.T;
+        const t = window.I18n.t;
         const input = $('#code');
+
+        document.title = t('brand') + ' — ' + t('homeTagline');
+        window.I18n.mountToggle($('#langRow'));
+
+        $('#tagline').textContent = t('homeTagline');
+        $('#joinTitle').textContent = t('homeJoinTitle');
+        $('#codeLabel').textContent = t('homeCodeLabel');
+        input.setAttribute('aria-label', t('homeCodeAria'));
+        $('#joinBtn').textContent = t('homeJoinBtn');
+        $('#orScan').textContent = t('homeOrScan');
+        $('#teacherTitle').textContent = t('homeTeacherTitle');
+        $('#teacherBody').textContent = t('homeTeacherBody');
+        $('#createBtn').textContent = t('homeCreateBtn');
+        $('#demoBtn').textContent = t('homeDemoBtn');
+        $('#accountLink').textContent = t('homeLoginBtn');
+        $('#whyTitle').textContent = t('homeWhyTitle');
+        $('#pageFooter').textContent = t('homeFooter');
+        ['homeWhy1', 'homeWhy2', 'homeWhy3', 'homeWhy4'].forEach((key) => {
+          const li = document.createElement('li');
+          li.textContent = t(key);
+          $('#whyList').append(li);
+        });
 
         // تشخيص مبكر: إن كان الخادم غير متاح نشرح السبب بدل رسالة خطأ غامضة
         serverAlive().then((alive) => {
@@ -90,7 +109,7 @@
         $('#joinForm').addEventListener('submit', async (event) => {
           event.preventDefault();
           const code = input.value.trim();
-          if (code.length !== 6) return toast('أدخل رمزاً من ٦ أرقام', 'bad');
+          if (code.length !== 6) return toast(t('homeCodeError'), 'bad');
           try {
             await api('/api/sessions/' + code);
             location.href = '/play.html?code=' + code;
@@ -105,7 +124,7 @@
             if (!user) return;
             const link = $('#accountLink');
             link.href = '/host.html#/mine';
-            link.textContent = '📚 نشاطاتي (' + user.name + ')';
+            link.textContent = t('homeMyActivities', { name: user.name });
           })
           .catch(() => {});
 
@@ -116,7 +135,7 @@
             .then(() => {
               $('#resume').classList.remove('hidden');
               $('#resumeLink').href = '/host.html#/live/' + last.code;
-              $('#resumeLink').textContent = 'استئناف: ' + (last.title || last.code);
+              $('#resumeLink').textContent = t('homeResumeBtn', { title: last.title || last.code });
             })
             .catch(() => {});
         }

@@ -3,7 +3,12 @@
   'use strict';
 
   const { $, el, toast, api } = window.T;
+  const t = window.I18n.t;
   const app = $('#app');
+
+  document.title = t('brand') + ' — ' + t('loginTitle');
+  $('#homeLink').textContent = t('loginBackHome');
+  window.I18n.mountToggle($('#langRow'));
 
   // إلى أين نعود بعد الدخول (نقبل المسارات الداخلية فقط)
   const params = new URLSearchParams(location.search);
@@ -40,10 +45,10 @@
     app.append(
       el('div', { class: 'card stack center' }, [
         el('div', { style: { fontSize: '2.4rem' }, text: '👋' }),
-        el('h1', { text: 'أهلاً ' + user.name }),
+        el('h1', { text: t('loginWelcome', { name: user.name }) }),
         el('p', { class: 'muted small', text: user.email }),
-        el('a', { class: 'btn primary block', href: '/host.html#/mine' }, '📚 نشاطاتي'),
-        el('a', { class: 'btn ghost block', href: '/host.html#/' }, '➕ نشاط جديد'),
+        el('a', { class: 'btn primary block', href: '/host.html#/mine' }, t('loginMyActivities')),
+        el('a', { class: 'btn ghost block', href: '/host.html#/' }, t('loginNewActivity')),
         el(
           'button',
           {
@@ -54,7 +59,7 @@
               location.reload();
             },
           },
-          'تسجيل الخروج'
+          t('loginLogout')
         ),
       ])
     );
@@ -69,25 +74,22 @@
         class: 'btn primary block google-btn',
         href: '/api/auth/google?next=' + encodeURIComponent(next),
       },
-      [el('span', { html: GOOGLE_ICON }), el('span', { text: 'متابعة عبر جوجل' })]
+      [el('span', { html: GOOGLE_ICON }), el('span', { text: t('loginGoogleBtn') })]
     );
 
     app.append(
       el('div', { class: 'card stack center' }, [
-        el('h1', { text: 'دخول المدرب' }),
-        el('p', {
-          class: 'muted small',
-          text: 'الحساب يحفظ أنشطتك لتعيد فتحها وإطلاقها متى شئت. نتائج الطلاب تبقى مؤقتة ولا تُحفظ.',
-        }),
+        el('h1', { text: t('loginTitle') }),
+        el('p', { class: 'muted small', text: t('loginSubtitle') }),
         googleConfigured
           ? googleBtn
           : el('div', { class: 'banner' }, [
-              el('strong', { text: '⚠️ تسجيل الدخول عبر جوجل غير مُفعّل بعد' }),
-              el('div', { class: 'small', text: 'اضبط GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET على الخادم.' }),
+              el('strong', { text: t('loginNotConfiguredTitle') }),
+              el('div', { class: 'small', text: t('loginNotConfiguredBody') }),
             ]),
       ])
     );
 
-    app.append(el('p', { class: 'footer' }, 'يمكنك أيضاً استخدام تفاعل بلا حساب — لكن أنشطتك لن تُحفظ لإعادة استخدامها.'));
+    app.append(el('p', { class: 'footer' }, t('loginFooter')));
   }
 })();

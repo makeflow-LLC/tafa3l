@@ -1,4 +1,4 @@
-# نشر «تفاعل» على Render — لا بد أن يكون النوع web (عملية Node دائمة)
+# نشر «Tapio» على Render — لا بد أن يكون النوع web (عملية Node دائمة)
 # وليس static، لأن التطبيق يحتاج WebSocket وحالة في الذاكرة.
 services:
   - type: web
