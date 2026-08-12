@@ -50,6 +50,9 @@
         countdown: true,
         pace: 'host',
         autoAdvanceSec: 6,
+        // الجدولة: موعد الفتح (نص محلي من حقل datetime-local) ومدة الاختبار بالدقائق
+        opensAt: '',
+        durationMinutes: 0,
         scoring: 'speed',
         streakBonus: true,
         revealAnswer: true,
@@ -455,6 +458,9 @@
           el('label', { text: 'وضع الفرق 🏳️', style: { marginTop: '6px' } }),
           switchRow('تقسيم تلقائي إلى فرق', 'teamMode', 'كل مشارك يُوزَّع على فريق ملوّن عند الانضمام، ونقاط الفريق مجموع أعضائه'),
           draft.settings.teamMode ? teamCountRow() : null,
+
+          el('label', { text: 'الجدولة والمدة ⏰', style: { marginTop: '6px' } }),
+          scheduleRow(),
         ])
       );
 
@@ -632,6 +638,98 @@
         saveDraft(draft);
       });
       return el('div', {}, [el('label', { text: 'عدد الفرق' }), select]);
+    }
+
+    /**
+     * جدولة الاختبار: موعد الفتح ومدته. الموعد يُكتب بتوقيت جهاز المدرب
+     * (datetime-local) ويُحوَّل إلى طابع زمني عند الإطلاق.
+     */
+    function scheduleRow() {
+      const when = el('input', { type: 'datetime-local', value: draft.settings.opensAt || '' });
+      const minutes = el('input', {
+        type: 'number',
+        min: 0,
+        max: 720,
+        step: 5,
+        inputmode: 'numeric',
+        value: String(draft.settings.durationMinutes || 0),
+      });
+      const hint = el('div', { class: 'muted small', style: { marginTop: '4px' } });
+
+      const paint = () => {
+        const parts = [];
+        if (draft.settings.opensAt) {
+          const stamp = Date.parse(draft.settings.opensAt);
+          parts.push(
+            Number.isFinite(stamp)
+              ? `يفتح تلقائياً ${new Date(stamp).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' })}`
+              : 'موعد غير مفهوم'
+          );
+        } else {
+          parts.push('بلا موعد: يبدأ حين تضغط «بدء النشاط»');
+        }
+        parts.push(
+          draft.settings.durationMinutes > 0
+            ? `ويُقفل تلقائياً بعد ${draft.settings.durationMinutes} دقيقة من بدايته`
+            : 'وبلا حدّ زمني للاختبار كاملاً'
+        );
+        hint.textContent = parts.join(' · ');
+      };
+
+      when.addEventListener('input', () => {
+        draft.settings.opensAt = when.value;
+        paint();
+        saveDraft(draft);
+      });
+      minutes.addEventListener('input', () => {
+        const value = Number(minutes.value);
+        draft.settings.durationMinutes = Number.isFinite(value) ? Math.min(720, Math.max(0, Math.round(value))) : 0;
+        paint();
+        saveDraft(draft);
+      });
+      paint();
+
+      const presets = el('div', { class: 'row', style: { gap: '6px', marginTop: '6px' } },
+        [0, 10, 20, 30, 45, 60].map((value) =>
+          el(
+            'button',
+            {
+              class: 'btn sm ghost',
+              type: 'button',
+              onclick: () => {
+                draft.settings.durationMinutes = value;
+                minutes.value = String(value);
+                paint();
+                saveDraft(draft);
+              },
+            },
+            value === 0 ? 'بلا حدّ' : value + ' د'
+          )
+        )
+      );
+
+      const clear = el(
+        'button',
+        {
+          class: 'btn sm ghost',
+          type: 'button',
+          onclick: () => {
+            draft.settings.opensAt = '';
+            when.value = '';
+            paint();
+            saveDraft(draft);
+          },
+        },
+        '✕ إلغاء الموعد'
+      );
+
+      return el('div', { class: 'stack tight' }, [
+        el('div', { class: 'grid two' }, [
+          el('div', {}, [el('label', { text: 'موعد فتح الاختبار (اختياري)' }), when, el('div', { class: 'row', style: { marginTop: '6px' } }, [clear])]),
+          el('div', {}, [el('label', { text: 'مدة الاختبار بالدقائق' }), minutes, presets]),
+        ]),
+        hint,
+      ]);
     }
 
     function switchRow(label, key, hint) {

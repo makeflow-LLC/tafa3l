@@ -254,6 +254,37 @@
     return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  /** «٥ دقائق و٣٠ ثانية» — أوضح من 05:30 في نصّ عربي */
+  function fmtLeft(ms) {
+    const total = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h) return `${h} س ${String(m).padStart(2, '0')} د`;
+    if (m) return `${m}:${String(s).padStart(2, '0')} د`;
+    return `${s} ثانية`;
+  }
+
+  /**
+   * عدّاد تنازلي حيّ داخل عنصر حتى لحظة معيّنة.
+   * يعيد دالة إيقاف، ويستدعي onDone مرة واحدة عند الوصول.
+   */
+  function countdownTo(node, timestamp, onDone) {
+    let done = false;
+    const paint = () => {
+      const left = timestamp - Date.now();
+      node.textContent = fmtLeft(left);
+      if (left <= 0 && !done) {
+        done = true;
+        clearInterval(timer);
+        if (onDone) onDone();
+      }
+    };
+    const timer = setInterval(paint, 1000);
+    paint();
+    return () => clearInterval(timer);
+  }
+
   function vibrate(pattern) {
     try {
       navigator.vibrate?.(pattern);
@@ -274,6 +305,8 @@
     TYPE_LABELS,
     TYPE_EMOJI,
     fmtMs,
+    fmtLeft,
+    countdownTo,
     escapeHtml,
     vibrate,
     serverAlive,

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, connect, TYPE_LABELS, TYPE_EMOJI, fmtMs } = window.T;
+  const { $, el, avatarNode, toast, connect, TYPE_LABELS, TYPE_EMOJI, fmtMs, countdownTo } = window.T;
   const Fx = window.Fx;
 
   const app = $('#app');
@@ -81,7 +81,25 @@
 
   // ------------------------------------------------------------- القاعة
 
+  /** القاعة على البروجكتر: إن كان الاختبار مجدولاً نعرض عدّاداً ضخماً */
+  function scheduleBanner(s) {
+    const opensAt = s.scheduledAt && s.scheduledAt > serverTime() ? s.scheduledAt : null;
+    if (!opensAt) return null;
+    const value = el('strong', { class: 'countdown-big', style: { fontSize: '2.6rem' } });
+    state.stopSchedule = countdownTo(value, opensAt);
+    return el('div', { class: 'card stack center' }, [
+      el('span', { class: 'badge', text: '⏰ يبدأ الاختبار بعد' }),
+      value,
+      el('span', {
+        class: 'muted',
+        text: new Date(opensAt).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' }),
+      }),
+    ]);
+  }
+
   function renderLobby(s) {
+    const banner = scheduleBanner(s);
+    if (banner) app.append(banner);
     app.append(
       el('div', { class: 'card center stack' }, [
         el('h1', { text: 'امسح رمز QR للانضمام', style: { margin: 0 } }),
@@ -481,6 +499,8 @@
     state.tickTimer = null;
     state.cancelCountdown?.();
     state.cancelCountdown = null;
+    state.stopSchedule?.();
+    state.stopSchedule = null;
   }
 
   // ------------------------------------------------------------- ملء الشاشة

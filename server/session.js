@@ -77,6 +77,21 @@ function clean(value, max) {
   return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
 }
 
+/** أقصى مدة اختبار مسموحة (١٢ ساعة) وأبعد موعد جدولة (٩٠ يوماً) */
+const MAX_DURATION_MIN = 720;
+const MAX_SCHEDULE_AHEAD_MS = 90 * 86400000;
+
+/** موعد مستقبلي صالح أو null — نتسامح مع النص ISO كما يرسله المتصفح */
+function futureStamp(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const ms = typeof value === 'number' ? value : Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  const now = Date.now();
+  // موعد مضى (أكثر من دقيقة) لا معنى له، والبعيد جداً غالباً خطأ إدخال
+  if (ms < now - 60000 || ms > now + MAX_SCHEDULE_AHEAD_MS) return null;
+  return Math.round(ms);
+}
+
 function clamp(n, min, max, fallback) {
   const v = Number(n);
   if (!Number.isFinite(v)) return fallback;
@@ -208,6 +223,14 @@ function normalizeQuiz(payload) {
       // وضع الفرق: يُقسَّم المشاركون تلقائياً إلى فرق ملوّنة، ونقاطهم تُجمع لترتيب جماعي
       teamMode: payload?.settings?.teamMode === true,
       teamCount: clamp(payload?.settings?.teamCount, 2, TEAMS.length, 4),
+
+      /**
+       * الجدولة: موعد فتح الاختبار (بالمللي ثانية) — الجلسة تبقى في القاعة
+       * حتى يحين، ثم تبدأ وحدها. ماضٍ أو غير صالح = بدء يدوي كالمعتاد.
+       */
+      opensAt: futureStamp(payload?.settings?.opensAt),
+      // مدة الاختبار كاملاً بالدقائق — عند انتهائها يُقفل تلقائياً (صفر = بلا حدّ)
+      durationMinutes: clamp(payload?.settings?.durationMinutes, 0, MAX_DURATION_MIN, 0),
     },
   };
 }
@@ -236,6 +259,10 @@ class Session {
     this._timer = null;
     this._autoTimer = null;
     this._autoAt = null;
+    // مؤقّت فتح الاختبار في موعده، ومؤقّت إقفاله بعد انتهاء مدته
+    this._openTimer = null;
+    this._deadlineTimer = null;
+    this.deadlineAt = null;
 
     /** @type {Map<string, any>} */
     this.participants = new Map();
@@ -248,6 +275,44 @@ class Session {
     this.teams = this.settings.teamMode
       ? TEAMS.slice(0, this.settings.teamCount).map((t, i) => ({ id: i, name: t.name, emoji: t.emoji }))
       : null;
+
+    this.armSchedule();
+  }
+
+  /** يضبط مؤقّت الفتح التلقائي إن كان للاختبار موعد */
+  armSchedule() {
+    if (this._openTimer) clearTimeout(this._openTimer);
+    this._openTimer = null;
+    const at = this.settings.opensAt;
+    if (!at || this.status !== 'lobby') return;
+    const delay = Math.max(0, at - Date.now());
+    this._openTimer = setTimeout(() => {
+      this._openTimer = null;
+      if (this.status !== 'lobby') return;
+      this.start();
+      this.broadcastState();
+    }, delay);
+    this._openTimer.unref?.();
+  }
+
+  /** يضبط مؤقّت الإقفال التلقائي بعد انتهاء مدة الاختبار */
+  armDeadline() {
+    if (this._deadlineTimer) clearTimeout(this._deadlineTimer);
+    this._deadlineTimer = null;
+    if (!this.settings.durationMinutes || this.status !== 'live') {
+      this.deadlineAt = null;
+      return;
+    }
+    this.deadlineAt = (this.startedAt || Date.now()) + this.settings.durationMinutes * 60000;
+    const delay = Math.max(0, this.deadlineAt - Date.now());
+    this._deadlineTimer = setTimeout(() => {
+      this._deadlineTimer = null;
+      if (this.status !== 'live') return;
+      // انتهى وقت الاختبار: نُقفله للجميع كما لو ضغط المدرب «إنهاء»
+      this.finish();
+      this.broadcastState();
+    }, delay);
+    this._deadlineTimer.unref?.();
   }
 
   touch() {
@@ -257,6 +322,10 @@ class Session {
   dispose() {
     if (this._timer) clearTimeout(this._timer);
     this._timer = null;
+    if (this._openTimer) clearTimeout(this._openTimer);
+    this._openTimer = null;
+    if (this._deadlineTimer) clearTimeout(this._deadlineTimer);
+    this._deadlineTimer = null;
     this.clearAuto();
     for (const socket of this.allSockets()) {
       try {
@@ -330,8 +399,13 @@ class Session {
   start() {
     if (this.status === 'ended') return;
     this.status = 'live';
-    // لحظة الانطلاق الفعلية — منها تُحسب مدة النشاط في التقارير
+    // لحظة الانطلاق الفعلية — منها تُحسب مدة النشاط في التقارير ومهلة الإقفال
     if (!this.startedAt) this.startedAt = Date.now();
+    if (this._openTimer) {
+      clearTimeout(this._openTimer);
+      this._openTimer = null;
+    }
+    this.armDeadline();
     if (this.settings.pace === 'self') {
       // كل متدرب يبدأ من سؤاله الأول بسرعته الخاصة
       this.currentIndex = 0;
@@ -498,6 +572,8 @@ class Session {
   }
 
   finish() {
+    if (this._deadlineTimer) clearTimeout(this._deadlineTimer);
+    this._deadlineTimer = null;
     this.status = 'ended';
     this.phase = 'final';
     this.locked = true;
@@ -1083,6 +1159,8 @@ class Session {
         requireName: this.settings.requireName,
         showLeaderboard: this.settings.showLeaderboard,
         teamMode: this.settings.teamMode,
+        scheduledAt: this.settings.opensAt ? new Date(this.settings.opensAt).toISOString() : null,
+        durationMinutes: this.settings.durationMinutes || null,
       },
       questionCount: this.questions.length,
       participantCount: participants.length,
@@ -1183,6 +1261,8 @@ class Session {
         team: this.teamOf(participant),
       },
       participants: this.participants.size,
+      scheduledAt: this.settings.opensAt,
+      deadlineAt: this.deadlineAt,
       answered: answer
         ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
         : null,
@@ -1239,6 +1319,8 @@ class Session {
         team: this.teamOf(participant),
       },
       participants: this.participants.size,
+      scheduledAt: this.settings.opensAt,
+      deadlineAt: this.deadlineAt,
       answered: answer
         ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
         : null,
@@ -1298,6 +1380,11 @@ class Session {
       })),
       answeredCount: q ? [...this.participants.values()].filter((p) => p.answers.has(q.id)).length : 0,
       pace: this.settings.pace,
+      // الجدولة: متى يفتح الاختبار ومتى يُقفل تلقائياً
+      // (نسميه scheduledAt لا opensAt لأن opensAt محجوز لعدّاد «استعد» في السؤال)
+      scheduledAt: this.settings.opensAt,
+      deadlineAt: this.deadlineAt,
+      durationMinutes: this.settings.durationMinutes,
       autoNextAt: this._autoTimer ? this._autoAt : null,
       finishedCount: [...this.participants.values()].filter((p) => p.phase === 'done').length,
       teams: this.teams,

@@ -21,7 +21,7 @@ const premium = require('./premium');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -144,6 +144,9 @@ app.get('/api/sessions/:code', (req, res) => {
     // مكشوفان للتشخيص السريع: هل طُبّق وضع التقدّم الذي اختاره المدرب؟
     pace: session.settings.pace,
     autoStart: session.settings.autoStart,
+    // الجدولة: صفحة الدخول تعرض العدّ التنازلي قبل الموعد
+    scheduledAt: session.settings.opensAt,
+    durationMinutes: session.settings.durationMinutes,
     participants: session.participants.size,
     questionCount: session.questions.length,
     joinUrl: joinUrl(req, session.code),

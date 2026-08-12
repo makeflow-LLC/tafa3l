@@ -54,6 +54,9 @@ function deleteSession(code) {
 function sweep(aggressive = false) {
   const now = Date.now();
   for (const [code, session] of sessions) {
+    // اختبار مجدول لموعد قادم يبقى محفوظاً ولو لم يلمسه أحد
+    const scheduled = session.status === 'lobby' && session.settings?.opensAt;
+    if (scheduled && now < session.settings.opensAt + 60 * 60 * 1000) continue;
     const idle = now - session.lastActivity;
     const endedTooLong =
       session.status === 'ended' && now - (session.endedAt || session.lastActivity) > (aggressive ? 0 : ENDED_TTL_MS);

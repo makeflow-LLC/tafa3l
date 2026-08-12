@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, api, connect, store, vibrate } = window.T;
+  const { $, el, avatarNode, toast, api, connect, store, vibrate, countdownTo } = window.T;
   const Fx = window.Fx;
 
   const app = $('#app');
@@ -284,18 +284,41 @@
           ? 'سيبدأ النشاط وينتقل تلقائياً'
           : 'أنت في القاعة، انتظر بدء المدرب…';
 
+    // اختبار مجدول: عدّاد حتى موعد الفتح بدل انتظار مفتوح
+    const opensIn = s.scheduledAt && s.scheduledAt > serverTime() ? s.scheduledAt : null;
+    const countdownNode = opensIn ? el('strong', { class: 'countdown-big' }) : null;
+
     app.append(
       el('div', { class: 'card stack center' }, [
         avatarNode(s.me.avatar, 'lg'),
         el('h1', { text: s.me.name }),
-        el('p', { class: 'muted', text: waitingReason }),
-        el('div', { class: 'spinner' }),
+        opensIn
+          ? el('div', { class: 'stack tight center' }, [
+              el('p', { class: 'muted', style: { margin: 0 }, text: '⏰ يبدأ الاختبار بعد' }),
+              countdownNode,
+              el('span', {
+                class: 'muted small',
+                text: new Date(opensIn).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' }),
+              }),
+            ])
+          : el('p', { class: 'muted', text: waitingReason }),
+        opensIn ? null : el('div', { class: 'spinner' }),
         el('span', { class: 'badge' }, `👥 ${s.participants} مشارك`),
       ])
     );
+    if (opensIn) state.stopCountdown = countdownTo(countdownNode, opensIn);
     app.append(
       el('div', { class: 'card small muted center' }, 'أبقِ هذه الصفحة مفتوحة. إن انقطع الاتصال سنعيد وصلك تلقائياً.')
     );
+  }
+
+  /** شريط الوقت المتبقي للاختبار كاملاً (حين يضع المدرب مدة له) */
+  function deadlineBar(s) {
+    if (!s.deadlineAt || s.deadlineAt <= serverTime()) return null;
+    const value = el('strong', {});
+    const box = el('div', { class: 'deadline-bar' }, [el('span', { text: '⏳ ينتهي الاختبار خلال' }), value]);
+    state.stopDeadline = countdownTo(value, s.deadlineAt);
+    return box;
   }
 
   function renderQuestion(s) {
@@ -311,6 +334,8 @@
     ]);
     if (q.timeLimit) app.append(timerBox);
 
+    const bar = deadlineBar(s);
+    if (bar) app.append(bar);
     app.append(questionCard(q, { compact: !s.answered }));
 
     if (s.answered) {
@@ -1295,6 +1320,11 @@
     state.tickTimer = null;
     state.cancelCountdown?.();
     state.cancelCountdown = null;
+    // عدّادا الجدولة والمدة يعيشان بين الرسمات، فنوقفهما مع كل إعادة رسم
+    state.stopCountdown?.();
+    state.stopCountdown = null;
+    state.stopDeadline?.();
+    state.stopDeadline = null;
   }
 
   document.addEventListener('visibilitychange', () => {
