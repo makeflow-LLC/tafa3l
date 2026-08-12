@@ -21,7 +21,7 @@ const premium = require('./premium');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -96,6 +96,8 @@ app.post('/api/sessions', async (req, res) => {
     // فلا يضيع نشاط لمجرد أنه نسي زر الحفظ، وإنهاء الجلسة لا يحذفه
     if (req.user) {
       session.ownerId = req.user.id;
+      // اسم المعلّم يُطبع على التقرير — يُحفظ مع الجلسة لا يُقرأ من القاعدة وقت التصدير
+      session.ownerName = req.user.name;
       activityId = await syncLaunchedActivity(req.user, session, req.body?.activityId);
       if (activityId) session.activityId = activityId;
     }

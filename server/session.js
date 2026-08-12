@@ -246,6 +246,8 @@ class Session {
 
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
+    this.ownerId = null;
+    this.ownerName = null;
     this.startedAt = null;
     this.endedAt = null;
 
@@ -1147,6 +1149,8 @@ class Session {
     return {
       title: this.title,
       code: this.code,
+      // اسم المعلّم صاحب الجلسة — يُطبع في ترويسة التقرير
+      teacher: this.ownerName || null,
       exportedAt: new Date().toISOString(),
       startedAt: new Date(startedAt).toISOString(),
       endedAt: new Date(endedAt).toISOString(),

@@ -283,6 +283,7 @@ function accountRoutes(store) {
         questions: activity.questions,
       });
       session.ownerId = req.user.id;
+      session.ownerName = req.user.name;
       session.activityId = activity.id;
 
       res.status(201).json({ code: session.code, hostToken: session.hostToken, title: session.title });

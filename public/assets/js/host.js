@@ -114,6 +114,11 @@
     }
   }
 
+  /** الاسم الأول فقط — الترحيب بالاسم الكامل يبدو رسمياً وطويلاً */
+  function firstName(name) {
+    return String(name || '').trim().split(/\s+/)[0] || 'بك';
+  }
+
   /** تسجيل الخروج من أي صفحة */
   async function logout() {
     if (!confirm('تسجيل الخروج من حسابك؟')) return;
@@ -161,7 +166,8 @@
         ]),
       ])
     );
-    app.append(el('h1', { text: '📚 نشاطاتي' }));
+    app.append(el('h1', { text: `👋 أهلاً ${firstName(user.name)}` }));
+    app.append(el('h2', { style: { margin: '0 0 6px' }, text: '📚 نشاطاتي' }));
     app.append(
       el('p', { class: 'muted small' }, `${user.name} · ${activities.length} نشاطاً محفوظاً · كل نشاط تطلقه يُحفظ هنا تلقائياً، وإنهاء الجلسة لا يحذفه. تُحفظ الأسئلة فقط — نتائج الطلاب تبقى مؤقتة.`)
     );
@@ -348,6 +354,19 @@
         ]),
       ])
     );
+    if (state.user) {
+      // ترحيب باسم صاحب الحساب — أول ما يراه المعلّم بعد الدخول
+      app.append(
+        el('div', { class: 'welcome' }, [
+          el('h1', { style: { margin: 0 }, text: `👋 أهلاً ${firstName(state.user.name)}` }),
+          el('p', {
+            class: 'muted small',
+            style: { margin: 0 },
+            text: state.premium?.isPremium ? 'حسابك بريميوم — كل الميزات مفتوحة لك.' : 'جاهز لنشاط جديد؟ ابدأ من الأسفل.',
+          }),
+        ])
+      );
+    }
     app.append(el('h1', { text: 'إنشاء نشاط تفاعلي' }));
     // مدخل المساعد الذكي: أسرع طريق لمدرب لا يريد كتابة الأسئلة يدوياً
     app.append(
@@ -1511,7 +1530,14 @@
         el('h2', { style: { margin: 0 }, text: '📈 تحليل النتائج' }),
         el('span', {
           class: 'muted small',
-          text: `${analysis.title} · ${new Date(analysis.startedAt).toLocaleString('ar')} · ${analysis.durationMinutes} دقيقة`,
+          text: [
+            state.analyticsData?.teacher ? 'المعلّم: ' + state.analyticsData.teacher : null,
+            analysis.title,
+            new Date(analysis.startedAt).toLocaleString('ar'),
+            `${analysis.durationMinutes} دقيقة`,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         }),
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
