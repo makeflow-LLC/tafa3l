@@ -225,15 +225,26 @@
     },
   };
 
-  const TYPE_LABELS = {
-    mc: 'اختيار من متعدد',
-    truefalse: 'صح / خطأ',
-    poll: 'استطلاع رأي',
-    word: 'سحابة كلمات',
-    scale: 'مقياس',
-    open: 'إجابة مفتوحة',
-    blank: 'أكمل الفراغ',
-  };
+  // أسماء الأنواع تتبع لغة الصفحة إن كان محرّك الترجمة محمّلاً، وإلا تبقى عربية
+  const TYPE_LABELS = global.I18n
+    ? {
+        mc: global.I18n.t('typeMc'),
+        truefalse: global.I18n.t('typeTruefalse'),
+        poll: global.I18n.t('typePoll'),
+        word: global.I18n.t('typeWord'),
+        scale: global.I18n.t('typeScale'),
+        open: global.I18n.t('typeOpen'),
+        blank: global.I18n.t('typeBlank'),
+      }
+    : {
+        mc: 'اختيار من متعدد',
+        truefalse: 'صح / خطأ',
+        poll: 'استطلاع رأي',
+        word: 'سحابة كلمات',
+        scale: 'مقياس',
+        open: 'إجابة مفتوحة',
+        blank: 'أكمل الفراغ',
+      };
 
   const TYPE_EMOJI = {
     mc: '🎯',
