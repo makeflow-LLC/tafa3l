@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 40" width="150" height="40" role="img" aria-label="Tapio">
+  <!-- الشعار الكامل بالأبيض الخالص — يُستخدم على خلفية الجلسة الداكنة #12102E.
+       استبدله بنسختك البيضاء، أو الصق كود شعارك الملوّن وسأولّد هذه تلقائياً. -->
+  <rect x="0" y="4" width="32" height="32" rx="9" fill="#FFFFFF" fill-opacity="0.16" />
+  <path d="M8 12h16v4.6h-5.7V28h-4.6V16.6H8z" fill="#FFFFFF" />
+  <text x="42" y="27" font-family="Segoe UI, system-ui, sans-serif" font-size="21" font-weight="800" fill="#FFFFFF">Tapio</text>
+</svg>
