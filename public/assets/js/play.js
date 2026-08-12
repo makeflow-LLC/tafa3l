@@ -3,7 +3,21 @@
   'use strict';
 
   const { $, el, avatarNode, toast, api, connect, store, vibrate, countdownTo } = window.T;
+  // اختصار الترجمة — إن لم يُحمَّل المحرّك لأي سبب نعرض المفتاح بدل الانهيار
+  const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   const Fx = window.Fx;
+
+  // نصوص الشريط العلوي ومبدّل اللغة (الصفحة نفسها بلا نصوص ثابتة)
+  for (const [id, title, aria] of [
+    ['#exitBtn', 'pLeaveTitle', 'pLeaveTitle'],
+    ['#soundBtn', 'pSoundTitle', 'pSoundAria'],
+  ]) {
+    const node = $(id);
+    if (!node) continue;
+    node.title = t(title);
+    node.setAttribute('aria-label', t(aria));
+  }
+  if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
 
   const app = $('#app');
   const connBadge = $('#conn');
@@ -49,7 +63,7 @@
     },
     onStatus: (status) => {
       connBadge.className = 'badge ' + (status === 'online' ? 'ok' : status === 'offline' ? 'bad' : '');
-      connBadge.textContent = status === 'online' ? 'متصل' : status === 'offline' ? 'انقطع الاتصال' : 'جارٍ الاتصال';
+      connBadge.textContent = status === 'online' ? t('pConnected') : status === 'offline' ? t('pDisconnected') : t('pConnecting');
     },
     onMessage: handleMessage,
   });
@@ -82,10 +96,10 @@
         store.del(SESSION_KEY);
         state.joined = false;
         state.last = null;
-        renderMessage('👋', 'تم إخراجك من الجلسة', 'يمكنك الدخول مجدداً برمز الجلسة.');
+        renderMessage('👋', t('pKicked'), t('pRejoinHint'));
         break;
       case 'session:closed':
-        renderMessage('🔒', 'انتهت الجلسة', 'شكراً لمشاركتك!');
+        renderMessage('🔒', t('pSessionEnded'), t('pThanksShort'));
         socket.close();
         break;
       case 'error':
@@ -94,7 +108,7 @@
           state.joined = false;
           renderJoin();
         } else if (msg.code === 'no_session' || msg.code === 'ended') {
-          renderMessage('🔒', msg.message, 'تأكد من الرمز أو اسأل المدرب.');
+          renderMessage('🔒', msg.message, t('pCheckCode'));
         } else {
           toast(msg.message, 'bad');
         }
@@ -111,7 +125,7 @@
       $('#quizTitle').textContent = state.info.title;
       if (!store.get(SESSION_KEY, null)) renderJoin();
     } catch (err) {
-      renderMessage('❓', 'لم نعثر على الجلسة', err.message);
+      renderMessage('❓', t('pSessionNotFound'), err.message);
     }
   }
 
@@ -125,18 +139,18 @@
     const nameInput = el('input', {
       id: 'name',
       maxlength: 24,
-      placeholder: 'مثال: أبو محمد',
+      placeholder: t('pNamePlaceholder'),
       autocomplete: 'nickname',
       value: store.local.get('tafa3l:name', '') || '',
     });
 
     const card = el('div', { class: 'card stack' }, [
-      el('h1', { text: info.title || 'انضمام' }),
+      el('h1', { text: info.title || t('pJoinBtn') }),
       el('p', {
         class: 'muted small',
         text: anonymous
-          ? 'هذا استطلاع مجهول — لا حاجة لاسمك، إجابتك لن تُنسب إليك.'
-          : 'اكتب اسمك أو كنيتك، وسنمنحك أفاتاراً عشوائياً.',
+          ? t('pAnonHint')
+          : t('pNameHint'),
       }),
     ]);
 
@@ -154,26 +168,26 @@
                 preview.innerHTML = window.Avatar.toSvg(state.avatar);
               },
             },
-            '🎲 أفاتار آخر'
+            t('pAvatarBtn')
           ),
         ])
       );
-      card.append(el('div', {}, [el('label', { for: 'name', text: 'اسمك أو كنيتك' }), nameInput]));
+      card.append(el('div', {}, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]));
     }
 
-    const joinBtn = el('button', { class: 'btn primary block', type: 'submit' }, anonymous ? 'ابدأ المشاركة' : 'انضمام');
+    const joinBtn = el('button', { class: 'btn primary block', type: 'submit' }, anonymous ? t('pJoinTitle') : t('pJoinBtn'));
 
     const form = el('form', { class: 'stack' }, [card, joinBtn]);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const name = anonymous ? '' : nameInput.value.trim();
-      if (!anonymous && name.length < 2) return toast('اكتب اسماً من حرفين على الأقل', 'bad');
+      if (!anonymous && name.length < 2) return toast(t('pNameShort'), 'bad');
       if (!anonymous) store.local.set('tafa3l:name', name);
       joinBtn.disabled = true;
       const sent = socket.send({ t: 'join', code, name, avatar: state.avatar });
       if (!sent) {
         joinBtn.disabled = false;
-        toast('لا يوجد اتصال، حاول بعد لحظات', 'bad');
+        toast(t('pNoConnection'), 'bad');
       }
       setTimeout(() => (joinBtn.disabled = false), 2500);
     });
@@ -181,9 +195,9 @@
     app.append(form);
     app.append(
       el('p', { class: 'footer' }, [
-        'رمز الجلسة: ',
+        t('pCardCode'),
         el('strong', { text: code, style: { direction: 'ltr', display: 'inline-block' } }),
-        ' · لا تُحفظ بياناتك — كل شيء مؤقت.',
+        t('pCardNoData'),
       ])
     );
   }
@@ -196,7 +210,7 @@
         el('div', { class: 'em', text: emoji }),
         el('div', { class: 'msg', text: title }),
         body ? el('p', { class: 'muted small', text: body }) : null,
-        el('a', { class: 'btn ghost sm', href: '/' }, 'العودة للصفحة الرئيسية'),
+        el('a', { class: 'btn ghost sm', href: '/' }, t('pBackHome')),
       ])
     );
   }
@@ -258,7 +272,7 @@
     app.append(
       el('div', { class: 'card stack center' }, [
         el('span', { class: 'badge' }, `${s.question ? s.question.text : ''}`),
-        el('p', { class: 'muted', text: 'استعد… ينطلق الجميع معاً' }),
+        el('p', { class: 'muted', text: t('pGetReady') }),
       ])
     );
     state.cancelCountdown = Fx.countdown(msLeft, () => {
@@ -269,7 +283,7 @@
 
   function header(s) {
     return el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-      el('span', { class: 'badge' }, `سؤال ${s.index + 1} من ${s.total}`),
+      el('span', { class: 'badge' }, t('pQuestionOf', { index: s.index + 1, total: s.total })),
       el('span', { class: 'badge' }, `👥 ${s.participants}`),
     ]);
   }
@@ -279,10 +293,10 @@
     const pace = s.settings?.pace;
     const waitingReason =
       pace === 'self'
-        ? 'وضع حر — لكن المدرب اختار أن يبدأ الجميع معاً'
+        ? t('pWaitSelf')
         : pace === 'auto'
-          ? 'سيبدأ النشاط وينتقل تلقائياً'
-          : 'أنت في القاعة، انتظر بدء المدرب…';
+          ? t('pWaitAuto')
+          : t('pWaitHost');
 
     // اختبار مجدول: عدّاد حتى موعد الفتح بدل انتظار مفتوح
     const opensIn = s.scheduledAt && s.scheduledAt > serverTime() ? s.scheduledAt : null;
@@ -294,7 +308,7 @@
         el('h1', { text: s.me.name }),
         opensIn
           ? el('div', { class: 'stack tight center' }, [
-              el('p', { class: 'muted', style: { margin: 0 }, text: '⏰ يبدأ الاختبار بعد' }),
+              el('p', { class: 'muted', style: { margin: 0 }, text: t('pStartsIn') }),
               countdownNode,
               el('span', {
                 class: 'muted small',
@@ -303,12 +317,12 @@
             ])
           : el('p', { class: 'muted', text: waitingReason }),
         opensIn ? null : el('div', { class: 'spinner' }),
-        el('span', { class: 'badge' }, `👥 ${s.participants} مشارك`),
+        el('span', { class: 'badge' }, t('pParticipants', { count: s.participants })),
       ])
     );
     if (opensIn) state.stopCountdown = countdownTo(countdownNode, opensIn);
     app.append(
-      el('div', { class: 'card small muted center' }, 'أبقِ هذه الصفحة مفتوحة. إن انقطع الاتصال سنعيد وصلك تلقائياً.')
+      el('div', { class: 'card small muted center' }, t('pKeepOpen'))
     );
   }
 
@@ -316,7 +330,7 @@
   function deadlineBar(s) {
     if (!s.deadlineAt || s.deadlineAt <= serverTime()) return null;
     const value = el('strong', {});
-    const box = el('div', { class: 'deadline-bar' }, [el('span', { text: '⏳ ينتهي الاختبار خلال' }), value]);
+    const box = el('div', { class: 'deadline-bar' }, [el('span', { text: t('pEndsIn') }), value]);
     state.stopDeadline = countdownTo(value, s.deadlineAt);
     return box;
   }
@@ -355,8 +369,8 @@
   function questionCard(q, opts) {
     const hideText = q.type === 'blank' && opts?.compact;
     return el('div', { class: 'card stack' }, [
-      q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال', loading: 'lazy' }) : null,
-      hideText ? el('span', { class: 'badge', text: '✏️ أكمل الفراغ' }) : el('h2', { class: 'big-q', text: q.text }),
+      q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: t('pQuestionImage'), loading: 'lazy' }) : null,
+      hideText ? el('span', { class: 'badge', text: t('pFillBlank') }) : el('h2', { class: 'big-q', text: q.text }),
     ]);
   }
 
@@ -364,7 +378,7 @@
   function reactionBar() {
     const row = el('div', { class: 'reactions' });
     Fx.REACTIONS.forEach((emoji) => {
-      const button = el('button', { class: 'react', type: 'button', 'aria-label': 'تفاعل ' + emoji }, emoji);
+      const button = el('button', { class: 'react', type: 'button', 'aria-label': t('pReactionAria', { emoji }) }, emoji);
       button.addEventListener('click', () => {
         socket.send({ t: 'reaction', emoji });
         button.classList.remove('bump');
@@ -375,7 +389,7 @@
       row.append(button);
     });
     return el('div', { class: 'card stack center' }, [
-      el('p', { class: 'muted small', style: { margin: 0 }, text: 'أرسل تفاعلك للشاشة 👇' }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('pReactionsTitle') }),
       row,
     ]);
   }
@@ -384,40 +398,40 @@
     const answered = s.answered;
     const scored = q.scored;
     let emoji = '⏳';
-    let msg = 'تم استلام إجابتك';
+    let msg = t('pReceived');
     if (!answered) {
       emoji = '⌛';
-      msg = 'انتهى وقتك على هذا السؤال';
+      msg = t('pTimeUp');
     } else if (answered.pending) {
       // سؤال نصّي بعلامة: لا نتيجة قبل أن يقرأه المدرب
       return el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: '📝' }),
-        el('div', { class: 'msg', text: 'وصلت إجابتك — بانتظار تصحيح المدرب' }),
-        el('p', { class: 'muted small', text: `العلامة القصوى ${answered.maxPoints} · ستظهر نتيجتك فور تصحيحها` }),
+        el('div', { class: 'msg', text: t('pPendingGrade') }),
+        el('p', { class: 'muted small', text: t('pPendingHint', { max: answered.maxPoints }) }),
       ]);
     } else if (q.manual) {
       const full = answered.points >= (answered.maxPoints || q.points);
       return el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: full ? '🎉' : answered.points > 0 ? '👍' : '💡' }),
-        el('div', { class: 'msg', text: full ? 'إجابة صحيحة كاملة!' : answered.points > 0 ? 'علامة جزئية' : 'إجابة غير صحيحة' }),
-        el('div', { class: 'badge ok' }, `${answered.points} من ${answered.maxPoints || q.points}`),
-        selfPaced ? null : el('p', { class: 'muted small', text: 'صحّحها المدرب' }),
+        el('div', { class: 'msg', text: full ? t('pCorrectFull') : answered.points > 0 ? t('pPartial') : t('pWrong') }),
+        el('div', { class: 'badge ok' }, t('pPointsOf', { points: answered.points, max: answered.maxPoints || q.points })),
+        selfPaced ? null : el('p', { class: 'muted small', text: t('pGradedByHost') }),
       ]);
     } else if (scored && answered.correct === true) {
       emoji = '🎉';
-      msg = 'إجابة صحيحة!';
+      msg = t('pCorrect');
     } else if (scored && answered.correct === false) {
       emoji = '💡';
-      msg = 'إجابة غير صحيحة';
+      msg = t('pWrong');
     }
     return el('div', { class: 'card feedback' }, [
       el('div', { class: 'em', text: emoji }),
       el('div', { class: 'msg', text: msg }),
-      scored && answered?.points ? el('div', { class: 'badge ok' }, `+${answered.points} نقطة`) : null,
+      scored && answered?.points ? el('div', { class: 'badge ok' }, t('pPlusPoints', { points: answered.points })) : null,
       // مضاعف السلسلة إن كان مفعّلاً وأثّر فعلاً
-      scored && answered?.multiplier > 1 ? el('div', { class: 'badge streak' }, `🔥 مضاعف ×${answered.multiplier}`) : null,
-      scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, `${s.me.streak} إجابات متتالية!`) : null,
-      selfPaced ? null : el('p', { class: 'muted small', text: 'انتظر بقية المشاركين…' }),
+      scored && answered?.multiplier > 1 ? el('div', { class: 'badge streak' }, t('pStreakX', { x: answered.multiplier })) : null,
+      scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, t('pStreakRow', { n: s.me.streak })) : null,
+      selfPaced ? null : el('p', { class: 'muted small', text: t('pWaitOthers') }),
     ]);
   }
 
@@ -438,7 +452,7 @@
     return el('div', { class: 'card stack reveal' }, [
       correctText
         ? el('div', { class: 'row', style: { gap: '8px' } }, [
-            el('span', { class: 'badge ok', text: '✓ الإجابة الصحيحة' }),
+            el('span', { class: 'badge ok', text: t('pCorrectAnswer') }),
             el('strong', { class: 'grow', text: correctText }),
           ])
         : null,
@@ -473,10 +487,10 @@
       });
       box.append(options);
 
-      const submitBtn = el('button', { class: 'btn primary block', disabled: true }, 'إرسال الإجابة');
+      const submitBtn = el('button', { class: 'btn primary block', disabled: true }, t('pSendAnswer'));
       submitBtn.addEventListener('click', () => submit(q, state.selection));
       if (q.multi) {
-        box.append(el('p', { class: 'muted small center', text: 'اختر كل الإجابات الصحيحة ثم أرسل' }));
+        box.append(el('p', { class: 'muted small center', text: t('pPickAll') }));
         box.append(submitBtn);
       }
       return box;
@@ -495,7 +509,7 @@
         max: scale.max,
         step: 1,
         value: start,
-        'aria-label': 'اسحب لاختيار قيمة بين ' + scale.min + ' و ' + scale.max,
+        'aria-label': t('pSliderAria', { min: scale.min, max: scale.max }),
       });
       // علامات القيم تحت الخط
       const ticks = el('div', { class: 'slider-ticks' });
@@ -510,7 +524,7 @@
       };
       range.addEventListener('input', paint);
 
-      const send = el('button', { class: 'btn primary block' }, 'إرسال ✓');
+      const send = el('button', { class: 'btn primary block' }, t('pSendCheck'));
       send.addEventListener('click', () => submit(q, Number(range.value)));
 
       box.append(
@@ -541,7 +555,7 @@
             class: 'blank-input',
             maxlength: 60,
             autocomplete: 'off',
-            'aria-label': `الفراغ ${inputs.length + 1}`,
+            'aria-label': t('pBlankAria', { n: inputs.length + 1 }),
           });
           inputs.push(field);
           line.append(field);
@@ -554,10 +568,10 @@
         line.append(field);
       }
 
-      const sendBlanks = el('button', { class: 'btn primary block' }, 'إرسال');
+      const sendBlanks = el('button', { class: 'btn primary block' }, t('pSend'));
       sendBlanks.addEventListener('click', () => {
         const values = inputs.map((field) => field.value.trim());
-        if (!values.some((v) => v)) return toast('املأ الفراغ أولاً', 'bad');
+        if (!values.some((v) => v)) return toast(t('pFillFirst'), 'bad');
         submit(q, values);
       });
       inputs.forEach((field) =>
@@ -572,12 +586,12 @@
     // word / open
     const isWord = q.type === 'word';
     const input = isWord
-      ? el('input', { maxlength: 40, placeholder: 'كلمة واحدة…', autocomplete: 'off' })
-      : el('textarea', { maxlength: 300, placeholder: 'اكتب إجابتك…' });
-    const send = el('button', { class: 'btn primary block' }, 'إرسال');
+      ? el('input', { maxlength: 40, placeholder: t('pOneWord'), autocomplete: 'off' })
+      : el('textarea', { maxlength: 300, placeholder: t('pWriteAnswer') });
+    const send = el('button', { class: 'btn primary block' }, t('pSend'));
     send.addEventListener('click', () => {
       const value = input.value.trim();
-      if (!value) return toast('اكتب إجابتك أولاً', 'bad');
+      if (!value) return toast(t('pWriteFirst'), 'bad');
       submit(q, value);
     });
     input.addEventListener('keydown', (event) => {
@@ -593,7 +607,7 @@
     const sent = socket.send({ t: 'answer', questionId: q.id, value });
     if (!sent) {
       state.submitting = false;
-      toast('لا يوجد اتصال — حاول مجدداً', 'bad');
+      toast(t('pNoConnectionRetry'), 'bad');
     }
   }
 
@@ -602,7 +616,7 @@
     app.innerHTML = '';
     app.append(header(s));
     const last = s.index + 1 >= s.total;
-    const nextBtn = el('button', { class: 'btn primary block' }, last ? '🏁 إنهاء' : 'السؤال التالي ⟨');
+    const nextBtn = el('button', { class: 'btn primary block' }, last ? t('pFinishBtn') : t('pNextQuestion'));
     nextBtn.addEventListener('click', () => {
       nextBtn.disabled = true;
       socket.send({ t: 'next' });
@@ -611,8 +625,8 @@
     app.append(
       el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: '⌛' }),
-        el('div', { class: 'msg', text: 'انتهى وقتك على هذا السؤال' }),
-        el('p', { class: 'muted small', text: 'لا بأس — تابع إلى التالي!' }),
+        el('div', { class: 'msg', text: t('pTimeUp') }),
+        el('p', { class: 'muted small', text: t('pKeepGoing') }),
       ])
     );
     app.append(nextBtn);
@@ -645,7 +659,7 @@
             [
               el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
               el('span', { class: 'grow', text: option.text }),
-              chosen ? el('span', { class: 'badge', text: 'إجابتك' }) : null,
+              chosen ? el('span', { class: 'badge', text: t('pYourAnswer') }) : null,
             ]
           )
         );
@@ -658,7 +672,7 @@
     if (results?.words) {
       app.append(el('div', { class: 'card' }, wordCloud(results.words)));
     } else if (results?.buckets) {
-      app.append(el('div', { class: 'card stack' }, [scaleChart(results), el('p', { class: 'center muted', text: `المتوسط: ${results.average}` })]));
+      app.append(el('div', { class: 'card stack' }, [scaleChart(results), el('p', { class: 'center muted', text: t('pAverage', { value: results.average }) })]));
     } else if (results?.responses && !q.options?.length) {
       app.append(
         el(
@@ -670,7 +684,7 @@
     }
 
     const last = s.index + 1 >= s.total;
-    const nextBtn = el('button', { class: 'btn primary block' }, last ? '🏁 إنهاء' : 'السؤال التالي ⟨');
+    const nextBtn = el('button', { class: 'btn primary block' }, last ? t('pFinishBtn') : t('pNextQuestion'));
     nextBtn.addEventListener('click', () => {
       nextBtn.disabled = true;
       socket.send({ t: 'next' });
@@ -710,7 +724,7 @@
             el('i', { class: 'bar', style: { width: option.percent + '%' } }),
             el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
             el('span', { class: 'grow', text: option.text }),
-            el('span', { class: 'count', text: `${option.percent}٪ (${option.count})` }),
+            el('span', { class: 'count', text: `${option.percent}${t('pctSuffix')} (${option.count})` }),
           ]
         );
         options.append(node);
@@ -719,7 +733,7 @@
     } else if (results?.words) {
       app.append(el('div', { class: 'card' }, wordCloud(results.words)));
     } else if (results?.buckets) {
-      app.append(el('div', { class: 'card stack' }, [scaleChart(results), el('p', { class: 'center muted', text: `المتوسط: ${results.average}` })]));
+      app.append(el('div', { class: 'card stack' }, [scaleChart(results), el('p', { class: 'center muted', text: t('pAverage', { value: results.average }) })]));
     } else if (results?.responses) {
       app.append(
         el(
@@ -731,7 +745,7 @@
     }
 
     app.append(reactionBar());
-    app.append(el('p', { class: 'footer', text: 'في انتظار المدرب للانتقال…' }));
+    app.append(el('p', { class: 'footer', text: t('pWaitHostNext') }));
   }
 
   function wordCloud(words) {
@@ -747,7 +761,7 @@
         })
       );
     });
-    return words.length ? cloud : el('p', { class: 'muted center', text: 'لا توجد إجابات بعد' });
+    return words.length ? cloud : el('p', { class: 'muted center', text: t('pNoAnswersYet') });
   }
 
   function scaleChart(results) {
@@ -757,7 +771,7 @@
         el('div', { class: 'row', style: { gap: '8px' } }, [
           el('span', { class: 'badge', text: String(bucket.value) }),
           el('div', { class: 'progress grow' }, el('i', { style: { width: bucket.percent + '%' } })),
-          el('span', { class: 'small muted', text: `${bucket.percent}٪` }),
+          el('span', { class: 'small muted', text: `${bucket.percent}${t('pctSuffix')}` }),
         ])
       );
     });
@@ -765,16 +779,16 @@
   }
 
   function renderLeaderboard(s) {
-    app.append(el('h1', { class: 'center', text: '🏆 الترتيب' }));
+    app.append(el('h1', { class: 'center', text: t('pLeaderboard') }));
     if (s.rank) {
       app.append(
         el('div', { class: 'card center stack' }, [
           el('div', { class: 'stat' }, [
             el('div', { class: 'v', text: `#${s.rank.rank}` }),
-            el('div', { class: 'k', text: `من ${s.rank.of} مشارك` }),
+            el('div', { class: 'k', text: t('pOfParticipants', { of: s.rank.of }) }),
           ]),
           rankDeltaBadge(s.rankDelta),
-          el('div', { class: 'badge ok' }, `⭐ ${s.me.score} نقطة`),
+          el('div', { class: 'badge ok' }, t('pScoreBadge', { score: s.me.score })),
         ])
       );
     }
@@ -783,7 +797,7 @@
     if (teamCard) app.append(teamCard);
     if (s.rank?.rank === 1) Fx.confetti(80);
     app.append(reactionBar());
-    app.append(el('p', { class: 'footer', text: 'في انتظار السؤال التالي…' }));
+    app.append(el('p', { class: 'footer', text: t('pWaitNextQuestion') }));
   }
 
   function renderFinal(s) {
@@ -792,20 +806,20 @@
       app.append(
         el('div', { class: 'card feedback' }, [
           el('div', { class: 'em', text: '📝' }),
-          el('div', { class: 'msg', text: 'انتهى النشاط — المدرب يصحّح إجابتك الآن' }),
+          el('div', { class: 'msg', text: t('pGradingNow') }),
           s.me ? avatarNode(s.me.avatar, 'lg') : null,
           s.me ? el('h2', { text: s.me.name }) : null,
           el('p', {
             class: 'muted small',
             text:
               s.pendingGrades === 1
-                ? 'إجابة نصّية واحدة تنتظر التصحيح — ستظهر نتيجتك وبطاقتك فور انتهائه.'
-                : `${s.pendingGrades} إجابات نصّية تنتظر التصحيح — ستظهر نتيجتك وبطاقتك فور انتهائه.`,
+                ? t('pGradingOne')
+                : t('pGradingMany', { n: s.pendingGrades }),
           }),
           el('div', { class: 'spinner' }),
         ])
       );
-      app.append(el('p', { class: 'footer', text: 'أبقِ الصفحة مفتوحة — تتحدّث تلقائياً.' }));
+      app.append(el('p', { class: 'footer', text: t('pKeepOpenLive') }));
       return;
     }
 
@@ -817,11 +831,11 @@
     app.append(
       el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: '🎊' }),
-        el('div', { class: 'msg', text: 'انتهى النشاط' }),
+        el('div', { class: 'msg', text: t('pActivityEnded') }),
         s.me ? avatarNode(s.me.avatar, 'lg') : null,
         s.me ? el('h2', { text: s.me.name }) : null,
-        s.rank ? el('div', { class: 'badge' }, `المركز ${s.rank.rank} من ${s.rank.of}`) : null,
-        s.me && s.me.score ? el('div', { class: 'badge ok' }, `⭐ ${s.me.score} نقطة`) : null,
+        s.rank ? el('div', { class: 'badge' }, t('pRankBadge', { rank: s.rank.rank, of: s.rank.of })) : null,
+        s.me && s.me.score ? el('div', { class: 'badge ok' }, t('pScoreBadge', { score: s.me.score })) : null,
       ])
     );
     const awards = badgeList(s.badges);
@@ -830,18 +844,18 @@
     // بطاقة النتيجة القابلة للمشاركة — صورة فيها كل الإنجاز
     if (s.me) {
       const shareBox = el('div', { class: 'card stack center' }, [
-        el('h2', { text: '📤 بطاقة نتيجتك', style: { margin: 0 } }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: 'شاركها على واتساب أو أي منصة — أو احفظها للذكرى' }),
+        el('h2', { text: t('pCardTitle'), style: { margin: 0 } }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('pCardHint') }),
         el('div', { class: 'spinner' }),
       ]);
       app.append(shareBox);
       buildShareCard(s, shareBox);
     }
 
-    if (s.leaderboard?.length) app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 الأوائل' }), boardList(s.leaderboard, s.me?.id)]));
+    if (s.leaderboard?.length) app.append(el('div', { class: 'card stack' }, [el('h2', { text: t('pTopBoard') }), boardList(s.leaderboard, s.me?.id)]));
     const teamCard = teamBoard(s.teamLeaderboard, s.me?.team?.id);
     if (teamCard) app.append(teamCard);
-    app.append(el('p', { class: 'footer', text: 'شكراً لمشاركتك! لم تُحفظ أي بيانات — كل شيء مؤقت.' }));
+    app.append(el('p', { class: 'footer', text: t('pThanks') }));
     store.del(SESSION_KEY);
   }
 
@@ -849,37 +863,37 @@
 
   /** مستوى تحفيزي من الترتيب — دائماً إيجابي حتى لآخر مركز */
   function levelOf(s) {
-    if (!s.rank || !s.me?.score) return { emoji: '🎉', label: 'مشارك متفاعل' };
+    if (!s.rank || !s.me?.score) return { emoji: '🎉', label: t('pLevelActive') };
     const { rank, of } = s.rank;
-    if (rank === 1) return { emoji: '🏆', label: 'بطل الجلسة' };
+    if (rank === 1) return { emoji: '🏆', label: t('pLevelChampion') };
     const pct = rank / Math.max(1, of);
-    if (pct <= 0.1) return { emoji: '🚀', label: 'أسطورة' };
-    if (pct <= 0.25) return { emoji: '🥇', label: 'محترف' };
-    if (pct <= 0.5) return { emoji: '💪', label: 'متمكّن' };
-    return { emoji: '🌱', label: 'واعد — القادم أفضل' };
+    if (pct <= 0.1) return { emoji: '🚀', label: t('pLevelLegend') };
+    if (pct <= 0.25) return { emoji: '🥇', label: t('pLevelPro') };
+    if (pct <= 0.5) return { emoji: '💪', label: t('pLevelSkilled') };
+    return { emoji: '🌱', label: t('pLevelPromising') };
   }
 
   function shareText(s, level) {
-    const title = s.title || state.info?.title || 'نشاط تفاعلي';
+    const title = s.title || state.info?.title || t('pDefaultTitle');
     const theme = cardTheme(s);
     const bits = [];
-    if (s.me?.score) bits.push(`⭐ ${s.me.score} نقطة`);
-    if (s.rank) bits.push(theme.banner ? `من بين ${s.rank.of} مشاركاً` : `المركز ${s.rank.rank} من ${s.rank.of}`);
+    if (s.me?.score) bits.push(t('pScoreBadge', { score: s.me.score }));
+    if (s.rank) bits.push(theme.banner ? t('pAmongParticipants', { of: s.rank.of }) : t('pRankBadge', { rank: s.rank.rank, of: s.rank.of }));
     const perf = bits.length ? ' — ' + bits.join(' · ') : '';
     // أصحاب المنصة يتصدّر مركزهم النص؛ والبقية بلقب تحفيزي
-    const lead = theme.banner ? `${theme.emblem} حصلت على ${theme.banner}` : `${level.emoji} حصلت على لقب «${level.label}»`;
-    return `${lead} في «${title}» على منصة Tapio${perf} 🎊`;
+    const lead = theme.banner ? t('pWonBanner', { emblem: theme.emblem, banner: theme.banner }) : t('pWonLevel', { emoji: level.emoji, label: level.label });
+    return t('pShareLine', { lead, title, perf });
   }
 
   /** هوية البطاقة بحسب الترتيب — ذهبية للأول، فضية للثاني، برونزية للثالث */
   function cardTheme(s) {
     const rank = s.me?.score ? s.rank?.rank : null;
     if (rank === 1)
-      return { emblem: '🏆', crown: true, banner: 'المركز الأول', colors: ['#ffe9a3', '#f59e0b'], ray: 'rgba(245,158,11,0.13)', halo: 'rgba(255,215,0,0.35)', spark: 'rgba(255,224,130,0.9)' };
+      return { emblem: '🏆', crown: true, banner: t('pFirst'), colors: ['#ffe9a3', '#f59e0b'], ray: 'rgba(245,158,11,0.13)', halo: 'rgba(255,215,0,0.35)', spark: 'rgba(255,224,130,0.9)' };
     if (rank === 2)
-      return { emblem: '🥈', banner: 'المركز الثاني', colors: ['#f8fafc', '#94a3b8'], ray: 'rgba(148,163,184,0.12)', halo: 'rgba(226,232,240,0.3)', spark: 'rgba(241,245,249,0.9)' };
+      return { emblem: '🥈', banner: t('pSecond'), colors: ['#f8fafc', '#94a3b8'], ray: 'rgba(148,163,184,0.12)', halo: 'rgba(226,232,240,0.3)', spark: 'rgba(241,245,249,0.9)' };
     if (rank === 3)
-      return { emblem: '🥉', banner: 'المركز الثالث', colors: ['#fed7aa', '#ea580c'], ray: 'rgba(234,88,12,0.12)', halo: 'rgba(251,146,60,0.3)', spark: 'rgba(254,215,170,0.9)' };
+      return { emblem: '🥉', banner: t('pThird'), colors: ['#fed7aa', '#ea580c'], ray: 'rgba(234,88,12,0.12)', halo: 'rgba(251,146,60,0.3)', spark: 'rgba(254,215,170,0.9)' };
     return { emblem: '🌟', banner: null, colors: ['#8de3f5', '#8b73ff'], ray: 'rgba(139,115,255,0.12)', halo: 'rgba(139,115,255,0.35)', spark: 'rgba(165,180,252,0.9)' };
   }
 
@@ -1035,7 +1049,7 @@
     }
     ctx.fillStyle = '#a9a5cc';
     ctx.font = `600 38px ${FONT}`;
-    const title = s.title || state.info?.title || 'نشاط تفاعلي';
+    const title = s.title || state.info?.title || t('pDefaultTitle');
     ctx.fillText(title.length > 40 ? title.slice(0, 39) + '…' : title, W / 2, 195);
 
     // شعار الإنجاز — كأس ذهبي بتاج للأول، ميداليات للثاني والثالث، نجمة متوهجة للبقية
@@ -1135,8 +1149,8 @@
     // النقاط والمركز
     const y = 1050;
     const pills = [];
-    if (s.me.score) pills.push(`⭐ ${s.me.score} نقطة`);
-    if (s.rank) pills.push(theme.banner ? `من بين ${s.rank.of} مشاركاً` : `المركز ${s.rank.rank} من ${s.rank.of}`);
+    if (s.me.score) pills.push(t('pScoreBadge', { score: s.me.score }));
+    if (s.rank) pills.push(theme.banner ? t('pAmongParticipants', { of: s.rank.of }) : t('pRankBadge', { rank: s.rank.rank, of: s.rank.of }));
     if (pills.length === 2) {
       ctx.font = `700 42px ${FONT}`;
       const w1 = ctx.measureText(pills[0]).width + 56;
@@ -1164,7 +1178,7 @@
     ctx.fillText(when, W / 2, H - 115);
     ctx.fillStyle = '#8f8ab5';
     ctx.font = `600 28px ${FONT}`;
-    ctx.fillText('صُنعت على منصة Tapio — أسئلة واستطلاعات حية', W / 2, H - 68);
+    ctx.fillText(t('pCardMadeWith'), W / 2, H - 68);
 
     return canvas;
   }
@@ -1188,17 +1202,17 @@
     const level = levelOf(s);
     const text = shareText(s, level);
     const url = URL.createObjectURL(blob);
-    const img = el('img', { class: 'share-card-img', src: url, alt: 'بطاقة نتيجتي في Tapio' });
+    const img = el('img', { class: 'share-card-img', src: url, alt: t('pCardCaption') });
 
     const buttons = el('div', { class: 'row', style: { justifyContent: 'center', gap: '8px', flexWrap: 'wrap' } });
 
     // المشاركة الأصلية (الجوال): تفتح واتساب وكل التطبيقات مع الصورة نفسها
     const file = new File([blob], 'tapio-result.png', { type: 'image/png' });
     if (navigator.canShare?.({ files: [file] })) {
-      const share = el('button', { class: 'btn primary', type: 'button' }, '📤 مشاركة البطاقة');
+      const share = el('button', { class: 'btn primary', type: 'button' }, t('pCardShare'));
       share.addEventListener('click', async () => {
         try {
-          await navigator.share({ files: [file], text, title: 'نتيجتي في Tapio' });
+          await navigator.share({ files: [file], text, title: t('pCardShareTitle') });
         } catch {
           /* أُلغيت المشاركة */
         }
@@ -1207,19 +1221,19 @@
     } else {
       // سطح المكتب: واتساب نصي على الأقل
       buttons.append(
-        el('a', { class: 'btn primary', target: '_blank', rel: 'noopener', href: 'https://wa.me/?text=' + encodeURIComponent(text) }, '🟢 واتساب')
+        el('a', { class: 'btn primary', target: '_blank', rel: 'noopener', href: 'https://wa.me/?text=' + encodeURIComponent(text) }, t('pCardWhatsapp'))
       );
     }
 
-    buttons.append(el('a', { class: 'btn ghost', href: url, download: 'tapio-نتيجتي.png' }, '⬇ حفظ الصورة'));
+    buttons.append(el('a', { class: 'btn ghost', href: url, download: t('pCardFile') }, t('pCardSave')));
 
-    const copyBtn = el('button', { class: 'btn ghost', type: 'button' }, '📋 نسخ النص');
+    const copyBtn = el('button', { class: 'btn ghost', type: 'button' }, t('pCardCopy'));
     copyBtn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(text);
-        toast('نُسخ النص — ألصقه أينما تريد', 'ok');
+        toast(t('pCopied'), 'ok');
       } catch {
-        toast('تعذّر النسخ', 'bad');
+        toast(t('pCopyFailed'), 'bad');
       }
     });
     buttons.append(copyBtn);
@@ -1232,14 +1246,14 @@
   function rankDeltaBadge(delta) {
     if (!delta) return null;
     const up = delta > 0;
-    return el('div', { class: 'badge ' + (up ? 'ok' : 'bad') }, `${up ? '⬆ صعدت' : '⬇ نزلت'} ${Math.abs(delta)} مركزاً`);
+    return el('div', { class: 'badge ' + (up ? 'ok' : 'bad') }, t('pRankDelta', { dir: up ? t('pRankUp') : t('pRankDown'), n: Math.abs(delta) }));
   }
 
   /** أوسمة نهاية النشاط */
   function badgeList(badges) {
     if (!badges?.length) return null;
     return el('div', { class: 'card stack' }, [
-      el('h2', { class: 'center', text: '🏅 أوسمتك', style: { margin: 0 } }),
+      el('h2', { class: 'center', text: t('pBadges'), style: { margin: 0 } }),
       el(
         'div',
         { class: 'badges' },
@@ -1282,7 +1296,7 @@
         ])
       );
     });
-    return el('div', { class: 'card stack' }, [el('h2', { text: '🏳️ ترتيب الفرق', style: { margin: 0 } }), board]);
+    return el('div', { class: 'card stack' }, [el('h2', { text: t('pTeamBoard'), style: { margin: 0 } }), board]);
   }
 
   // ------------------------------------------------------------- المؤقّت
@@ -1336,7 +1350,7 @@
   if (exitBtn) {
     exitBtn.addEventListener('click', () => {
       const live = state.last && state.last.status !== 'ended';
-      if (live && !confirm('هل تريد الخروج من النشاط؟ ستفقد نقاطك ولن تعود إلا بالدخول من جديد.')) return;
+      if (live && !confirm(t('pLeaveConfirm'))) return;
       // لا نرسل «مغادرة» قبل الانضمام أصلاً حتى لا تظهر رسالة خطأ
       if (state.joined) socket.send({ t: 'leave' });
       store.del(SESSION_KEY);
