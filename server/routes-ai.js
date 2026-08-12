@@ -10,6 +10,7 @@
 const express = require('express');
 const auth = require('./auth');
 const ai = require('./ai');
+const premium = require('./premium');
 
 const MAX_MESSAGES = 30;
 const MAX_CHARS_PER_MESSAGE = 4000;
@@ -139,10 +140,15 @@ function aiRoutes() {
   const router = express.Router();
 
   router.get('/ai/status', (req, res) => {
-    res.json({ configured: ai.isConfigured(), model: ai.config().model, signedIn: Boolean(req.user) });
+    res.json({
+      configured: ai.isConfigured(),
+      model: ai.config().model,
+      signedIn: Boolean(req.user),
+      ...premium.summary(req.user),
+    });
   });
 
-  router.post('/ai/design', auth.requireUser, async (req, res) => {
+  router.post('/ai/design', auth.requireUser, premium.requirePremium, async (req, res) => {
     try {
       if (!ai.isConfigured()) {
         return res.status(503).json({

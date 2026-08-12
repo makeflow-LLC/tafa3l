@@ -29,6 +29,7 @@
     leavingIntentionally: false, // خروج مقصود عبر أزرار التنقل
     user: null, // المدرب المسجّل، أو null للاستخدام بلا حساب
     durable: null, // هل تخزين الحسابات دائم على هذا الخادم
+    premium: null, // { isPremium, isAdmin, premiumUntil, plan }
     editingActivityId: store.local.get(EDITING_KEY, null), // النشاط المحفوظ الجاري تعديله — يبقى بعد تحديث الصفحة
     dashOpenQ: null, // سؤال مفتوح النتائج في جدول لوحة التحكم
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
@@ -65,6 +66,7 @@
     if (hash === '/demo') return startDemo();
     if (hash === '/mine') return openMyActivities();
     if (hash === '/ai') return openAiDesigner();
+    if (hash === '/admin') return openAdmin();
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
     if (edit) return openSavedActivity(edit[1]);
     return openBuilder();
@@ -78,8 +80,10 @@
       const data = await api('/api/auth/me');
       state.user = data.user || null;
       state.durable = data.durable;
+      state.premium = data.premium || null;
     } catch {
       state.user = null;
+      state.premium = null;
     }
     paintAccount();
     return state.user;
@@ -93,9 +97,30 @@
       slot.append(
         el('a', { class: 'btn ghost sm', href: '#/mine', title: state.user.email }, '📚 ' + state.user.name)
       );
+      if (state.premium?.isAdmin) {
+        slot.append(el('a', { class: 'btn ghost sm', href: '#/admin', title: 'لوحة المالك' }, '👑'));
+      }
+      // زر خروج ظاهر دائماً — لا مدفون داخل صفحة «نشاطاتي»
+      slot.append(
+        el('button', { class: 'btn ghost sm', type: 'button', title: 'تسجيل الخروج', onclick: logout }, '🚪 خروج')
+      );
     } else {
       slot.append(el('a', { class: 'btn ghost sm', href: '/login.html' }, '🔐 دخول'));
     }
+  }
+
+  /** تسجيل الخروج من أي صفحة */
+  async function logout() {
+    if (!confirm('تسجيل الخروج من حسابك؟')) return;
+    try {
+      await api('/api/auth/logout', { method: 'POST' });
+    } catch {
+      /* حتى لو فشل النداء نُنهي الجلسة محلياً */
+    }
+    state.user = null;
+    state.premium = null;
+    paintAccount();
+    location.href = '/';
   }
 
   /** لوحة «نشاطاتي»: فتح، إطلاق، حذف */
@@ -166,17 +191,8 @@
           el('span', { class: 'muted small', text: state.user.email }),
           el(
             'button',
-            {
-              class: 'btn ghost sm',
-              type: 'button',
-              onclick: async () => {
-                await api('/api/auth/logout', { method: 'POST' });
-                state.user = null;
-                paintAccount();
-                location.href = '/';
-              },
-            },
-            'تسجيل الخروج'
+            { class: 'btn ghost sm', type: 'button', onclick: logout },
+            '🚪 تسجيل الخروج'
           ),
         ]),
       ])
@@ -346,6 +362,177 @@
     mountBuilderSafely(root);
   }
 
+
+  // ------------------------------------------------------- لوحة المالك
+
+  /** تاريخ مقروء بالعربية، أو «—» */
+  function fmtDate(ms) {
+    if (!ms) return '—';
+    return new Date(ms).toLocaleDateString('ar', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  /** كم يوماً بقي على الاشتراك (سالب = منتهٍ) */
+  function daysLeft(ms) {
+    if (!ms) return null;
+    return Math.ceil((ms - Date.now()) / 86400000);
+  }
+
+  /** لوحة المالك: كل المدربين وحالة اشتراكهم مع التحكّم بالمدة */
+  async function openAdmin() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    if (!state.user) await loadAccount();
+    if (!state.user) {
+      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/admin');
+      return;
+    }
+
+    let data;
+    try {
+      data = await api('/api/admin/users');
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('h2', { text: 'الصفحة غير متاحة' }),
+          el('p', { class: 'muted small', text: err.message }),
+          el('a', { class: 'btn ghost', href: '#/' }, 'العودة'),
+        ])
+      );
+      return;
+    }
+
+    const draw = () => {
+      const users = data.users;
+      const active = users.filter((u) => u.isPremium).length;
+
+      app.innerHTML = '';
+      app.append(
+        el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/' }, '⟩ العودة'),
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: openAdmin }, '🔄 تحديث'),
+        ])
+      );
+      app.append(el('h1', { text: '👑 لوحة المالك' }));
+      app.append(
+        el('div', { class: 'stats' }, [
+          stat(users.length, 'مدرباً مسجّلاً'),
+          stat(active, 'اشتراك بريميوم فعّال'),
+          stat(users.filter((u) => u.premiumUntil && !u.isPremium).length, 'اشتراك منتهٍ'),
+        ])
+      );
+
+      const rows = users.map((user) => {
+        const left = daysLeft(user.premiumUntil);
+        const statusBadge = user.isAdmin
+          ? el('span', { class: 'badge', text: '👑 المالك' })
+          : user.isPremium
+            ? el('span', { class: 'badge ok', text: `بريميوم · ${left} يوم` })
+            : user.premiumUntil
+              ? el('span', { class: 'badge bad', text: 'منتهٍ' })
+              : el('span', { class: 'badge', text: 'مجاني' });
+
+        const apply = async (body, label) => {
+          try {
+            const res = await api(`/api/admin/users/${user.id}/premium`, { method: 'POST', body });
+            const at = data.users.findIndex((u) => u.id === user.id);
+            data.users[at] = res.user;
+            toast(label, 'ok');
+            draw();
+          } catch (err) {
+            toast(err.message, 'bad');
+          }
+        };
+
+        const controls = el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('button', { class: 'btn sm ok', type: 'button', onclick: () => apply({ addDays: 30 }, 'أُضيف شهر') }, '+ شهر'),
+          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: 365 }, 'أُضيفت سنة') }, '+ سنة'),
+          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: -30 }, 'خُصم شهر') }, '− شهر'),
+          el(
+            'button',
+            {
+              class: 'btn sm ghost',
+              type: 'button',
+              onclick: () => {
+                const current = user.premiumUntil ? new Date(user.premiumUntil).toISOString().slice(0, 10) : '';
+                const answer = prompt('تاريخ انتهاء الاشتراك (YYYY-MM-DD) — اتركه فارغاً للإلغاء:', current);
+                if (answer === null) return;
+                if (!answer.trim()) return apply({ until: null }, 'أُلغي الاشتراك');
+                const stamp = Date.parse(answer + 'T23:59:59');
+                if (Number.isNaN(stamp)) return toast('تاريخ غير مفهوم — اكتبه هكذا 2026-12-31', 'bad');
+                apply({ until: stamp }, 'حُدّث التاريخ');
+              },
+            },
+            '📅 تاريخ'
+          ),
+          user.premiumUntil
+            ? el(
+                'button',
+                {
+                  class: 'btn sm danger',
+                  type: 'button',
+                  onclick: () => confirm(`إلغاء اشتراك ${user.name} فوراً؟`) && apply({ until: null }, 'أُلغي الاشتراك'),
+                },
+                '✕ إلغاء'
+              )
+            : null,
+        ]);
+
+        return el('tr', {}, [
+          el('td', { style: { whiteSpace: 'normal' } }, [
+            el('div', { class: 'stack tight' }, [el('strong', { text: user.name }), el('span', { class: 'muted small', text: user.email })]),
+          ]),
+          el('td', {}, fmtDate(user.createdAt)),
+          el('td', {}, [el('div', { class: 'stack tight' }, [statusBadge, el('span', { class: 'muted small', text: fmtDate(user.premiumUntil) })])]),
+          el('td', { style: { whiteSpace: 'normal' } }, [controls]),
+        ]);
+      });
+
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('h2', { style: { margin: 0 }, text: 'المدربون المسجّلون' }),
+          el('p', { class: 'muted small', style: { margin: 0 }, text: 'التمديد يبدأ من تاريخ الانتهاء الحالي إن كان سارياً، وإلا من اليوم.' }),
+          el('div', { class: 'table-wrap' }, [
+            el('table', {}, [
+              el('thead', {}, el('tr', {}, [el('th', {}, 'المدرب'), el('th', {}, 'تاريخ التسجيل'), el('th', {}, 'الاشتراك'), el('th', {}, 'التحكّم')])),
+              el('tbody', {}, rows),
+            ]),
+          ]),
+        ])
+      );
+    };
+
+    draw();
+  }
+
+  /** رابط واتساب جاهز برسالة مكتوبة — أقصر طريق من رغبة الاشتراك إلى محادثة */
+  function whatsappLink(plan, note) {
+    const text = `مرحباً، أريد الاشتراك في بريميوم Tapio (${plan.priceUsd}$ شهرياً).${note ? ' ' + note : ''}`;
+    return `https://wa.me/${plan.whatsapp}?text=${encodeURIComponent(text)}`;
+  }
+
+  /** بطاقة «هذه ميزة بريميوم» — تُستخدم في المساعد الذكي وفي التصدير */
+  function upgradeCard(plan, title) {
+    const p = plan || { whatsapp: '970597034066', priceUsd: 3, perks: [] };
+    return el('div', { class: 'card stack' }, [
+      el('h2', { style: { margin: 0 }, text: title || '⭐ ميزة بريميوم' }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: 'اشتراك بريميوم يفتح لك:' }),
+      el('div', { class: 'stack tight' }, [
+        el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '🤖' }), el('span', { class: 'grow', text: 'تصميم النشاط بالذكاء الاصطناعي' })]),
+        el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '📊' }), el('span', { class: 'grow', text: 'تصدير النتائج Excel و PDF' })]),
+      ]),
+      el('div', { class: 'row between' }, [
+        el('strong', { text: `${p.priceUsd}$ شهرياً فقط` }),
+        el('a', { class: 'btn primary', href: whatsappLink(p), target: '_blank', rel: 'noopener' }, `💬 اشترك عبر واتساب ${p.whatsapp}`),
+      ]),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: 'بعد التواصل يُفعَّل حسابك خلال دقائق على نفس بريدك المسجّل.' }),
+    ]);
+  }
+
   /** صفحة المحادثة مع المساعد الذكي — تنتهي بمسودة تُفتح في المحرّر */
   function openAiDesigner() {
     teardown();
@@ -371,6 +558,18 @@
           el('a', { class: 'btn primary', href: '/login.html?next=' + encodeURIComponent('/host.html#/ai') }, 'تسجيل الدخول بجوجل'),
         ])
       );
+      return;
+    }
+
+    if (!state.premium?.isPremium) {
+      root.append(
+        el('div', { class: 'card stack center' }, [
+          el('div', { style: { fontSize: '2.2rem' }, text: '🤖' }),
+          el('h2', { style: { margin: 0 }, text: 'صمّم نشاطك بالذكاء الاصطناعي' }),
+          el('p', { class: 'muted', style: { margin: 0 }, text: 'احكِ للمساعد عن درسك فيصوغ لك الأسئلة كاملة ويعرضها عليك قبل الاعتماد — ميزة للمشتركين.' }),
+        ])
+      );
+      root.append(upgradeCard(state.premium?.plan, '⭐ افتح المساعد الذكي'));
       return;
     }
 
@@ -1226,7 +1425,12 @@
       el('div', { class: 'card stack' }, [
         el('div', { class: 'row between' }, [
           el('h2', { text: `تقدّم المشاركين (${data.participants.length})`, style: { margin: 0 } }),
-          el('button', { class: 'btn sm ghost', type: 'button', onclick: exportResults }, '⬇ تنزيل'),
+          el('div', { class: 'row', style: { gap: '6px' } }, [
+            el('button', { class: 'btn sm ghost', type: 'button', onclick: exportResults }, '⬇ JSON'),
+            el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('excel') }, '📊 Excel'),
+            el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('pdf') }, '📄 PDF'),
+            state.premium?.isPremium ? null : el('span', { class: 'badge', text: '⭐ بريميوم' }),
+          ].filter(Boolean)),
         ]),
         data.participants.length
           ? el('div', { class: 'table-wrap' }, [
@@ -1348,6 +1552,29 @@
   }
 
   // ------------------------------------------------------------- أدوات
+
+  /** تصدير منسّق (بريميوم): Excel حقيقي أو تقرير PDF عبر نافذة الطباعة */
+  async function exportAs(kind) {
+    if (!state.premium?.isPremium) {
+      app.prepend(upgradeCard(state.premium?.plan, '⭐ تصدير النتائج ميزة بريميوم'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      toast('تصدير Excel و PDF ميزة بريميوم', 'warn');
+      return;
+    }
+    try {
+      const data = await api(`/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`);
+      if (kind === 'excel') {
+        window.Exporter.toExcel(data);
+        toast('📊 نزّلنا ملف Excel', 'ok');
+      } else if (window.Exporter.toPdf(data)) {
+        toast('📄 اختر «حفظ كـ PDF» من نافذة الطباعة', 'ok');
+      } else {
+        toast('المتصفح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة', 'bad');
+      }
+    } catch (err) {
+      toast(err.message || 'تعذّر التصدير', 'bad');
+    }
+  }
 
   function exportResults() {
     const url = `/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`;

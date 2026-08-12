@@ -48,3 +48,11 @@ services:
       #   value: https://<موردك>.services.ai.azure.com/api/projects/<مشروعك>/openai/v1/responses
       # - key: AZURE_OPENAI_MODEL
       #   value: gpt-4.1
+
+      # اشتراك بريميوم ولوحة المالك (كلها اختيارية، ولها قيم افتراضية):
+      # - key: ADMIN_EMAILS
+      #   value: jihad@makeflow.tech
+      # - key: PREMIUM_WHATSAPP
+      #   value: "970597034066"
+      # - key: PREMIUM_PRICE_USD
+      #   value: "3"
