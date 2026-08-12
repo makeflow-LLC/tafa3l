@@ -19,6 +19,7 @@ process.env.AZURE_OPENAI_KEY = 'test-azure-key';
 const { server, ready } = require('../server/index');
 const { splitDraft, sanitizeMessages } = require('../server/routes-ai');
 const ai = require('../server/ai');
+const storage = require('../server/storage');
 
 let base;
 
@@ -85,6 +86,13 @@ function azureReply(text) {
     status: 200,
     text: async () => JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text }] }] }),
   });
+}
+
+/** يمنح حساباً اشتراك بريميوم لمدة شهر (الميزة مقصورة على المشتركين) */
+async function grantPremium(email) {
+  const user = await storage.get().findUserByEmail(email);
+  await storage.get().setPremiumUntil(user.id, Date.now() + 30 * 86400000);
+  return user;
 }
 
 async function login(c, mock) {
@@ -158,12 +166,14 @@ test('المدرب المسجّل يحصل على ردّ ومسودة، والم
       { type: 'word', text: 'صف الدرس بكلمة' },
     ],
   });
+  const userEmail = `ai${Date.now()}@example.com`;
   const mock = mockUpstream({
-    email: `ai${Date.now()}@example.com`,
+    email: userEmail,
     azure: azureReply('تفضّل المسودة:\n```json\n' + draftJson + '\n```'),
   });
   try {
     await login(c, mock);
+    await grantPremium(userEmail);
     const res = await c.request('POST', '/api/ai/design', {
       messages: [{ role: 'user', content: 'اختبار عن دورة المياه للصف الخامس' }],
     });
@@ -185,15 +195,32 @@ test('المدرب المسجّل يحصل على ردّ ومسودة، والم
 
 test('خطأ من أزور يصل كرسالة مفهومة لا كانهيار', async () => {
   const c = client();
+  const userEmail = `ai2${Date.now()}@example.com`;
   const mock = mockUpstream({
-    email: `ai2${Date.now()}@example.com`,
+    email: userEmail,
     azure: () => ({ ok: false, status: 429, text: async () => JSON.stringify({ error: { message: 'Rate limit reached' } }) }),
   });
   try {
     await login(c, mock);
+    await grantPremium(userEmail);
     const res = await c.request('POST', '/api/ai/design', { messages: [{ role: 'user', content: 'مرحباً' }] });
     assert.equal(res.status, 400);
     assert.match(res.data.error, /Rate limit/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test('الحساب المجاني يُمنع بلطف مع رقم الواتساب والسعر', async () => {
+  const c = client();
+  const mock = mockUpstream({ email: `free${Date.now()}@example.com`, azure: azureReply('لن يصل هنا') });
+  try {
+    await login(c, mock);
+    const res = await c.request('POST', '/api/ai/design', { messages: [{ role: 'user', content: 'مرحباً' }] });
+    assert.equal(res.status, 402, 'ميزة بريميوم');
+    assert.match(res.data.error, /970597034066/);
+    assert.equal(res.data.upgrade.priceUsd, 3);
+    assert.equal(mock.seen.azureRequests.length, 0, 'لا ننادي أزور أصلاً لحساب مجاني');
   } finally {
     mock.restore();
   }

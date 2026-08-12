@@ -9,6 +9,7 @@ const express = require('express');
 const storage = require('./storage');
 const auth = require('./auth');
 const google = require('./google-auth');
+const premium = require('./premium');
 const { normalizeQuiz, normalizeQuestion } = require('./session');
 
 const MAX_ACTIVITIES = 200;
@@ -72,7 +73,84 @@ function accountRoutes(store) {
   });
 
   router.get('/auth/me', (req, res) => {
-    res.json({ user: req.user || null, durable: storage.isDurable(), googleConfigured: google.isConfigured() });
+    res.json({
+      user: req.user || null,
+      durable: storage.isDurable(),
+      googleConfigured: google.isConfigured(),
+      // حالة الاشتراك تصل مع المستخدم كي تعرف الواجهة ماذا تعرض فوراً
+      premium: premium.summary(req.user),
+    });
+  });
+
+  // ------------------------------------------------------ لوحة المالك
+
+  /** كل المدربين المسجّلين مع حالة اشتراكهم — للمالك وحده */
+  router.get('/admin/users', premium.requireAdmin, async (_req, res) => {
+    try {
+      const users = await storage.get().listUsers();
+      res.json({
+        now: Date.now(),
+        users: users.map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          createdAt: u.createdAt,
+          premiumUntil: u.premiumUntil ?? null,
+          isPremium: premium.isPremium(u),
+          isAdmin: premium.isAdmin(u),
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'تعذّر جلب قائمة المدربين' });
+    }
+  });
+
+  /**
+   * ضبط اشتراك مدرب: إما بإضافة أيام (addDays موجب أو سالب) أو بتاريخ صريح
+   * (until بالمللي ثانية، أو null لإلغاء الاشتراك فوراً).
+   */
+  router.post('/admin/users/:id/premium', premium.requireAdmin, async (req, res) => {
+    try {
+      const target = await storage.get().findUserById(req.params.id);
+      if (!target) return res.status(404).json({ error: 'المدرب غير موجود' });
+
+      const now = Date.now();
+      let until;
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'addDays')) {
+        const days = Number(req.body.addDays);
+        if (!Number.isFinite(days) || Math.abs(days) > 3650) {
+          return res.status(400).json({ error: 'عدد أيام غير صالح' });
+        }
+        // الإضافة تبدأ من تاريخ الانتهاء الحالي إن كان ساري المفعول، وإلا من اليوم
+        const base = target.premiumUntil && target.premiumUntil > now ? target.premiumUntil : now;
+        until = Math.round(base + days * 86400000);
+        if (until <= now) until = null; // الخصم إلى ما قبل اليوم = إلغاء
+      } else if (Object.prototype.hasOwnProperty.call(req.body || {}, 'until')) {
+        if (req.body.until === null) until = null;
+        else {
+          const value = Number(req.body.until);
+          if (!Number.isFinite(value) || value < 0) return res.status(400).json({ error: 'تاريخ غير صالح' });
+          until = value <= now ? null : Math.round(value);
+        }
+      } else {
+        return res.status(400).json({ error: 'حدّد addDays أو until' });
+      }
+
+      const updated = await storage.get().setPremiumUntil(target.id, until);
+      res.json({
+        user: {
+          id: updated.id,
+          name: updated.name,
+          email: updated.email,
+          createdAt: updated.createdAt,
+          premiumUntil: updated.premiumUntil ?? null,
+          isPremium: premium.isPremium(updated),
+          isAdmin: premium.isAdmin(updated),
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'تعذّر تحديث الاشتراك' });
+    }
   });
 
   // ------------------------------------------------------ الأنشطة المحفوظة

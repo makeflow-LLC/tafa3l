@@ -89,6 +89,18 @@ function fileDriver() {
     async findUserById(id) {
       return db.users[id] || null;
     },
+    /** كل المدربين — للوحة المالك فقط */
+    async listUsers() {
+      return Object.values(db.users).sort((a, b) => b.createdAt - a.createdAt);
+    },
+    /** تاريخ انتهاء اشتراك بريميوم (ms) أو null لإلغائه */
+    async setPremiumUntil(userId, until) {
+      const user = db.users[userId];
+      if (!user) return null;
+      user.premiumUntil = until;
+      schedule();
+      return user;
+    },
     /** إنشاء أو تحديث بحسب البريد — بريد جوجل مُتحقَّق منه فهو المفتاح الطبيعي للحساب */
     async upsertUser({ email, name, googleId }) {
       const existing = Object.values(db.users).find((u) => u.email === email);
@@ -98,7 +110,7 @@ function fileDriver() {
         schedule();
         return existing;
       }
-      const user = { id: newId('u_'), email, name, googleId, createdAt: Date.now() };
+      const user = { id: newId('u_'), email, name, googleId, premiumUntil: null, createdAt: Date.now() };
       db.users[user.id] = user;
       schedule();
       return user;
@@ -189,6 +201,15 @@ function postgresDriver(connectionString) {
   // خطأ في اتصال خامل يجب ألا يُسقط العملية
   pool.on('error', (err) => console.error('خطأ في اتصال Postgres خامل:', err.message));
 
+  const userRow = (r) => ({
+    id: r.id,
+    email: r.email,
+    name: r.name,
+    googleId: r.google_id,
+    premiumUntil: r.premium_until == null ? null : Number(r.premium_until),
+    createdAt: Number(r.created_at),
+  });
+
   const rowToActivity = (r) =>
     r && {
       id: r.id,
@@ -220,6 +241,7 @@ function postgresDriver(connectionString) {
           email TEXT UNIQUE NOT NULL,
           name TEXT NOT NULL,
           google_id TEXT,
+          premium_until BIGINT,
           created_at BIGINT NOT NULL
         );
         -- ترقية جدول قديم كان يعتمد بريد+كلمة مرور: نضيف عمود جوجل ونُسقط عمودي كلمة المرور.
@@ -227,6 +249,8 @@ function postgresDriver(connectionString) {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT;
         ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
         ALTER TABLE users DROP COLUMN IF EXISTS salt;
+        -- اشتراك بريميوم: تاريخ الانتهاء بالمللي ثانية، وnull يعني حساباً مجانياً
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until BIGINT;
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -256,14 +280,23 @@ function postgresDriver(connectionString) {
     async findUserByEmail(email) {
       const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
       const r = rows[0];
-      return r ? { id: r.id, email: r.email, name: r.name, googleId: r.google_id, createdAt: Number(r.created_at) } : null;
+      return r ? userRow(r) : null;
     },
     async findUserById(id) {
       const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
       const r = rows[0];
-      return r ? { id: r.id, email: r.email, name: r.name, googleId: r.google_id, createdAt: Number(r.created_at) } : null;
+      return r ? userRow(r) : null;
     },
     /** إنشاء أو تحديث بحسب البريد — بريد جوجل مُتحقَّق منه فهو المفتاح الطبيعي للحساب */
+    async listUsers() {
+      const { rows } = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
+      return rows.map(userRow);
+    },
+    async setPremiumUntil(userId, until) {
+      const { rows } = await pool.query('UPDATE users SET premium_until = $2 WHERE id = $1 RETURNING *', [userId, until]);
+      return rows[0] ? userRow(rows[0]) : null;
+    },
+
     async upsertUser({ email, name, googleId }) {
       const { rows } = await pool.query(
         `INSERT INTO users (id, email, name, google_id, created_at)
@@ -273,7 +306,7 @@ function postgresDriver(connectionString) {
         [newId('u_'), email, name, googleId, Date.now()]
       );
       const r = rows[0];
-      return { id: r.id, email: r.email, name: r.name, googleId: r.google_id, createdAt: Number(r.created_at) };
+      return userRow(r);
     },
 
     async listActivities(ownerId) {

@@ -73,7 +73,15 @@ async function attachUser(req, _res, next) {
       const session = await storage.get().getAuthSession(token);
       if (session) {
         const user = await storage.get().findUserById(session.userId);
-        if (user) req.user = { id: user.id, email: user.email, name: user.name };
+        if (user) {
+          req.user = {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            premiumUntil: user.premiumUntil ?? null,
+            createdAt: user.createdAt,
+          };
+        }
       }
     }
   } catch (err) {

@@ -8,15 +8,15 @@
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.19.0" />
-    <script src="/assets/js/i18n.js?v=1.19.0"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.20.0" />
+    <script src="/assets/js/i18n.js?v=1.20.0"></script>
   </head>
   <body>
     <div class="wrap narrow">
       <div class="row" style="justify-content: flex-end; padding-top: 10px" id="langRow"></div>
       <div class="center" style="padding: 10px 0 18px">
         <div class="brand hero" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.19.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.19.0" alt="Tapio" width="249" height="159" />
+          <img class="logo light-only" src="/assets/logo.svg?v=1.20.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.20.0" alt="Tapio" width="249" height="159" />
         </div>
         <p class="muted small" style="margin-top: 8px" id="tagline"></p>
       </div>
@@ -47,6 +47,7 @@
         <a class="btn accent block" href="/host.html" id="createBtn"></a>
         <a class="btn ghost block" href="/host.html#/demo" style="margin-top: 8px" id="demoBtn"></a>
         <a class="btn ghost block" id="accountLink" href="/login.html" style="margin-top: 8px"></a>
+        <button class="btn ghost block hidden" id="logoutBtn" type="button" style="margin-top: 8px">🚪 تسجيل الخروج</button>
         <div id="resume" class="hidden" style="margin-top: 10px">
           <a class="btn ghost block" id="resumeLink" href="#"></a>
         </div>
@@ -60,8 +61,8 @@
       <p class="footer" id="pageFooter"></p>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.19.0"></script>
-    <script src="/assets/js/common.js?v=1.19.0"></script>
+    <script src="/assets/js/avatar.js?v=1.20.0"></script>
+    <script src="/assets/js/common.js?v=1.20.0"></script>
     <script>
       (function () {
         const { $, api, toast, store, serverAlive, showOfflineBanner } = window.T;
@@ -124,6 +125,14 @@
             const link = $('#accountLink');
             link.href = '/host.html#/mine';
             link.textContent = t('homeMyActivities', { name: user.name });
+            // زر خروج ظاهر للمسجّلين على الصفحة الرئيسية أيضاً
+            const out = $('#logoutBtn');
+            out.classList.remove('hidden');
+            out.textContent = t('homeLogoutBtn');
+            out.addEventListener('click', async () => {
+              await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+              location.reload();
+            });
           })
           .catch(() => {});
 
