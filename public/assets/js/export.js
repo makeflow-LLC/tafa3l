@@ -198,6 +198,7 @@
     // ورقة التعريف: كل ما يسأل عنه المعلّم قبل أن ينظر في الدرجات
     const info = [
       ['اسم النشاط', data.title],
+      ...(data.teacher ? [['المعلّم', data.teacher]] : []),
       ['رمز الجلسة', data.code],
       ['التاريخ', started.toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' })],
       ['وقت البدء', started.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })],
@@ -411,6 +412,7 @@
       .join('');
 
     const metaGrid = `<div class="meta-grid">
+      ${data.teacher ? `<div><strong>${esc(data.teacher)}</strong>المعلّم</div>` : ''}
       <div><strong>${esc(data.code)}</strong>رمز الجلسة</div>
       <div><strong>${esc(started.toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' }))}</strong>التاريخ</div>
       <div><strong>${esc(started.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' }))} — ${esc(
@@ -428,7 +430,9 @@
 <title>تقرير ${esc(data.title)} — Tapio</title>
 <style>${PRINT_CSS}</style></head><body>
 <h1>${esc(data.title)}</h1>
-<p class="meta">تقرير نتائج · منصة Tapio · صدر في ${esc(new Date(data.exportedAt).toLocaleString('ar'))}</p>
+<p class="meta">${data.teacher ? `المعلّم: <strong>${esc(data.teacher)}</strong> · ` : ''}تقرير نتائج · منصة Tapio · صدر في ${esc(
+      new Date(data.exportedAt).toLocaleString('ar')
+    )}</p>
 ${metaGrid}
 ${analysis ? `<h2>تحليل النتائج والتوصيات</h2>${global.Analytics.reportHtml(analysis, { print: true })}` : ''}
 <h2>تفصيل الأسئلة</h2>

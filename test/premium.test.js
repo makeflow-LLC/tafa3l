@@ -162,3 +162,31 @@ test('مدرب لا يستطيع تمديد اشتراك نفسه', async () => 
   const still = await teacher.request('GET', '/api/auth/me');
   assert.equal(still.data.premium.isPremium, false);
 });
+
+test('اسم المعلّم يُحفظ مع الجلسة ويظهر في ملف النتائج', async () => {
+  const teacher = client();
+  await teacher.login('reporter@example.com', 'جهاد حجازي');
+
+  const created = await teacher.request('POST', '/api/sessions', {
+    title: 'اختبار بالاسم',
+    settings: { pace: 'host', requireName: true, countdown: false },
+    questions: [
+      { type: 'mc', text: 'س؟', timeLimit: 0, points: 10, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] },
+    ],
+  });
+  assert.equal(created.status, 201);
+
+  const report = await fetch(
+    `${base}/api/sessions/${created.data.code}/export?hostToken=${encodeURIComponent(created.data.hostToken)}`
+  ).then((r) => r.json());
+  assert.equal(report.teacher, 'جهاد حجازي', 'التقرير يحمل اسم المعلّم');
+
+  // جلسة بلا حساب تبقى بلا اسم — لا نخترع مالكاً
+  const anon = await fetch(base + '/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'بلا حساب', questions: [{ type: 'word', text: 'كلمة؟' }] }),
+  }).then((r) => r.json());
+  const anonReport = await fetch(`${base}/api/sessions/${anon.code}/export?hostToken=${anon.hostToken}`).then((r) => r.json());
+  assert.equal(anonReport.teacher, null);
+});
