@@ -14,11 +14,13 @@ const storage = require('./storage');
 const auth = require('./auth');
 const googleAuth = require('./google-auth');
 const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
+const { aiRoutes } = require('./routes-ai');
+const ai = require('./ai');
 
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -49,6 +51,7 @@ app.use(
 // كل مسارات API تعرف المستخدم الحالي إن كان مسجّلاً (بلا إجبار)
 app.use('/api', auth.attachUser);
 app.use('/api', accountRoutes(store));
+app.use('/api', aiRoutes());
 
 // ------------------------------------------------------------------ واجهة REST
 
@@ -71,6 +74,8 @@ app.get('/api/health', (_req, res) => {
     storage: storage.status(),
     // هل رُبطت بيانات اعتماد جوجل؟ بدونها لا يعمل تسجيل الدخول إطلاقاً
     googleLoginConfigured: googleAuth.isConfigured(),
+    // هل رُبط مفتاح أزور؟ بدونه لا يعمل «صمّم بالذكاء الاصطناعي»
+    aiConfigured: ai.isConfigured(),
   });
 });
 

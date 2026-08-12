@@ -38,3 +38,13 @@ services:
       #   value: xxxxxxxx.apps.googleusercontent.com
       # - key: GOOGLE_CLIENT_SECRET
       #   value: xxxxxxxx
+
+      # «صمّم نشاطك بالذكاء الاصطناعي» — مفتاح Azure OpenAI.
+      # ⚠️ لا تكتب المفتاح في المستودع أبداً: أضفه من لوحة Render
+      # (Environment ← Add Environment Variable) وحدها.
+      # - key: AZURE_OPENAI_KEY
+      #   value: <المفتاح من بوابة أزور>
+      # - key: AZURE_OPENAI_ENDPOINT
+      #   value: https://<موردك>.services.ai.azure.com/api/projects/<مشروعك>/openai/v1/responses
+      # - key: AZURE_OPENAI_MODEL
+      #   value: gpt-4.1

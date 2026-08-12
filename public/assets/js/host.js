@@ -64,6 +64,7 @@
     if (match) return openLive(match[1]);
     if (hash === '/demo') return startDemo();
     if (hash === '/mine') return openMyActivities();
+    if (hash === '/ai') return openAiDesigner();
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
     if (edit) return openSavedActivity(edit[1]);
     return openBuilder();
@@ -124,7 +125,10 @@
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الصفحة الرئيسية'),
-        el('a', { class: 'btn accent sm', href: '#/' }, '➕ نشاط جديد'),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/ai' }, '🤖 صمّم بالذكاء الاصطناعي'),
+          el('a', { class: 'btn accent sm', href: '#/' }, '➕ نشاط جديد'),
+        ]),
       ])
     );
     app.append(el('h1', { text: '📚 نشاطاتي' }));
@@ -321,6 +325,16 @@
       ])
     );
     app.append(el('h1', { text: 'إنشاء نشاط تفاعلي' }));
+    // مدخل المساعد الذكي: أسرع طريق لمدرب لا يريد كتابة الأسئلة يدوياً
+    app.append(
+      el('div', { class: 'card row between', style: { marginBottom: '12px' } }, [
+        el('div', { class: 'stack tight' }, [
+          el('strong', { text: '🤖 لا تعرف من أين تبدأ؟' }),
+          el('span', { class: 'muted small', text: 'احكِ للمساعد عن درسك وسيصوغ لك الأسئلة ويعرضها عليك قبل الاعتماد.' }),
+        ]),
+        el('a', { class: 'btn accent', href: '#/ai' }, 'صمّم بالذكاء الاصطناعي'),
+      ])
+    );
     app.append(root);
 
     // تحذير مبكر إن كان الخادم غير متاح، بدل مفاجأة المدرب عند الإطلاق
@@ -330,6 +344,55 @@
 
     // المحرّر يجب ألا يترك الصفحة فارغة أبداً: نتعافى تلقائياً، وإن استمر العطل نُظهره
     mountBuilderSafely(root);
+  }
+
+  /** صفحة المحادثة مع المساعد الذكي — تنتهي بمسودة تُفتح في المحرّر */
+  function openAiDesigner() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/' }, '⟩ العودة للمحرّر'),
+        el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الرئيسية'),
+      ])
+    );
+    const root = el('div', { class: 'stack' });
+    app.append(root);
+
+    // الخدمة تكلّف الخادم نداءً حقيقياً — لذا هي للمدربين المسجّلين فقط
+    if (!state.user) {
+      root.append(
+        el('div', { class: 'card stack center' }, [
+          el('h2', { text: '🤖 صمّم نشاطك بالذكاء الاصطناعي' }),
+          el('p', { class: 'muted', text: 'سجّل الدخول أولاً كي يتذكّر المساعد نشاطاتك ويحفظ ما يصممه لك.' }),
+          el('a', { class: 'btn primary', href: '/login.html?next=' + encodeURIComponent('/host.html#/ai') }, 'تسجيل الدخول بجوجل'),
+        ])
+      );
+      return;
+    }
+
+    window.AiChat.render(root, {
+      onApprove: (draft) => {
+        window.Builder.saveDraft(draft);
+        setEditingActivity(null);
+        toast('✅ فُتحت المسودة في المحرّر — عدّل ما تشاء ثم أطلقها', 'ok');
+        location.hash = '#/';
+      },
+    });
+
+    api('/api/ai/status')
+      .then((status) => {
+        if (!status.configured) {
+          root.prepend(
+            el('div', { class: 'note warn small' },
+              'المساعد غير مُفعّل على الخادم بعد — أضف المتغيّر AZURE_OPENAI_KEY في إعدادات الاستضافة ثم أعد النشر.')
+          );
+        }
+      })
+      .catch(() => {});
   }
 
   function mountBuilderSafely(root) {
