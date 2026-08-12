@@ -269,6 +269,10 @@ test('شاشة العرض المنفصلة: تتطلب مفتاح المضيف،
   assert.equal(initial.phase, 'lobby');
   assert.equal(initial.participants.length, 0);
 
+  // شاشة العرض تستقبل لوحة النتائج التفصيلية أيضاً (نتائج الاستطلاع والترتيب)
+  const screenDash = await screen.next('dashboard');
+  assert.ok(Array.isArray(screenDash.data.perQuestion), 'شاشة العرض تصلها لوحة النتائج فور الاتصال');
+
   // شاشة العرض لا تملك زر تحكم — لكن حتى لو أُرسل أمر مضيف مباشرة عبر السوكِت يُتجاهل بصمت
   screen.send({ t: 'host:end' });
   await new Promise((r) => setTimeout(r, 150));
@@ -289,6 +293,13 @@ test('شاشة العرض المنفصلة: تتطلب مفتاح المضيف،
   const qId = screenQuestion.question.id;
   p.send({ t: 'answer', questionId: qId, value: 'o0' });
   await p.next('answer:accepted');
+
+  // النتائج التفصيلية للسؤال الحالي تصل شاشة العرض مباشرة بعد الإجابة
+  const liveDash = await screen.next(
+    (m) => m.t === 'dashboard' && m.data.perQuestion[0] && m.data.perQuestion[0].responses > 0
+  );
+  assert.equal(liveDash.data.perQuestion[0].results.options[0].count, 1);
+
   p.send({ t: 'reaction', emoji: '🔥' });
   const reaction = await screen.next('reaction');
   assert.equal(reaction.emoji, '🔥');
