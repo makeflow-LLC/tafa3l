@@ -595,6 +595,8 @@
   }
 
   function mountBuilderSafely(root) {
+    // المحرّر يحتاج معرفة الاشتراك: رفع الصور للمشتركين فقط
+    window.Builder.setPremium(state.premium);
     const onLaunch = async (draft) => {
       try {
         const payload = {
@@ -1214,7 +1216,12 @@
         el('div', { style: { fontSize: '3rem' }, text: '🎊' }),
         el('h2', { text: 'انتهى النشاط', style: { margin: 0 } }),
         el('p', { class: 'muted small', style: { margin: 0 }, text: 'حمّل النتائج الآن إن أردت الاحتفاظ بها — ستُحذف الجلسة تلقائياً.' }),
-        el('button', { class: 'btn accent', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج (JSON)'),
+        el('div', { class: 'row', style: { justifyContent: 'center' } }, [
+          el('button', { class: 'btn accent', type: 'button', onclick: () => exportAs('excel') }, '📊 تنزيل Excel'),
+          el('button', { class: 'btn accent', type: 'button', onclick: () => exportAs('pdf') }, '📄 تقرير PDF'),
+          el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, '⬇ JSON'),
+        ]),
+        state.premium?.isPremium ? null : el('span', { class: 'badge', text: '⭐ Excel و PDF ميزة بريميوم' }),
         el('div', { class: 'row', style: { justifyContent: 'center' } }, [
           el(
             'button',
@@ -1333,24 +1340,50 @@
    */
   function gradingCard(item) {
     const rows = item.answers.map((answer) => {
-      const marks = [];
-      // أزرار مباشرة حتى ١٠ علامات، وفوقها حقل رقمي
-      if (item.maxPoints <= 10) {
-        for (let value = 0; value <= item.maxPoints; value += 1) {
-          const chosen = !answer.pending && answer.points === value;
+      const grade = (points) => send('host:grade', { participantId: answer.participantId, questionId: item.id, points });
+      const done = !answer.pending;
+
+      // صح / خطأ أولاً — أسرع قرار للمدرب، ثم العلامات الجزئية
+      const marks = [
+        el(
+          'button',
+          {
+            class: 'btn sm ' + (done && answer.points >= item.maxPoints ? 'ok' : 'ghost'),
+            type: 'button',
+            title: `صح — ${item.maxPoints} من ${item.maxPoints}`,
+            onclick: () => grade(item.maxPoints),
+          },
+          '✓ صح'
+        ),
+        el(
+          'button',
+          {
+            class: 'btn sm ' + (done && answer.points === 0 ? 'danger' : 'ghost'),
+            type: 'button',
+            title: 'خطأ — صفر',
+            onclick: () => grade(0),
+          },
+          '✕ خطأ'
+        ),
+      ];
+      // علامة جزئية: أرقام بين الصفر والعلامة الكاملة (تظهر فقط إن كان بينهما مجال)
+      if (item.maxPoints > 1 && item.maxPoints <= 10) {
+        marks.push(el('span', { class: 'muted small', text: 'أو علامة:' }));
+        for (let value = 1; value < item.maxPoints; value += 1) {
+          const chosen = done && answer.points === value;
           marks.push(
             el(
               'button',
               {
-                class: 'btn sm ' + (chosen ? (value === 0 ? 'danger' : value === item.maxPoints ? 'ok' : 'primary') : 'ghost'),
+                class: 'btn sm ' + (chosen ? 'primary' : 'ghost'),
                 type: 'button',
-                onclick: () => send('host:grade', { participantId: answer.participantId, questionId: item.id, points: value }),
+                onclick: () => grade(value),
               },
               String(value)
             )
           );
         }
-      } else {
+      } else if (item.maxPoints > 10) {
         const input = el('input', { type: 'number', min: 0, max: item.maxPoints, value: String(answer.points || 0), style: { width: '80px' } });
         marks.push(
           input,
@@ -1370,9 +1403,15 @@
         ? el('span', { class: 'badge warn', text: '⏳ بانتظار التصحيح' })
         : el('span', { class: 'badge ' + (answer.correct === true ? 'ok' : answer.correct === false ? 'bad' : '') }, `${answer.points} من ${item.maxPoints}`);
 
+      // في «أكمل الفراغ» نعرض الإجابة المتوقعة تحت جواب الطالب للمقارنة السريعة
+      const expected = item.expected && item.expected.some((value) => value)
+        ? el('p', { class: 'grade-expected', text: 'المتوقع: ' + item.expected.map((value) => value || '—').join(' · ') })
+        : null;
+
       return el('div', { class: 'grade-row' + (answer.pending ? ' pending' : '') }, [
         el('div', { class: 'row', style: { gap: '8px', flexWrap: 'nowrap' } }, [avatarNode(answer.avatar, 'sm'), el('strong', { text: answer.name }), status]),
         el('p', { class: 'grade-text', text: answer.text }),
+        expected,
         el('div', { class: 'row', style: { gap: '4px' } }, marks),
       ]);
     });
@@ -1384,7 +1423,7 @@
           ? el('span', { class: 'badge warn' }, `${item.pending} بانتظار التصحيح`)
           : el('span', { class: 'badge ok', text: '✓ اكتمل التصحيح' }),
       ]),
-      el('p', { class: 'muted small', style: { margin: 0 } }, `العلامة القصوى ${item.maxPoints} — اختر العلامة التي يستحقها كل جواب. لا يرى الطالب نتيجته قبل تصحيحك.`),
+      el('p', { class: 'muted small', style: { margin: 0 } }, `العلامة القصوى ${item.maxPoints} — ضع «صح» أو «خطأ» أو علامة بينهما. لا يرى الطالب نتيجته قبل تصحيحك.`),
       rows.length ? el('div', { class: 'stack tight' }, rows) : el('p', { class: 'muted center', text: 'لا توجد إجابات بعد' }),
     ]);
   }

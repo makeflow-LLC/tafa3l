@@ -10,6 +10,10 @@ const assert = require('node:assert');
 const WebSocket = require('ws');
 
 process.env.PORT = '0';
+process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+// صور الأسئلة ميزة بريميوم، والمالك مشترك دائماً — نستخدمه لاختبارات الصور
+process.env.ADMIN_EMAILS = 'owner@tapio.fun';
 const { server, ready } = require('../server/index');
 const { normalizeQuestion } = require('../server/session');
 
@@ -69,22 +73,53 @@ function ws() {
   };
 }
 
-const post = async (path, body) => {
+const post = async (path, body, cookie) => {
   const res = await fetch(base + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
     body: JSON.stringify(body),
   });
   return { status: res.status, data: await res.json() };
 };
 
+/** يسجّل دخول المالك (مشترك دائماً) عبر جوجل مزيّفة ويعيد كوكي الجلسة */
+async function loginOwner() {
+  const original = global.fetch;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.startsWith('https://oauth2.googleapis.com/token')) return { ok: true, json: async () => ({ access_token: 't' }) };
+    if (u.startsWith('https://www.googleapis.com/oauth2/v3/userinfo')) {
+      return { ok: true, json: async () => ({ sub: 'g_owner', email: 'owner@tapio.fun', email_verified: true, name: 'المالك' }) };
+    }
+    return original(url, opts);
+  };
+  try {
+    const start = await fetch(base + '/api/auth/google', { redirect: 'manual' });
+    const stateCookie = (start.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_oauth='));
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    const cb = await fetch(`${base}/api/auth/google/callback?code=fake&state=${state}`, {
+      redirect: 'manual',
+      headers: { Cookie: stateCookie.split(';')[0] },
+    });
+    return (cb.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_sid=')).split(';')[0];
+  } finally {
+    global.fetch = original;
+  }
+}
+
 const QUIZ = {
   title: 'اختبار التصحيح اليدوي',
   settings: { pace: 'host', requireName: true, countdown: false, showLeaderboard: true },
   questions: [
-    { type: 'open', text: 'اشرح دورة المياه بأسلوبك.', points: 5, timeLimit: 0, image: PNG },
+    { type: 'open', text: 'اشرح دورة المياه بأسلوبك.', points: 5, timeLimit: 0 },
     { type: 'open', text: 'ما رأيك بالدرس؟', timeLimit: 0 },
   ],
+};
+
+const IMAGE_QUIZ = {
+  title: 'اختبار مصوّر',
+  settings: { pace: 'host', requireName: true, countdown: false },
+  questions: [{ type: 'open', text: 'انظر إلى الصورة واشرح.', points: 5, timeLimit: 0, image: PNG }],
 };
 
 // ------------------------------------------------------------------ وحدات
@@ -111,10 +146,35 @@ test('صورة أكبر من الحد تُرفض برسالة واضحة', () =>
   assert.throws(() => normalizeQuestion({ type: 'mc', text: 'س', image: huge }, 0), /حجم الصورة كبير/);
 });
 
+test('أكمل الفراغ: عدد الفراغات من النص، والعلامة الافتراضية علامة لكل فراغ', () => {
+  const q = normalizeQuestion({ type: 'blank', text: 'عاصمة الأردن ___ وعاصمة مصر ___.', blanks: ['عمّان', 'القاهرة'] }, 0);
+  assert.equal(q.blanks.length, 2);
+  assert.deepEqual(q.blanks, ['عمّان', 'القاهرة']);
+  assert.equal(q.points, 2, 'علامة لكل فراغ افتراضياً');
+  assert.equal(q.manual, true, 'التصحيح يدوي');
+
+  // إجابات متوقعة أكثر من الفراغات تُقصّ، وبلا إجابات متوقعة يبقى العدد صحيحاً
+  const one = normalizeQuestion({ type: 'blank', text: 'الماء يغلي عند ___ درجة.', points: 5 }, 0);
+  assert.deepEqual(one.blanks, ['']);
+  assert.equal(one.points, 5);
+});
+
 // ------------------------------------------------------------------ التدفق
 
+test('صورة السؤال ميزة بريميوم: تُرفض من حساب مجاني وتُقبل من المشترك', async () => {
+  const free = await post('/api/sessions', IMAGE_QUIZ);
+  assert.equal(free.status, 402, 'حساب بلا اشتراك لا يرفع صوراً');
+  assert.match(free.data.error, /بريميوم/);
+  assert.match(free.data.error, /970597034066/);
+
+  const cookie = await loginOwner();
+  const paid = await post('/api/sessions', IMAGE_QUIZ, cookie);
+  assert.equal(paid.status, 201, 'المشترك يرفع الصور');
+});
+
 test('صورة السؤال تُقدَّم كملف من الجلسة لا كنص داخل الحالة', async () => {
-  const { data: created } = await post('/api/sessions', QUIZ);
+  const cookie = await loginOwner();
+  const { data: created } = await post('/api/sessions', IMAGE_QUIZ, cookie);
   const player = ws();
   await player.ready;
   player.send({ t: 'join', code: created.code, name: 'ليان', avatar: { seed: 'l' } });
@@ -245,6 +305,84 @@ test('الطالب لا يرى نتيجته النهائية قبل انتهاء
   assert.equal(after.pendingGrades, 0);
   assert.equal(after.me.score, 4);
   assert.ok(after.rank, 'الترتيب صار متاحاً بعد التصحيح');
+
+  host.close();
+  a.close();
+});
+
+test('أكمل الفراغ: الطالب يملأ الفراغات، والمدرب يرى المتوقع ويضع صح أو علامة', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'أكمل الفراغ',
+    settings: { pace: 'host', requireName: true, countdown: false },
+    questions: [
+      { type: 'blank', text: 'عاصمة الأردن ___ وعاصمة مصر ___.', blanks: ['عمّان', 'القاهرة'], points: 2, timeLimit: 0 },
+    ],
+  });
+
+  const a = ws();
+  await a.ready;
+  a.send({ t: 'join', code: created.code, name: 'ندى', avatar: { seed: 'n' } });
+  await a.next('joined');
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+  host.send({ t: 'host:start' });
+
+  const q = await a.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.equal(q.question.type, 'blank');
+  assert.equal(q.question.blankCount, 2, 'الطالب يعرف عدد الفراغات');
+  assert.deepEqual(q.question.blanks, [], 'الإجابات المتوقعة لا تُكشف للطالب قبل الإجابة');
+
+  a.send({ t: 'answer', questionId: q.question.id, value: ['عمّان', 'الإسكندرية'] });
+  const accepted = await a.next('answer:accepted');
+  assert.equal(accepted.pending, true);
+
+  host.send({ t: 'host:dashboard' });
+  const dash = await host.next((m) => m.t === 'dashboard' && m.data.grading[0]?.answers.length === 1);
+  const item = dash.data.grading[0];
+  assert.equal(item.type, 'blank');
+  assert.deepEqual(item.expected, ['عمّان', 'القاهرة'], 'المدرب يرى الإجابة المتوقعة');
+  assert.equal(item.answers[0].text, 'عمّان · الإسكندرية');
+  assert.deepEqual(item.answers[0].parts, ['عمّان', 'الإسكندرية']);
+
+  // نصف العلامة: فراغ صحيح وآخر خاطئ
+  host.send({ t: 'host:grade', participantId: item.answers[0].participantId, questionId: item.id, points: 1 });
+  const graded = await a.next((m) => m.t === 'state' && m.answered && m.answered.pending === false);
+  assert.equal(graded.answered.points, 1);
+  assert.equal(graded.answered.correct, 'partial');
+  assert.equal(graded.me.score, 1);
+
+  // «صح» = العلامة الكاملة
+  host.send({ t: 'host:grade', participantId: item.answers[0].participantId, questionId: item.id, points: 2 });
+  const full = await a.next((m) => m.t === 'state' && m.me.score === 2);
+  assert.equal(full.answered.correct, true);
+
+  host.close();
+  a.close();
+});
+
+test('أكمل الفراغ: إجابة فارغة تماماً تُرفض', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'فراغ',
+    settings: { pace: 'host', requireName: true, countdown: false },
+    questions: [{ type: 'blank', text: 'الماء يغلي عند ___ درجة.', points: 1, timeLimit: 0 }],
+  });
+  const a = ws();
+  await a.ready;
+  a.send({ t: 'join', code: created.code, name: 'سالم', avatar: { seed: 's' } });
+  await a.next('joined');
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+  host.send({ t: 'host:start' });
+  const q = await a.next((m) => m.t === 'state' && m.phase === 'question');
+
+  a.send({ t: 'answer', questionId: q.question.id, value: ['   '] });
+  const rejected = await a.next('answer:rejected');
+  assert.match(rejected.message, /غير صالحة/);
 
   host.close();
   a.close();

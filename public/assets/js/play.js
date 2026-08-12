@@ -311,7 +311,7 @@
     ]);
     if (q.timeLimit) app.append(timerBox);
 
-    app.append(questionCard(q));
+    app.append(questionCard(q, { compact: !s.answered }));
 
     if (s.answered) {
       app.append(waitingCard(s, q));
@@ -327,10 +327,11 @@
   }
 
   /** بطاقة نص السؤال مع صورته إن وُجدت */
-  function questionCard(q) {
+  function questionCard(q, opts) {
+    const hideText = q.type === 'blank' && opts?.compact;
     return el('div', { class: 'card stack' }, [
       q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال', loading: 'lazy' }) : null,
-      el('h2', { class: 'big-q', text: q.text }),
+      hideText ? el('span', { class: 'badge', text: '✏️ أكمل الفراغ' }) : el('h2', { class: 'big-q', text: q.text }),
     ]);
   }
 
@@ -499,6 +500,47 @@
           send,
         ])
       );
+      return box;
+    }
+
+    if (q.type === 'blank') {
+      // أكمل الفراغ: الجملة نفسها وفيها حقول صغيرة مكان كل ___
+      const count = Math.max(1, q.blankCount || 1);
+      const parts = String(q.text).split(/_{3,}/);
+      const line = el('div', { class: 'blank-line' });
+      const inputs = [];
+      parts.forEach((part, i) => {
+        if (part) line.append(el('span', { text: part }));
+        if (i < parts.length - 1 && inputs.length < count) {
+          const field = el('input', {
+            class: 'blank-input',
+            maxlength: 60,
+            autocomplete: 'off',
+            'aria-label': `الفراغ ${inputs.length + 1}`,
+          });
+          inputs.push(field);
+          line.append(field);
+        }
+      });
+      // احتياط: نص بلا فراغ ظاهر — نعرض حقلاً واحداً على الأقل
+      while (inputs.length < count) {
+        const field = el('input', { class: 'blank-input', maxlength: 60, autocomplete: 'off' });
+        inputs.push(field);
+        line.append(field);
+      }
+
+      const sendBlanks = el('button', { class: 'btn primary block' }, 'إرسال');
+      sendBlanks.addEventListener('click', () => {
+        const values = inputs.map((field) => field.value.trim());
+        if (!values.some((v) => v)) return toast('املأ الفراغ أولاً', 'bad');
+        submit(q, values);
+      });
+      inputs.forEach((field) =>
+        field.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') sendBlanks.click();
+        })
+      );
+      box.append(el('div', { class: 'card stack' }, [line, sendBlanks]));
       return box;
     }
 

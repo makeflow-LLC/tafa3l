@@ -1687,3 +1687,40 @@ body.screen-body .q-image {
   white-space: pre-wrap;
   line-height: 1.7;
 }
+
+/* ------------------------------------------------ أكمل الفراغ */
+
+/* الجملة تُقرأ كسطر متصل والحقول جزء منها لا صناديق منفصلة */
+.blank-line {
+  font-size: 1.15rem;
+  line-height: 2.4;
+  font-weight: 700;
+}
+
+.blank-input {
+  display: inline-block;
+  width: clamp(90px, 28%, 190px);
+  margin: 0 4px;
+  padding: 4px 10px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 0;
+  border-bottom: 3px solid var(--brand);
+  border-radius: 8px 8px 0 0;
+  text-align: center;
+}
+
+.blank-input:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  background: var(--brand-soft);
+}
+
+/* إجابة الطالب أمام الإجابة المتوقعة في لوحة التصحيح */
+.grade-expected {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}

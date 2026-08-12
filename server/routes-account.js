@@ -193,6 +193,7 @@ function accountRoutes(store) {
       if (list.length >= MAX_ACTIVITIES) {
         return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_ACTIVITIES} نشاطاً) — احذف نشاطاً قديماً` });
       }
+      premium.assertImagesAllowed(req.user, req.body?.questions);
       // نستخدم نفس تحقق الجلسات حتى لا يُحفظ نشاط لا يمكن إطلاقه
       const quiz = normalizeQuiz(req.body || {});
       const now = Date.now();
@@ -223,6 +224,7 @@ function accountRoutes(store) {
     try {
       const existing = await storage.get().getActivity(req.params.id);
       if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+      premium.assertImagesAllowed(req.user, req.body?.questions);
       const quiz = normalizeQuiz(req.body || {});
       const updated = {
         ...existing,
