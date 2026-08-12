@@ -226,7 +226,13 @@
           i + 1,
           a.question,
           Array.isArray(a.answer) ? a.answer.join(' + ') : a.answer,
-          a.correct === null || a.correct === undefined ? '—' : a.correct ? 'نعم' : 'لا',
+          a.correct === null || a.correct === undefined
+            ? '—'
+            : a.correct === 'partial'
+              ? 'جزئي'
+              : a.correct
+                ? 'نعم'
+                : 'لا',
           a.points || 0,
           a.seconds || 0,
         ]);
@@ -283,8 +289,11 @@
           body = `<p>${results.words.map((w) => `${esc(w.text)} (${w.count})`).join('، ')}</p>`;
         } else if (results.average !== undefined && results.average !== null) {
           body = `<p>المتوسط: ${results.average}</p>`;
-        } else if (results.answers) {
-          body = `<ul>${results.answers.map((a) => `<li>${esc(a.text ?? a)}</li>`).join('')}</ul>`;
+        } else if (results.responses) {
+          // الإجابات النصّية: نص كل مشارك مع اسمه إن كان النشاط بأسماء
+          body = `<ul>${results.responses
+            .map((r) => `<li>${esc(r.text)}${r.name ? ` — <strong>${esc(r.name)}</strong>` : ''}</li>`)
+            .join('')}</ul>`;
         }
         return `<div class="q"><h3>${q.index}. ${esc(q.text)} <small>(${esc(TYPE_AR[q.type] || q.type)})</small></h3>${
           q.correct && q.correct.length ? `<p class="ok">الإجابة الصحيحة: ${esc(q.correct.join('، '))}</p>` : ''

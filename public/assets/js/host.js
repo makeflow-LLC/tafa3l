@@ -1051,6 +1051,7 @@
       app.append(
         el('div', { class: 'card stack center' }, [
           el('span', { class: 'badge' }, `${TYPE_EMOJI[q.type]} سؤال ${s.index + 1} من ${s.total}`),
+          q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال' }) : null,
           el('h2', { class: 'big-q', text: q.text }),
           el('p', { class: 'muted', text: 'استعد… ينطلق الجميع معاً' }),
         ])
@@ -1067,6 +1068,7 @@
         el('span', { class: 'badge' }, `${TYPE_EMOJI[q.type]} ${TYPE_LABELS[q.type]}`),
         el('span', { class: 'badge' + (answered === total && total > 0 ? ' ok' : '') }, `أجاب ${answered} من ${total}`),
       ]),
+      q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال' }) : null,
       el('h2', { class: 'big-q', text: q.text }),
     ]);
 
@@ -1325,6 +1327,68 @@
 
   // -------------------------------------------------------- لوحة التحكم
 
+  /**
+   * بطاقة تصحيح سؤال نصّي: إجابة كل مشارك وأمامها أزرار العلامات
+   * (0..العلامة القصوى) — النقر يمنح العلامة فوراً وتظهر للطالب مباشرة.
+   */
+  function gradingCard(item) {
+    const rows = item.answers.map((answer) => {
+      const marks = [];
+      // أزرار مباشرة حتى ١٠ علامات، وفوقها حقل رقمي
+      if (item.maxPoints <= 10) {
+        for (let value = 0; value <= item.maxPoints; value += 1) {
+          const chosen = !answer.pending && answer.points === value;
+          marks.push(
+            el(
+              'button',
+              {
+                class: 'btn sm ' + (chosen ? (value === 0 ? 'danger' : value === item.maxPoints ? 'ok' : 'primary') : 'ghost'),
+                type: 'button',
+                onclick: () => send('host:grade', { participantId: answer.participantId, questionId: item.id, points: value }),
+              },
+              String(value)
+            )
+          );
+        }
+      } else {
+        const input = el('input', { type: 'number', min: 0, max: item.maxPoints, value: String(answer.points || 0), style: { width: '80px' } });
+        marks.push(
+          input,
+          el(
+            'button',
+            {
+              class: 'btn sm primary',
+              type: 'button',
+              onclick: () => send('host:grade', { participantId: answer.participantId, questionId: item.id, points: Number(input.value) }),
+            },
+            'اعتماد'
+          )
+        );
+      }
+
+      const status = answer.pending
+        ? el('span', { class: 'badge warn', text: '⏳ بانتظار التصحيح' })
+        : el('span', { class: 'badge ' + (answer.correct === true ? 'ok' : answer.correct === false ? 'bad' : '') }, `${answer.points} من ${item.maxPoints}`);
+
+      return el('div', { class: 'grade-row' + (answer.pending ? ' pending' : '') }, [
+        el('div', { class: 'row', style: { gap: '8px', flexWrap: 'nowrap' } }, [avatarNode(answer.avatar, 'sm'), el('strong', { text: answer.name }), status]),
+        el('p', { class: 'grade-text', text: answer.text }),
+        el('div', { class: 'row', style: { gap: '4px' } }, marks),
+      ]);
+    });
+
+    return el('div', { class: 'card stack' }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 } }, `✍️ تصحيح: ${item.text}`),
+        item.pending
+          ? el('span', { class: 'badge warn' }, `${item.pending} بانتظار التصحيح`)
+          : el('span', { class: 'badge ok', text: '✓ اكتمل التصحيح' }),
+      ]),
+      el('p', { class: 'muted small', style: { margin: 0 } }, `العلامة القصوى ${item.maxPoints} — اختر العلامة التي يستحقها كل جواب. لا يرى الطالب نتيجته قبل تصحيحك.`),
+      rows.length ? el('div', { class: 'stack tight' }, rows) : el('p', { class: 'muted center', text: 'لا توجد إجابات بعد' }),
+    ]);
+  }
+
   function renderDashboard() {
     const data = state.dashboard;
     if (!data) {
@@ -1344,6 +1408,9 @@
         data.hasScores && summary.avgAccuracy !== null ? stat(summary.avgAccuracy + '٪', 'متوسط الدقة') : null,
       ].filter(Boolean))
     );
+
+    // ---- تصحيح الإجابات النصّية: أول ما يحتاجه المدرب، فنضعه أعلى اللوحة
+    (data.grading || []).forEach((item) => app.append(gradingCard(item)));
 
     // جدول الأسئلة — النقر على سؤال يفتح نتائجه الكاملة (سحابة الكلمات، الأعمدة…)
     const qRows = [];

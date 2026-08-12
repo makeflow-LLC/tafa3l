@@ -20,7 +20,7 @@ const ai = require('./ai');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'manualGrading', 'questionImages'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -35,7 +35,8 @@ const app = express();
 const server = http.createServer(app);
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '256kb' }));
+// الحدّ يتّسع لصور الأسئلة (data URL مضغوطة) لا للملفات الكبيرة
+app.use(express.json({ limit: '12mb' }));
 app.use(
   express.static(path.join(__dirname, '..', 'public'), {
     // لا نخزّن الملفات في المتصفح: بعد كل نشر يجب أن يرى المدرب النسخة الجديدة فوراً.
@@ -109,6 +110,25 @@ app.post('/api/sessions', async (req, res) => {
 });
 
 /** معلومات عامة مختصرة للتحقق من الرمز قبل الدخول */
+/**
+ * صورة سؤال داخل جلسة حية — تُقدَّم كملف لا كـ data URL كي تصل مرة واحدة
+ * ويخزّنها متصفح كل مشارك. لا تحتاج مصادقة: من يملك رمز الجلسة يرى السؤال أصلاً.
+ */
+app.get('/api/sessions/:code/questions/:qid/image', (req, res) => {
+  const session = store.getSession(req.params.code);
+  if (!session) return res.status(404).json({ error: 'لا توجد جلسة بهذا الرمز' });
+  const question = session.questions.find((q) => q.id === req.params.qid);
+  if (!question || !question.image) return res.status(404).json({ error: 'لا توجد صورة لهذا السؤال' });
+
+  const match = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(question.image);
+  if (!match) return res.status(404).json({ error: 'صورة غير صالحة' });
+  const body = Buffer.from(match[2], 'base64');
+  res.setHeader('Content-Type', match[1]);
+  // الصورة جزء من السؤال ولا تتغيّر داخل الجلسة، فالتخزين المؤقت آمن
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  res.end(body);
+});
+
 app.get('/api/sessions/:code', (req, res) => {
   const session = store.getSession(req.params.code);
   if (!session) return res.status(404).json({ error: 'لا توجد جلسة بهذا الرمز' });
@@ -365,7 +385,7 @@ function handleMessage(socket, msg) {
     if (type === 'answer') {
       const result = session.submitAnswer(participant, msg.questionId, msg.value);
       if (!result.ok) return sendTo(socket, { t: 'answer:rejected', message: result.error });
-      sendTo(socket, { t: 'answer:accepted', correct: result.correct, points: result.points, multiplier: result.multiplier });
+      sendTo(socket, { t: 'answer:accepted', correct: result.correct, points: result.points, multiplier: result.multiplier, pending: !!result.pending });
       for (const s of participant.sockets) sendTo(s, session.participantState(participant));
       pushHost(session);
 
@@ -452,6 +472,12 @@ function handleMessage(socket, msg) {
     }
     case 'host:dashboard':
       return sendTo(socket, { t: 'dashboard', data: session.dashboard() });
+    case 'host:grade': {
+      // تصحيح إجابة نصّية: علامة كاملة أو جزئية أو صفر
+      const result = session.grade(String(msg.participantId), String(msg.questionId), msg.points);
+      if (!result.ok) return sendTo(socket, { t: 'error', code: 'grade', message: result.error });
+      break;
+    }
     default:
       return;
   }

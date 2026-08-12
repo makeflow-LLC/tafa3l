@@ -40,7 +40,25 @@ const LIMITS = {
   wordAnswer: 40,
   openAnswer: 300,
   participants: 300,
+  // صورة السؤال تُخزَّن كـ data URL داخل السؤال — نحدّها حتى لا تُثقل البث والحفظ
+  imageChars: 900000,
 };
+
+/** صيغ الصور المقبولة في السؤال */
+const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+
+/** يقبل صورة كـ data URL فقط (لا روابط خارجية: نبقي كل شيء داخل الجلسة) */
+function cleanImage(value) {
+  if (typeof value !== 'string') return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  if (raw.length > LIMITS.imageChars) {
+    const err = new Error('حجم الصورة كبير — اختر صورة أصغر (نضغطها تلقائياً حتى ٦٠٠ كيلوبايت)');
+    err.status = 413;
+    throw err;
+  }
+  return IMAGE_RE.test(raw) ? raw : null;
+}
 
 function id(prefix = '') {
   return prefix + crypto.randomBytes(6).toString('hex');
@@ -76,6 +94,8 @@ function normalizeQuestion(raw, index) {
     options: [],
     correct: [],
     scale: null,
+    // صورة توضيحية اختيارية تظهر فوق نص السؤال
+    image: cleanImage(raw?.image),
   };
 
   if (type === 'mc' || type === 'poll') {
@@ -113,9 +133,15 @@ function normalizeQuestion(raw, index) {
     const correct = Array.isArray(raw?.correct) ? raw.correct : raw?.correct != null ? [raw.correct] : [];
     q.correct = [...new Set(correct.map((c) => clean(c, 40)).filter((c) => ids.has(c)))];
     // سؤال بلا إجابة صحيحة يتحول عملياً إلى استطلاع (بلا نقاط)
+  } else if (type === 'open') {
+    // السؤال المفتوح: علامة صفر = رأي حرّ، وعلامة أكبر من صفر = يصحّحه المدرب يدوياً
+    q.points = raw?.points == null ? 0 : clamp(raw.points, 0, 1000, 0);
   } else {
     q.points = 0;
   }
+
+  // تصحيح يدوي: المدرب يمنح علامة كاملة أو جزئية بعد قراءة النص
+  q.manual = type === 'open' && q.points > 0;
 
   return q;
 }
@@ -539,10 +565,75 @@ class Session {
       participant.score += points;
     }
 
-    participant.answers.set(qid, { value, at: now, ms, correct, points, multiplier });
+    // سؤال مفتوح بعلامة: لا نتيجة قبل أن يقرأه المدرب ويمنح العلامة
+    const pending = !!q.manual;
+    participant.answers.set(qid, { value, at: now, ms, correct, points, multiplier, pending, maxPoints: q.manual ? q.points : 0 });
     if (this.settings.pace === 'self') participant.phase = 'feedback';
     this.touch();
-    return { ok: true, correct, points, multiplier, value };
+    return { ok: true, correct, points, multiplier, value, pending };
+  }
+
+  /**
+   * تصحيح المدرب لإجابة نصّية: علامة كاملة أو جزئية أو صفر.
+   * النقاط تُعدَّل فرقياً كي يصحّ التعديل بعد التصحيح الأول أيضاً.
+   */
+  grade(participantId, qid, rawPoints) {
+    const participant = this.participants.get(participantId);
+    if (!participant) return { ok: false, error: 'المشارك غير موجود' };
+    const q = this.questions.find((item) => item.id === qid);
+    if (!q || !q.manual) return { ok: false, error: 'هذا السؤال لا يُصحَّح يدوياً' };
+    const answer = participant.answers.get(qid);
+    if (!answer) return { ok: false, error: 'لا توجد إجابة لتصحيحها' };
+
+    const points = clamp(rawPoints, 0, q.points, 0);
+    participant.score += points - (answer.points || 0);
+    answer.points = points;
+    answer.pending = false;
+    answer.gradedAt = Date.now();
+    // كاملة = صحيحة، جزئية = 'partial'، صفر = خاطئة
+    answer.correct = points >= q.points ? true : points > 0 ? 'partial' : false;
+    this.touch();
+    return { ok: true, points, correct: answer.correct };
+  }
+
+  /** كم إجابة لهذا المشارك تنتظر تصحيح المدرب */
+  pendingGradesFor(participant) {
+    let count = 0;
+    for (const a of participant.answers.values()) if (a.pending) count += 1;
+    return count;
+  }
+
+  /** ما ينتظر تصحيح المدرب: كل سؤال مفتوح بعلامة مع إجابات المشاركين */
+  gradingQueue() {
+    const queue = [];
+    this.questions.forEach((q, index) => {
+      if (!q.manual) return;
+      const answers = [];
+      for (const p of this.participants.values()) {
+        const a = p.answers.get(q.id);
+        if (!a) continue;
+        answers.push({
+          participantId: p.id,
+          name: this.settings.requireName ? p.name : 'مشارك',
+          avatar: p.avatar,
+          text: String(a.value),
+          at: a.at,
+          points: a.points || 0,
+          pending: !!a.pending,
+          correct: a.correct,
+        });
+      }
+      answers.sort((a, b) => Number(b.pending) - Number(a.pending) || a.at - b.at);
+      queue.push({
+        index,
+        id: q.id,
+        text: q.text,
+        maxPoints: q.points,
+        answers,
+        pending: answers.filter((a) => a.pending).length,
+      });
+    });
+    return queue;
   }
 
   /** حساب نقاط إجابة صحيحة حسب إعدادات النشاط */
@@ -892,6 +983,8 @@ class Session {
       perQuestion,
       participants: rows,
       teamLeaderboard: this.teamLeaderboard(),
+      // ما ينتظر تصحيح المدرب (أسئلة نصّية بعلامة)
+      grading: this.gradingQueue(),
     };
   }
 
@@ -977,7 +1070,11 @@ class Session {
         team: this.teamOf(participant),
       },
       participants: this.participants.size,
-      answered: answer ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier } : null,
+      answered: answer
+        ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
+        : null,
+      // كم إجابة نصّية لم يصحّحها المدرب بعد — نتيجته لا تكتمل قبلها
+      pendingGrades: this.pendingGradesFor(participant),
     };
 
     if (this.status === 'lobby') {
@@ -995,7 +1092,7 @@ class Session {
     }
     if (q) {
       // نكشف الإجابة الصحيحة والشرح بعد أن يجيب، إن سمح المدرب بذلك
-      state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer);
+      state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer, this.code);
       if (participant.phase === 'feedback') state.results = this.aggregate(participant.index);
     }
     return state;
@@ -1030,14 +1127,15 @@ class Session {
       },
       participants: this.participants.size,
       answered: answer
-        ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier }
+        ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
         : null,
+      pendingGrades: this.pendingGradesFor(participant),
     };
 
     if (q && (this.phase === 'question' || this.phase === 'results')) {
       // بعد عرض النتائج تُكشف للجميع؛ وقبلها تُكشف لمن أجاب فقط إن فعّل المدرب الخيار
       const reveal = this.phase === 'results' || (this.settings.revealAnswer && !!answer);
-      state.question = publicQuestion(q, reveal);
+      state.question = publicQuestion(q, reveal, this.code);
     }
     if (this.phase === 'results' && q) {
       state.results = this.aggregate(this.currentIndex);
@@ -1092,7 +1190,7 @@ class Session {
       teams: this.teams,
     };
     if (q) {
-      state.question = publicQuestion(q, true);
+      state.question = publicQuestion(q, true, this.code);
       state.results = this.aggregate(this.currentIndex);
     }
     // الترتيب دائماً: شاشة العرض تعرضه بين الأسئلة وبعد النتائج لا في مرحلة الترتيب فقط
@@ -1134,11 +1232,13 @@ class Session {
 }
 
 /** نسخة السؤال المرسلة للعملاء — تُخفي الإجابة الصحيحة أثناء الإجابة */
-function publicQuestion(q, revealCorrect) {
+function publicQuestion(q, revealCorrect, code) {
   return {
     id: q.id,
     type: q.type,
     text: q.text,
+    // الصورة تُقدَّم كرابط لا كـ data URL: تصل مرة واحدة ويخزّنها المتصفح
+    imageUrl: q.image && code ? `/api/sessions/${code}/questions/${q.id}/image` : null,
     // الشرح لا يُرسل إلا مع كشف الإجابة
     explanation: revealCorrect ? q.explanation || '' : '',
     timeLimit: q.timeLimit,
@@ -1149,7 +1249,9 @@ function publicQuestion(q, revealCorrect) {
       ...(revealCorrect ? { correct: q.correct.includes(o.id) } : {}),
     })),
     scale: q.scale,
-    scored: SCORED_TYPES.has(q.type) && q.correct.length > 0,
+    // «مصحَّح» يعني: لا نكشف النتائج للقاعة أثناء الإجابة
+    scored: (SCORED_TYPES.has(q.type) && q.correct.length > 0) || !!q.manual,
+    manual: !!q.manual,
     multi: q.correct.length > 1,
   };
 }

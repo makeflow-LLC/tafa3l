@@ -133,6 +133,7 @@
       app.append(
         el('div', { class: 'card stack center' }, [
           el('span', { class: 'badge' }, `${TYPE_EMOJI[q.type]} سؤال ${s.index + 1} من ${s.total}`),
+          q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال' }) : null,
           el('h1', { class: 'big-q', text: q.text }),
           el('p', { class: 'muted', text: 'استعد… ينطلق الجميع معاً' }),
         ])
@@ -149,6 +150,7 @@
         el('span', { class: 'badge' }, `${TYPE_EMOJI[q.type]} ${TYPE_LABELS[q.type]} — سؤال ${s.index + 1} من ${s.total}`),
         el('span', { class: 'badge' + (answered === total && total > 0 ? ' ok' : '') }, `أجاب ${answered} من ${total}`),
       ]),
+      q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال' }) : null,
       el('h1', { class: 'big-q', text: q.text }),
     ]);
     if (q.timeLimit && s.phase === 'question') {

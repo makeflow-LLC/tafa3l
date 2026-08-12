@@ -214,7 +214,17 @@
     if (s.title) $('#quizTitle').textContent = s.title;
 
     // مفتاح لتفادي إعادة البناء غير الضرورية أثناء المؤقّت
-    const key = [s.phase, s.index, s.locked, s.answered ? 1 : 0, s.participants, s.status].join('|');
+    // العلامة اليدوية تصل بعد الإجابة بلا تغيّر في المرحلة، فلا بد أن تدخل المفتاح
+    const key = [
+      s.phase,
+      s.index,
+      s.locked,
+      s.answered ? 1 : 0,
+      s.answered?.pending ? 'p' : s.answered?.points ?? '',
+      s.pendingGrades ?? 0,
+      s.participants,
+      s.status,
+    ].join('|');
     if (!force && key === state.renderedKey && s.phase !== 'lobby') return;
     state.renderedKey = key;
     clearTick();
@@ -301,7 +311,7 @@
     ]);
     if (q.timeLimit) app.append(timerBox);
 
-    app.append(el('div', { class: 'card stack' }, [el('h2', { class: 'big-q', text: q.text })]));
+    app.append(questionCard(q));
 
     if (s.answered) {
       app.append(waitingCard(s, q));
@@ -314,6 +324,14 @@
 
     app.append(answerControls(s, q));
     startTick(s);
+  }
+
+  /** بطاقة نص السؤال مع صورته إن وُجدت */
+  function questionCard(q) {
+    return el('div', { class: 'card stack' }, [
+      q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال', loading: 'lazy' }) : null,
+      el('h2', { class: 'big-q', text: q.text }),
+    ]);
   }
 
   /** شريط التفاعلات السريعة — يظهر على شاشة المدرب */
@@ -344,6 +362,21 @@
     if (!answered) {
       emoji = '⌛';
       msg = 'انتهى وقتك على هذا السؤال';
+    } else if (answered.pending) {
+      // سؤال نصّي بعلامة: لا نتيجة قبل أن يقرأه المدرب
+      return el('div', { class: 'card feedback' }, [
+        el('div', { class: 'em', text: '📝' }),
+        el('div', { class: 'msg', text: 'وصلت إجابتك — بانتظار تصحيح المدرب' }),
+        el('p', { class: 'muted small', text: `العلامة القصوى ${answered.maxPoints} · ستظهر نتيجتك فور تصحيحها` }),
+      ]);
+    } else if (q.manual) {
+      const full = answered.points >= (answered.maxPoints || q.points);
+      return el('div', { class: 'card feedback' }, [
+        el('div', { class: 'em', text: full ? '🎉' : answered.points > 0 ? '👍' : '💡' }),
+        el('div', { class: 'msg', text: full ? 'إجابة صحيحة كاملة!' : answered.points > 0 ? 'علامة جزئية' : 'إجابة غير صحيحة' }),
+        el('div', { class: 'badge ok' }, `${answered.points} من ${answered.maxPoints || q.points}`),
+        selfPaced ? null : el('p', { class: 'muted small', text: 'صحّحها المدرب' }),
+      ]);
     } else if (scored && answered.correct === true) {
       emoji = '🎉';
       msg = 'إجابة صحيحة!';
@@ -522,7 +555,7 @@
   function renderSelfFeedback(s) {
     const q = s.question;
     app.append(header(s));
-    app.append(el('div', { class: 'card stack' }, [el('h2', { class: 'big-q', text: q.text })]));
+    app.append(questionCard(q));
     app.append(waitingCard(s, q, true));
     const revealSelf = answerReveal(s, q);
     if (revealSelf) app.append(revealSelf);
@@ -583,7 +616,7 @@
     const q = s.question;
     const results = s.results;
     app.append(header(s));
-    app.append(el('div', { class: 'card stack' }, [el('h2', { class: 'big-q', text: q.text })]));
+    app.append(questionCard(q));
 
     if (s.answered && q.scored) {
       app.append(waitingCard(s, q));
@@ -687,6 +720,28 @@
   }
 
   function renderFinal(s) {
+    // إجابة نصّية لم يصحّحها المدرب بعد: لا نُظهر نتيجة ناقصة ولا ترتيباً مضلّلاً
+    if (s.pendingGrades > 0) {
+      app.append(
+        el('div', { class: 'card feedback' }, [
+          el('div', { class: 'em', text: '📝' }),
+          el('div', { class: 'msg', text: 'انتهى النشاط — المدرب يصحّح إجابتك الآن' }),
+          s.me ? avatarNode(s.me.avatar, 'lg') : null,
+          s.me ? el('h2', { text: s.me.name }) : null,
+          el('p', {
+            class: 'muted small',
+            text:
+              s.pendingGrades === 1
+                ? 'إجابة نصّية واحدة تنتظر التصحيح — ستظهر نتيجتك وبطاقتك فور انتهائه.'
+                : `${s.pendingGrades} إجابات نصّية تنتظر التصحيح — ستظهر نتيجتك وبطاقتك فور انتهائه.`,
+          }),
+          el('div', { class: 'spinner' }),
+        ])
+      );
+      app.append(el('p', { class: 'footer', text: 'أبقِ الصفحة مفتوحة — تتحدّث تلقائياً.' }));
+      return;
+    }
+
     if (state.lastFeedback !== 'final') {
       state.lastFeedback = 'final';
       Fx.play('finish');

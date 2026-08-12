@@ -1631,3 +1631,59 @@ input[type='range'].slider::-moz-range-thumb {
   border-width: 2px;
   margin: 0;
 }
+
+/* ------------------------------------------------ صورة السؤال والتصحيح اليدوي */
+
+.badge.warn {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* صورة السؤال: تملأ العرض بلا أن تطغى على النص، وبارتفاع محدود على الشاشات الكبيرة */
+.q-image {
+  display: block;
+  width: 100%;
+  max-height: 42vh;
+  object-fit: contain;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+body.screen-body .q-image {
+  max-height: 34vh;
+}
+
+.img-edit {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.img-edit img {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.grade-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+/* ما ينتظر التصحيح يُبرز بحافة ملوّنة كي يعرف المدرب أين توقّف */
+.grade-row.pending {
+  border-inline-start: 4px solid var(--warn);
+  background: var(--warn-soft);
+}
+
+.grade-text {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
