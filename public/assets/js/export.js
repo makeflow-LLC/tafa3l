@@ -9,6 +9,9 @@
    */
 
   const enc = new TextEncoder();
+  const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
+  const loc = () => (global.I18n && global.I18n.getLang() === 'en' ? 'en' : 'ar');
+  const isRtl = () => loc() === 'ar';
 
   // ------------------------------------------------------------------ zip
 
@@ -174,17 +177,17 @@
 
   // -------------------------------------------------------- بناء الأوراق
 
-  const PACE_AR = { host: 'المدرب ينقل الأسئلة', auto: 'انتقال تلقائي', self: 'كل طالب بسرعته' };
-  const SCORING_AR = { speed: 'نقاط حسب السرعة', flat: 'نقاط ثابتة', none: 'بلا نقاط' };
+  const PACE_KEYS = { host: 'xPaceHost', auto: 'xPaceAuto', self: 'xPaceSelf' };
+  const SCORING_KEYS = { speed: 'xScoreSpeed', flat: 'xScoreFlat', none: 'xScoreNone' };
 
   const TYPE_AR = {
-    mc: 'اختيار من متعدد',
-    truefalse: 'صح/خطأ',
-    poll: 'استطلاع',
-    word: 'سحابة كلمات',
-    scale: 'مقياس',
-    open: 'سؤال مفتوح',
-    blank: 'أكمل الفراغ',
+    mc: 'typeMc',
+    truefalse: 'typeTruefalse',
+    poll: 'typePoll',
+    word: 'typeWord',
+    scale: 'typeScale',
+    open: 'typeOpen',
+    blank: 'typeBlank',
   };
 
   /** يحوّل مخرجات /api/sessions/:code/export إلى أوراق جاهزة */
@@ -197,37 +200,37 @@
 
     // ورقة التعريف: كل ما يسأل عنه المعلّم قبل أن ينظر في الدرجات
     const info = [
-      ['اسم النشاط', data.title],
-      ...(data.teacher ? [['المعلّم', data.teacher]] : []),
-      ['رمز الجلسة', data.code],
-      ['التاريخ', started.toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' })],
-      ['وقت البدء', started.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })],
-      ['وقت الانتهاء', ended.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })],
-      ['مدة النشاط (دقيقة)', data.durationMinutes || 1],
-      ['عدد الطلاب', data.participantCount ?? participants.length],
-      ['عدد الأسئلة', data.questionCount ?? questions.length],
-      ['العلامة الكاملة', data.maxScore || 0],
-      ['نمط العرض', PACE_AR[data.settings?.pace] || '—'],
-      ['احتساب النقاط', SCORING_AR[data.settings?.scoring] || '—'],
-      ['تاريخ التصدير', new Date(data.exportedAt).toLocaleString('ar')],
+      [t('xActivityName'), data.title],
+      ...(data.teacher ? [[t('xTeacher'), data.teacher]] : []),
+      [t('xCode'), data.code],
+      [t('xDate'), started.toLocaleDateString(loc(), { year: 'numeric', month: 'long', day: 'numeric' })],
+      [t('xStartTime'), started.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })],
+      [t('xEndTime'), ended.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })],
+      [t('xDurationMin'), data.durationMinutes || 1],
+      [t('xStudentCount'), data.participantCount ?? participants.length],
+      [t('xQuestionCount'), data.questionCount ?? questions.length],
+      [t('xMaxScore'), data.maxScore || 0],
+      [t('xPaceLabel'), (PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—')],
+      [t('xScoringLabel'), (SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—')],
+      [t('xExportedAt'), new Date(data.exportedAt).toLocaleString(loc())],
     ];
     if (analysis) {
       info.push([]);
-      info.push(['متوسط الصف (٪)', analysis.avgPercent ?? '—']);
-      info.push(['وسيط الدرجات (٪)', analysis.median ?? '—']);
-      info.push(['نسبة المشاركة (٪)', analysis.participation]);
-      info.push(['أصعب سؤال', analysis.hardest ? `${analysis.hardest.text} (${analysis.hardest.accuracy}٪)` : '—']);
-      info.push(['أسهل سؤال', analysis.easiest ? `${analysis.easiest.text} (${analysis.easiest.accuracy}٪)` : '—']);
-      info.push(['الأسرع إجابةً', analysis.fastest ? `${analysis.fastest.text} (${analysis.fastest.avgSeconds}ث)` : '—']);
-      info.push(['الأبطأ إجابةً', analysis.slowest ? `${analysis.slowest.text} (${analysis.slowest.avgSeconds}ث)` : '—']);
-      info.push(['إجابات تنتظر التصحيح', analysis.pendingTotal]);
+      info.push([t('xAvgPct'), analysis.avgPercent ?? '—']);
+      info.push([t('xMedianPct'), analysis.median ?? '—']);
+      info.push([t('xParticipationPct'), analysis.participation]);
+      info.push([t('xHardest'), analysis.hardest ? `${analysis.hardest.text} (${analysis.hardest.accuracy}${t('pctSuffix')})` : '—']);
+      info.push([t('xEasiest'), analysis.easiest ? `${analysis.easiest.text} (${analysis.easiest.accuracy}${t('pctSuffix')})` : '—']);
+      info.push([t('xFastest'), analysis.fastest ? `${analysis.fastest.text} (${analysis.fastest.avgSeconds}${t('aSecShort')})` : '—']);
+      info.push([t('xSlowest'), analysis.slowest ? `${analysis.slowest.text} (${analysis.slowest.avgSeconds}${t('aSecShort')})` : '—']);
+      info.push([t('xPending'), analysis.pendingTotal]);
       info.push([]);
-      info.push(['التوصيات', '']);
-      analysis.recommendations.forEach((rec, i) => info.push([`توصية ${i + 1}`, rec.text]));
+      info.push([t('aRecommendations'), '']);
+      analysis.recommendations.forEach((rec, i) => info.push([t('xRecN', { n: i + 1 }), rec.text]));
     }
 
     const people = [
-      ['الترتيب', 'الطالب', 'الفريق', 'الدرجة', 'العلامة الكاملة', 'النسبة ٪', 'أجاب', 'لم يجب', 'صحيحة', 'جزئية', 'خاطئة', 'بانتظار التصحيح', 'أطول سلسلة', 'متوسط الزمن (ث)'],
+      [t('xRank'), t('aStudent'), t('xTeam'), t('aScore'), t('xMaxScore'), t('xPctCol'), t('xAnswered'), t('xUnanswered'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xPendingCol'), t('xBestStreak'), t('xAvgSecCol')],
     ];
     participants.forEach((p, i) => {
       people.push([
@@ -249,12 +252,12 @@
     });
 
     const qRows = [
-      ['#', 'النوع', 'السؤال', 'الخيارات', 'الإجابة الصحيحة', 'العلامة', 'عدد الإجابات', 'صحيحة', 'جزئية', 'خاطئة', 'الدقة ٪', 'متوسط الزمن (ث)'],
+      ['#', t('xType'), t('xQuestion'), t('xOptions'), t('xCorrectAnswer'), t('xScoreCol'), t('xResponses'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xAccuracyCol'), t('xAvgSecCol')],
     ];
     questions.forEach((q) => {
       qRows.push([
         q.index,
-        TYPE_AR[q.type] || q.type,
+        (TYPE_AR[q.type] ? t(TYPE_AR[q.type]) : q.type),
         q.text,
         (q.options || []).join(' | '),
         (q.correct || []).join(' | ') || (q.blanks || []).filter(Boolean).join(' | '),
@@ -269,7 +272,7 @@
     });
 
     // كل إجابة في سطر: هذا ما يريده المعلّم للتحليل في Excel
-    const detail = [['الطالب', '#', 'السؤال', 'إجابته', 'صحيحة؟', 'النقاط', 'من', 'الزمن (ث)']];
+    const detail = [[t('aStudent'), '#', t('xQuestion'), t('xTheirAnswer'), t('xIsCorrect'), t('xPoints'), t('aOutOf'), t('xTimeSec')]];
     participants.forEach((p) => {
       (p.answers || []).forEach((a, i) => {
         if (!a) return;
@@ -279,14 +282,14 @@
           a.question,
           Array.isArray(a.answer) ? a.answer.join(' + ') : a.answer,
           a.pending
-            ? 'بانتظار التصحيح'
+            ? t('xPendingCol')
             : a.correct === null || a.correct === undefined
               ? '—'
               : a.correct === 'partial'
-                ? 'جزئي'
+                ? t('aPartial')
                 : a.correct
-                  ? 'نعم'
-                  : 'لا',
+                  ? t('xYes')
+                  : t('xNo'),
           a.points || 0,
           a.maxPoints || 0,
           a.seconds || 0,
@@ -295,10 +298,10 @@
     });
 
     return [
-      { name: 'بطاقة النشاط', rows: info },
-      { name: 'الطلاب', rows: people },
-      { name: 'الأسئلة', rows: qRows },
-      { name: 'الإجابات', rows: detail },
+      { name: t('xSheetInfo'), rows: info },
+      { name: t('aStudents'), rows: people },
+      { name: t('xSheetQuestions'), rows: qRows },
+      { name: t('xSheetAnswers'), rows: detail },
     ];
   }
 
@@ -384,60 +387,60 @@
         let body = '';
         if (results.options) {
           body = `<ul>${results.options
-            .map((o) => `<li>${esc(o.text)} — ${o.percent}٪ (${o.count})${o.correct ? ' ✔' : ''}</li>`)
+            .map((o) => `<li>${esc(o.text)} — ${o.percent}${t('pctSuffix')} (${o.count})${o.correct ? ' ✔' : ''}</li>`)
             .join('')}</ul>`;
         } else if (results.words) {
-          body = `<p>${results.words.map((w) => `${esc(w.text)} (${w.count})`).join('، ')}</p>`;
+          body = `<p>${results.words.map((w) => `${esc(w.text)} (${w.count})`).join(t('listSep'))}</p>`;
         } else if (results.average !== undefined && results.average !== null) {
-          body = `<p>المتوسط: ${results.average}</p>`;
+          body = `<p>${t('sAverage')}${results.average}</p>`;
         } else if (results.responses) {
           body = `<ul>${results.responses
             .map((r) => `<li>${esc(r.text)}${r.name ? ` — <strong>${esc(r.name)}</strong>` : ''}</li>`)
             .join('')}</ul>`;
         }
         const stats = [
-          `أجاب ${q.responses}`,
-          q.accuracy === null || q.accuracy === undefined ? null : `دقة ${q.accuracy}٪`,
-          q.avgSeconds ? `${q.avgSeconds}ث وسطياً` : null,
-          q.maxPoints ? `العلامة ${q.maxPoints}` : null,
+          t('xAnsweredN', { n: q.responses }),
+          q.accuracy === null || q.accuracy === undefined ? null : t('aAccuracyOnly', { pct: q.accuracy }),
+          q.avgSeconds ? t('aAvgSeconds', { sec: q.avgSeconds }) : null,
+          q.maxPoints ? t('xScoreN', { n: q.maxPoints }) : null,
         ]
           .filter(Boolean)
           .join(' · ');
-        return `<div class="q"><h3>${q.index}. ${esc(q.text)} <small>(${esc(TYPE_AR[q.type] || q.type)})</small></h3>
+        return `<div class="q"><h3>${q.index}. ${esc(q.text)} <small>(${esc((TYPE_AR[q.type] ? t(TYPE_AR[q.type]) : q.type))})</small></h3>
           <p class="meta">${esc(stats)}</p>
-          ${q.correct && q.correct.length ? `<p class="ok">الإجابة الصحيحة: ${esc(q.correct.join('، '))}</p>` : ''}
-          ${q.blanks && q.blanks.filter(Boolean).length ? `<p class="ok">الإجابات المتوقعة: ${esc(q.blanks.filter(Boolean).join(' · '))}</p>` : ''}
+          ${q.correct && q.correct.length ? `<p class="ok">${t('xCorrectAnswer')}: ${esc(q.correct.join(t('listSep')))}</p>` : ''}
+          ${q.blanks && q.blanks.filter(Boolean).length ? `<p class="ok">${t('xExpectedAnswers')}: ${esc(q.blanks.filter(Boolean).join(' · '))}</p>` : ''}
           ${body}</div>`;
       })
       .join('');
 
     const metaGrid = `<div class="meta-grid">
-      ${data.teacher ? `<div><strong>${esc(data.teacher)}</strong>المعلّم</div>` : ''}
-      <div><strong>${esc(data.code)}</strong>رمز الجلسة</div>
-      <div><strong>${esc(started.toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' }))}</strong>التاريخ</div>
-      <div><strong>${esc(started.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' }))} — ${esc(
-        ended.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })
-      )}</strong>وقت البدء والانتهاء</div>
-      <div><strong>${data.durationMinutes || 1} دقيقة</strong>مدة النشاط</div>
-      <div><strong>${data.participantCount ?? (data.participants || []).length}</strong>عدد الطلاب</div>
-      <div><strong>${data.questionCount ?? questions.length}</strong>عدد الأسئلة</div>
-      <div><strong>${data.maxScore || 0}</strong>العلامة الكاملة</div>
-      <div><strong>${esc(PACE_AR[data.settings?.pace] || '—')}</strong>نمط العرض</div>
-      <div><strong>${esc(SCORING_AR[data.settings?.scoring] || '—')}</strong>احتساب النقاط</div>
+      ${data.teacher ? `<div><strong>${esc(data.teacher)}</strong>${t('xTeacher')}</div>` : ''}
+      <div><strong>${esc(data.code)}</strong>${t('xCode')}</div>
+      <div><strong>${esc(started.toLocaleDateString(loc(), { year: 'numeric', month: 'long', day: 'numeric' }))}</strong>${t('xDate')}</div>
+      <div><strong>${esc(started.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' }))} — ${esc(
+        ended.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })
+      )}</strong>${t('xStartEnd')}</div>
+      <div><strong>${t('hMinutes', { n: data.durationMinutes || 1 })}</strong>${t('aDuration')}</div>
+      <div><strong>${data.participantCount ?? (data.participants || []).length}</strong>${t('xStudentCount')}</div>
+      <div><strong>${data.questionCount ?? questions.length}</strong>${t('xQuestionCount')}</div>
+      <div><strong>${data.maxScore || 0}</strong>${t('xMaxScore')}</div>
+      <div><strong>${esc((PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—'))}</strong>${t('xPaceLabel')}</div>
+      <div><strong>${esc((SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—'))}</strong>${t('xScoringLabel')}</div>
     </div>`;
 
-    return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+    return `<!doctype html><html lang="${loc()}" dir="${isRtl() ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
 <title>تقرير ${esc(data.title)} — Tapio</title>
 <style>${PRINT_CSS}</style></head><body>
 <h1>${esc(data.title)}</h1>
-<p class="meta">${data.teacher ? `المعلّم: <strong>${esc(data.teacher)}</strong> · ` : ''}تقرير نتائج · منصة Tapio · صدر في ${esc(
-      new Date(data.exportedAt).toLocaleString('ar')
+<p class="meta">${data.teacher ? `${t('xTeacher')}: <strong>${esc(data.teacher)}</strong> · ` : ''}${t('xReportOf')} · ${esc(
+      new Date(data.exportedAt).toLocaleString(loc())
     )}</p>
 ${metaGrid}
-${analysis ? `<h2>تحليل النتائج والتوصيات</h2>${global.Analytics.reportHtml(analysis, { print: true })}` : ''}
-<h2>تفصيل الأسئلة</h2>
+${analysis ? `<h2>${t('xAnalysisSection')}</h2>${global.Analytics.reportHtml(analysis, { print: true })}` : ''}
+<h2>${t('xQuestionDetail')}</h2>
 ${questionBlocks}
-<p class="foot">Tapio — tapio.fun · بيانات الطلاب مؤقتة ولا تُحفظ على الخادم بعد انتهاء الجلسة.</p>
+<p class="foot">Tapio — tapio.fun · ${t('xFooterNote')}</p>
 <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 400); });<\/script>
 </body></html>`;
   }

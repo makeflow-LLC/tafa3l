@@ -228,6 +228,12 @@ function normalizeQuiz(payload) {
        * الجدولة: موعد فتح الاختبار (بالمللي ثانية) — الجلسة تبقى في القاعة
        * حتى يحين، ثم تبدأ وحدها. ماضٍ أو غير صالح = بدء يدوي كالمعتاد.
        */
+      /**
+       * لغة النشاط: يضبطها منشئه، وتفرضها شاشات الطالب والبروجكتر على نفسها
+       * كي يرى الطالب النشاط بلغة معلّمه لا بلغة متصفحه.
+       * null = غير محدّدة (جلسة أُنشئت عبر API قديم) فتبقى لغة المتصفح.
+       */
+      lang: payload?.settings?.lang === 'en' || payload?.settings?.lang === 'ar' ? payload.settings.lang : null,
       opensAt: futureStamp(payload?.settings?.opensAt),
       // مدة الاختبار كاملاً بالدقائق — عند انتهائها يُقفل تلقائياً (صفر = بلا حدّ)
       durationMinutes: clamp(payload?.settings?.durationMinutes, 0, MAX_DURATION_MIN, 0),
@@ -1267,6 +1273,7 @@ class Session {
       participants: this.participants.size,
       scheduledAt: this.settings.opensAt,
       deadlineAt: this.deadlineAt,
+      lang: this.settings.lang,
       answered: answer
         ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
         : null,
@@ -1325,6 +1332,7 @@ class Session {
       participants: this.participants.size,
       scheduledAt: this.settings.opensAt,
       deadlineAt: this.deadlineAt,
+      lang: this.settings.lang,
       answered: answer
         ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
         : null,
@@ -1387,6 +1395,7 @@ class Session {
       // الجدولة: متى يفتح الاختبار ومتى يُقفل تلقائياً
       // (نسميه scheduledAt لا opensAt لأن opensAt محجوز لعدّاد «استعد» في السؤال)
       scheduledAt: this.settings.opensAt,
+      lang: this.settings.lang,
       deadlineAt: this.deadlineAt,
       durationMinutes: this.settings.durationMinutes,
       autoNextAt: this._autoTimer ? this._autoAt : null,

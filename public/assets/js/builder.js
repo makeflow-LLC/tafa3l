@@ -3,6 +3,10 @@
   'use strict';
 
   const { el, toast, store, api, TYPE_LABELS, TYPE_EMOJI } = global.T;
+  const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
+  const locale = () => (global.I18n && global.I18n.getLang() === 'en' ? 'en' : 'ar');
+  /** نص القالب بلغة الواجهة — القوالب تحمل نسخة إنجليزية بجانب العربية */
+  const tplText = (template, field) => (locale() === 'en' && template[field + 'En'] ? template[field + 'En'] : template[field]);
 
   const DRAFT_KEY = 'tafa3l:draft';
   const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open', 'blank'];
@@ -32,11 +36,11 @@
     if (['poll', 'word', 'open', 'scale'].includes(type)) q.points = 0;
     if (type === 'blank') {
       // أكمل الفراغ: يبدأ بفراغ واحد وعلامة واحدة، والتصحيح يدوي دائماً
-      q.text = `أكمل الفراغ: عاصمة الأردن هي ${BLANK_MARK}.`;
+      q.text = t('bBlankSample', { mark: BLANK_MARK });
       q.blanks = [''];
       q.points = 1;
     }
-    if (type === 'scale') q.scale = { min: 1, max: 5, minLabel: 'غير موافق', maxLabel: 'موافق تماماً' };
+    if (type === 'scale') q.scale = { min: 1, max: 5, minLabel: t('bdisagree'), maxLabel: t('bstronglyAgree') };
     return q;
   }
 
@@ -135,7 +139,7 @@
       // صور كثيرة تتجاوز سعة المتصفح — نُخبر المدرب بدل أن تضيع مسودته صامتة
       if (!quotaWarned) {
         quotaWarned = true;
-        toast('⚠️ سعة المتصفح امتلأت — الصور كثيرة. أطلق النشاط أو احفظه في حسابك الآن، فالمسودة لن تُحفظ محلياً.', 'bad');
+        toast(t('bbrowserStorageIsFull'), 'bad');
       }
     }
   }
@@ -156,10 +160,10 @@
     return new Promise((resolve, reject) => {
       if (!/^image\//.test(file.type)) return reject(new Error('اختر ملف صورة'));
       const reader = new FileReader();
-      reader.onerror = () => reject(new Error('تعذّرت قراءة الملف'));
+      reader.onerror = () => reject(new Error(t('bcouldNotReadThe')));
       reader.onload = () => {
         const img = new Image();
-        img.onerror = () => reject(new Error('تعذّر فتح الصورة'));
+        img.onerror = () => reject(new Error(t('bcouldNotOpenThe')));
         img.onload = () => {
           const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(img.width, img.height));
           const canvas = document.createElement('canvas');
@@ -173,7 +177,7 @@
             quality -= 0.12;
             out = canvas.toDataURL('image/jpeg', quality);
           }
-          if (out.length * 0.75 > IMAGE_MAX_BYTES) return reject(new Error('الصورة كبيرة جداً — جرّب صورة أصغر'));
+          if (out.length * 0.75 > IMAGE_MAX_BYTES) return reject(new Error(t('btheImageIsToo')));
           resolve(out);
         };
         img.src = reader.result;
@@ -202,7 +206,7 @@
   function parseImport(text) {
     const warnings = [];
     let raw = String(text || '').trim();
-    if (!raw) return { error: 'الصق JSON أولاً' };
+    if (!raw) return { error: t('bpasteTheJsonFirst') };
 
     // إزالة أسوار الشيفرة وأي كلام قبل/بعد الكائن
     raw = raw.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/m, '').trim();
@@ -215,21 +219,21 @@
     try {
       data = JSON.parse(raw);
     } catch (err) {
-      return { error: 'النص ليس JSON صالحاً — ' + err.message };
+      return { error: t('bthatTextIsNot') + err.message };
     }
 
     if (Array.isArray(data)) data = { questions: data };
     if (!data || typeof data !== 'object' || !Array.isArray(data.questions)) {
-      return { error: 'الشكل غير صحيح: المطلوب كائن فيه قائمة "questions" أو قائمة أسئلة مباشرة' };
+      return { error: t('bwrongShapeExpectedAn') };
     }
-    if (data.questions.length === 0) return { error: 'قائمة الأسئلة فارغة' };
+    if (data.questions.length === 0) return { error: t('btheQuestionListIs') };
 
     const questions = [];
     data.questions.forEach((q, i) => {
       const norm = normalizeImported(q, i, warnings);
       if (norm) questions.push(norm);
     });
-    if (!questions.length) return { error: 'لم يُعثر على أي سؤال صالح في القائمة' };
+    if (!questions.length) return { error: t('bnoValidQuestionWas') };
 
     const draft = sanitizeDraft({ title: data.title, settings: data.settings, questions });
     return { draft, warnings };
@@ -241,7 +245,7 @@
       return { ...blankQuestion('open'), text: q };
     }
     if (!q || typeof q !== 'object') {
-      warnings.push(`سؤال ${index + 1}: ليس كائناً — تم تجاهله`);
+      warnings.push(t('bWarnNotObject', { n: index + 1 }));
       return null;
     }
 
@@ -250,14 +254,14 @@
       .replace(/[\s-]/g, '_');
     const type = TYPE_ALIASES[rawType] || TYPE_ALIASES[rawType.replace(/_/g, '')];
     if (!type) {
-      warnings.push(`سؤال ${index + 1}: نوع غير معروف «${q.type}» — تم تجاهله`);
+      warnings.push(t('bWarnType', { n: index + 1, type: q.type }));
       return null;
     }
 
     const out = { ...blankQuestion(type) };
     out.text = String(q.text ?? q.question ?? q.title ?? '').trim();
     if (!out.text) {
-      warnings.push(`سؤال ${index + 1}: بلا نص — تم تجاهله`);
+      warnings.push(t('bWarnNoText', { n: index + 1 }));
       return null;
     }
     out.explanation = String(q.explanation ?? q.reason ?? q.why ?? '').trim();
@@ -266,7 +270,7 @@
       const count = countBlanks(out.text);
       const given = Array.isArray(q.blanks) ? q.blanks.map((b) => String(b ?? '')) : [];
       out.blanks = Array.from({ length: count }, (_, i) => given[i] || '');
-      if (!count) warnings.push(`سؤال ${index + 1}: لا يوجد ___ في الجملة — أضف مكان الفراغ يدوياً`);
+      if (!count) warnings.push(t('bWarnNoBlank', { n: index + 1 }));
     }
     if (q.timeLimit != null || q.time != null || q.seconds != null) {
       const t = Number(q.timeLimit ?? q.time ?? q.seconds);
@@ -286,13 +290,13 @@
         }))
         .filter((option) => option.text);
       if (out.options.length < 2) {
-        warnings.push(`سؤال ${index + 1}: أقل من خيارين — تم تجاهله`);
+        warnings.push(t('bWarnFewOptions', { n: index + 1 }));
         return null;
       }
       if (type === 'mc') {
         out.correct = resolveCorrect(q.correct ?? q.answer ?? q.correctAnswer ?? q.correct_answers, out.options);
         if (!out.correct.length && out.points > 0) {
-          warnings.push(`سؤال ${index + 1}: لم أتعرّف على الإجابة الصحيحة — سيُعامل كاستطلاع بلا نقاط`);
+          warnings.push(t('bWarnNoCorrect', { n: index + 1 }));
         }
       }
     }
@@ -300,17 +304,17 @@
     if (type === 'truefalse') {
       const c = Array.isArray(q.correct) ? q.correct[0] : q.correct ?? q.answer ?? q.correctAnswer;
       const s = String(c).trim().toLowerCase();
-      if (c === true || ['true', 'صح', 'صحيح', 'نعم', '1'].includes(s)) out.correct = ['true'];
-      else if (c === false || ['false', 'خطأ', 'خاطئ', 'لا', '0'].includes(s)) out.correct = ['false'];
-      else warnings.push(`سؤال ${index + 1}: إجابة صح/خطأ غير واضحة «${c}»`);
+      if (c === true || ['true', t('btrue'), t('btrue2'), t('byes'), '1'].includes(s)) out.correct = ['true'];
+      else if (c === false || ['false', t('bwrong'), t('bfalse'), t('bno'), '0'].includes(s)) out.correct = ['false'];
+      else warnings.push(t('bWarnTF', { n: index + 1, value: c }));
     }
 
     if (type === 'scale' && q.scale && typeof q.scale === 'object') {
       out.scale = {
         min: Number(q.scale.min) || 1,
         max: Number(q.scale.max) || 5,
-        minLabel: String(q.scale.minLabel ?? q.scale.min_label ?? '').trim() || 'غير موافق',
-        maxLabel: String(q.scale.maxLabel ?? q.scale.max_label ?? '').trim() || 'موافق تماماً',
+        minLabel: String(q.scale.minLabel ?? q.scale.min_label ?? '').trim() || t('bdisagree'),
+        maxLabel: String(q.scale.maxLabel ?? q.scale.max_label ?? '').trim() || t('bstronglyAgree'),
       };
     }
 
@@ -322,7 +326,7 @@
     const arr = Array.isArray(list) ? list : list === null || list === undefined ? [] : [list];
     const out = [];
     const latin = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-    const arabic = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح'];
+    const arabic = [t('ba'), t('bb'), t('bc'), t('be'), t('bf'), t('bh'), t('bg'), t('bd')];
     for (const item of arr) {
       if (typeof item === 'number' && options[item]) {
         out.push(options[item].id);
@@ -343,23 +347,23 @@
 
   /** مثال جاهز يوضح الصيغة للمدرب وللمساعد الذكي */
   const IMPORT_EXAMPLE = {
-    title: 'مراجعة الوحدة الأولى',
+    title: t('bunit1Review'),
     settings: { pace: 'host', scoring: 'speed', streakBonus: true, revealAnswer: true },
     questions: [
       {
         type: 'mc',
-        text: 'ما هي عاصمة الأردن؟',
-        options: ['عمّان', 'دمشق', 'بيروت', 'القاهرة'],
-        correct: ['عمّان'],
+        text: t('bwhatIsTheCapital'),
+        options: [t('bamman'), t('bdamascus'), t('bbeirut'), t('bcairo')],
+        correct: [t('bamman')],
         points: 1000,
         timeLimit: 20,
-        explanation: 'عمّان هي العاصمة منذ عام ١٩٢١.',
+        explanation: t('bammanHasBeenThe'),
       },
-      { type: 'truefalse', text: 'الماء يغلي عند ١٠٠°م عند سطح البحر.', correct: true, points: 500, timeLimit: 15 },
-      { type: 'poll', text: 'أي موضوع تفضّل للمراجعة القادمة؟', options: ['الكسور', 'الهندسة', 'الجبر'] },
-      { type: 'scale', text: 'ما مدى وضوح الدرس؟', scale: { min: 1, max: 5, minLabel: 'غير واضح', maxLabel: 'واضح جداً' } },
-      { type: 'word', text: 'صف الدرس بكلمة واحدة' },
-      { type: 'open', text: 'ما الذي تقترح تحسينه؟' },
+      { type: 'truefalse', text: t('bwaterBoilsAt100'), correct: true, points: 500, timeLimit: 15 },
+      { type: 'poll', text: t('bwhichTopicWouldYou'), options: [t('bfractions'), t('bgeometry'), t('balgebra')] },
+      { type: 'scale', text: t('bhowClearWasThe'), scale: { min: 1, max: 5, minLabel: t('bnotClear'), maxLabel: t('bveryClear') } },
+      { type: 'word', text: t('bdescribeTheLessonIn') },
+      { type: 'open', text: t('bwhatWouldYouImprove') },
     ],
   };
 
@@ -382,9 +386,9 @@
 
       // ---- القوالب أولاً: اختيار قالب يستبدل الإعدادات، فيجب أن يسبقها
       const templatesBox = el('div', { class: 'card stack' }, [
-        el('h2', { text: 'ابدأ من قالب جاهز (اختياري)' }),
-        el('div', { class: 'row', id: 'tmplRow' }, el('span', { class: 'muted small', text: 'جارٍ التحميل…' })),
-        el('div', { class: 'muted small', text: 'اختيار قالب يستبدل الإعدادات والأسئلة — اختره أولاً ثم عدّل ما تشاء.' }),
+        el('h2', { text: t('bstartFromAReady') }),
+        el('div', { class: 'row', id: 'tmplRow' }, el('span', { class: 'muted small', text: t('bloading') })),
+        el('div', { class: 'muted small', text: t('bchoosingATemplateReplaces') }),
       ]);
       root.append(templatesBox);
       loadTemplates(templatesBox.querySelector('#tmplRow'));
@@ -393,7 +397,7 @@
       root.append(importCard());
 
       // ---- العنوان والإعدادات
-      const titleInput = el('input', { maxlength: 120, placeholder: 'مثال: مراجعة الوحدة الثالثة', value: draft.title });
+      const titleInput = el('input', { maxlength: 120, placeholder: t('beGUnit3'), value: draft.title });
       titleInput.addEventListener('input', () => {
         draft.title = titleInput.value;
         saveDraft(draft);
@@ -401,65 +405,65 @@
 
       root.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { text: '٢. معلومات النشاط' }),
-          el('div', {}, [el('label', { text: 'عنوان النشاط' }), titleInput]),
-          switchRow('طلب الاسم أو الكنية', 'requireName', 'أطفئه لاستطلاع مجهول بلا أسماء'),
-          switchRow('السماح بالدخول المتأخر', 'allowLateJoin', 'يستطيع الطلاب الدخول بعد بدء النشاط'),
-          switchRow('عرض لوحة الترتيب', 'showLeaderboard', 'يظهر ترتيب المشاركين بين الأسئلة'),
-          switchRow('عدّاد «استعد ٣٢١»', 'countdown', 'ينطلق الجميع معاً في الأسئلة المؤقتة'),
+          el('h2', { text: t('bSectionInfo') }),
+          el('div', {}, [el('label', { text: t('bactivityTitle') }), titleInput]),
+          switchRow(t('baskForAName'), 'requireName', t('bturnItOffFor')),
+          switchRow(t('ballowLateJoining'), 'allowLateJoin', t('bstudentsCanJoinAfter')),
+          switchRow(t('bshowTheLeaderboard'), 'showLeaderboard', t('bparticipantRankingAppearsBetween')),
+          switchRow(t('ba321'), 'countdown', t('beveryoneStartsTogetherOn')),
         ])
       );
 
       // ---- وضع التقدّم ونظام التحفيز
       root.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { text: '٣. سير النشاط والتحفيز' }),
-          el('label', { text: 'من ينقل إلى السؤال التالي؟' }),
+          el('h2', { text: t('bSectionFlow') }),
+          el('label', { text: t('bwhoMovesToThe') }),
           choiceGroup(
             'pace',
             [
-              { value: 'host', emoji: '🎛️', title: 'المدرب', hint: 'أنت تنقل الشرائح وتتحكم بالإيقاع' },
-              { value: 'auto', emoji: '⏱️', title: 'تلقائي', hint: 'الجميع معاً، وينتقل وحده بعد النتائج' },
-              { value: 'self', emoji: '🏃', title: 'حر', hint: 'كل متدرب يتقدّم بسرعته الخاصة' },
+              { value: 'host', emoji: '🎛️', title: t('bteacher'), hint: t('byouMoveBetweenQuestions') },
+              { value: 'auto', emoji: '⏱️', title: t('bautomatic'), hint: t('beveryoneTogetherAdvancingOn') },
+              { value: 'self', emoji: '🏃', title: t('bselfPaced'), hint: t('beveryLearnerAdvancesAt') },
             ],
             () => update()
           ),
           draft.settings.pace === 'auto' ? autoDelayRow() : null,
           draft.settings.pace === 'self'
             ? switchRow(
-                'يبدأ المتدرب فور دخوله 🚀',
+                t('btheLearnerStartsAs'),
                 'autoStart',
-                'بلا انتظار المدرب — ينطلق كل متدرب بمجرد مسحه رمز QR'
+                t('bnoWaitingForThe')
               )
             : null,
           draft.settings.pace === 'self'
-            ? el('p', { class: 'muted small', style: { margin: 0 }, text: 'في الوضع الحر تظهر لك لوحة تتابع فيها موقع كل متدرب ونتائجه أولاً بأول.' })
+            ? el('p', { class: 'muted small', style: { margin: 0 }, text: t('binSelfPacedMode') })
             : null,
 
-          el('label', { text: 'احتساب النقاط', style: { marginTop: '6px' } }),
+          el('label', { text: t('bscoring'), style: { marginTop: '6px' } }),
           choiceGroup(
             'scoring',
             [
-              { value: 'speed', emoji: '⚡', title: 'بالسرعة', hint: 'كاملة للأسرع وتتناقص حتى النصف' },
-              { value: 'flat', emoji: '🎯', title: 'ثابتة', hint: 'نفس النقاط لكل إجابة صحيحة' },
-              { value: 'none', emoji: '🕊️', title: 'بلا نقاط', hint: 'تعلّم بلا منافسة ولا ترتيب' },
+              { value: 'speed', emoji: '⚡', title: t('bbySpeed'), hint: t('bfullPointsForThe') },
+              { value: 'flat', emoji: '🎯', title: t('bflat'), hint: t('btheSamePointsFor') },
+              { value: 'none', emoji: '🕊️', title: t('bnoPoints'), hint: t('blearningWithoutCompetitionOr') },
             ],
             () => update()
           ),
           draft.settings.scoring !== 'none'
-            ? switchRow('مضاعف السلاسل 🔥', 'streakBonus', 'كل إجابة صحيحة متتالية تزيد النقاط ١٠٪ حتى ٥٠٪')
+            ? switchRow(t('bstreakMultiplier'), 'streakBonus', t('beachConsecutiveCorrectAnswer'))
             : null,
           switchRow(
-            'إظهار الإجابة الصحيحة 💡',
+            t('bshowTheCorrectAnswer'),
             'revealAnswer',
-            'بعد إجابة المتدرب يرى الإجابة الصحيحة وشرحها إن كتبته'
+            t('bafterAnsweringTheLearner')
           ),
 
-          el('label', { text: 'وضع الفرق 🏳️', style: { marginTop: '6px' } }),
-          switchRow('تقسيم تلقائي إلى فرق', 'teamMode', 'كل مشارك يُوزَّع على فريق ملوّن عند الانضمام، ونقاط الفريق مجموع أعضائه'),
+          el('label', { text: t('bteamMode'), style: { marginTop: '6px' } }),
+          switchRow(t('bsplitAutomaticallyIntoTeams'), 'teamMode', t('beachParticipantIsAssigned')),
           draft.settings.teamMode ? teamCountRow() : null,
 
-          el('label', { text: 'الجدولة والمدة ⏰', style: { marginTop: '6px' } }),
+          el('label', { text: t('bscheduleAndDuration'), style: { marginTop: '6px' } }),
           scheduleRow(),
         ])
       );
@@ -471,10 +475,10 @@
       root.append(
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row between' }, [
-            el('h2', { text: `٤. الأسئلة (${draft.questions.length})`, style: { margin: 0 } }),
+            el('h2', { text: t('bQuestionsSection', { count: draft.questions.length }), style: { margin: 0 } }),
           ]),
           list,
-          el('label', { text: 'إضافة سؤال جديد', style: { marginTop: '4px' } }),
+          el('label', { text: t('baddANewQuestion'), style: { marginTop: '4px' } }),
           el('div', { class: 'types' }, TYPES.map((type) =>
             el(
               'button',
@@ -490,22 +494,22 @@
               [el('span', { class: 'em', text: TYPE_EMOJI[type] }), el('span', { text: '+ ' + TYPE_LABELS[type] })]
             )
           )),
-          el('label', { text: '📚 أو أضف من بنك أسئلتك', style: { marginTop: '10px' } }),
-          el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: 'جارٍ التحميل…' })),
+          el('label', { text: t('borAddFromYour'), style: { marginTop: '10px' } }),
+          el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: t('bloading') })),
         ])
       );
       loadBank(root.querySelector('#bankRow'));
 
       // ---- الإطلاق
-      const launch = el('button', { class: 'btn accent block' }, '🚀 ابدأ الجلسة واعرض رمز QR');
+      const launch = el('button', { class: 'btn accent block' }, t('bstartTheSessionAnd'));
       launch.addEventListener('click', () => {
         const problem = validate(draft);
         if (problem) return toast(problem, 'bad');
         launch.disabled = true;
-        launch.textContent = 'جارٍ الإنشاء…';
+        launch.textContent = t('bcreating');
         Promise.resolve(onLaunch(draft)).finally(() => {
           launch.disabled = false;
-          launch.textContent = '🚀 ابدأ الجلسة واعرض رمز QR';
+          launch.textContent = t('bstartTheSessionAnd');
         });
       });
 
@@ -514,20 +518,22 @@
           launch,
           // أزرار إضافية من صفحة المدرب (مثل الحفظ في الحساب)
           ...(typeof extraActions === 'function' ? [extraActions(draft, validate)] : []).filter(Boolean),
-          el('p', { class: 'muted small center', style: { margin: 0 }, text: 'التخزين مؤقت: تختفي الجلسة والنتائج تلقائياً بعد انتهائها.' }),
+          // لغة النشاط تُثبَّت وقت الإطلاق على لغة اللوحة، فليعرف المعلّم ذلك قبل الضغط
+          el('p', { class: 'muted small center', style: { margin: 0 }, text: t('blangNote') }),
+          el('p', { class: 'muted small center', style: { margin: 0 }, text: t('bstorageIsTemporaryThe') }),
           el(
             'button',
             {
               class: 'btn ghost sm',
               type: 'button',
               onclick: () => {
-                if (!confirm('مسح المسودة والبدء من جديد؟')) return;
+                if (!confirm(t('bclearTheDraftAnd'))) return;
                 Object.assign(draft, defaultDraft());
                 openIndex = 0;
                 update();
               },
             },
-            'مسح المسودة'
+            t('bclearTheDraft')
           ),
         ])
       );
@@ -536,7 +542,7 @@
     /** بطاقة لصق JSON وتحويله إلى نشاط كامل */
     function importCard() {
       const textarea = el('textarea', {
-        placeholder: '{ "title": "…", "questions": [ … ] }\n\nالصق هنا JSON من مساعدك الذكي أو من ملف — ثم اضغط «تحويل إلى تفاعلي».',
+        placeholder: '{ "title": "…", "questions": [ … ] }\n\n' + t('bPastePlaceholder'),
         style: {
           minHeight: '110px',
           direction: 'ltr',
@@ -547,7 +553,7 @@
       });
       const result = el('div', { class: 'small', style: { minHeight: '1em' } });
 
-      const convert = el('button', { class: 'btn accent', type: 'button' }, '⚡ تحويل إلى تفاعلي');
+      const convert = el('button', { class: 'btn accent', type: 'button' }, t('bturnIntoAnActivity'));
       convert.addEventListener('click', () => {
         const parsed = parseImport(textarea.value);
         if (parsed.error) {
@@ -557,42 +563,42 @@
           return;
         }
         const count = parsed.draft.questions.length;
-        if (!confirm(`استبدال المسودة الحالية بـ ${count} سؤالاً من JSON؟`)) return;
+        if (!confirm(t('bReplaceJson', { count }))) return;
         Object.assign(draft, parsed.draft);
         openIndex = 0;
         update();
-        const note = parsed.warnings.length ? ` (${parsed.warnings.length} تنبيه)` : '';
-        toast(`✅ تم استيراد ${count} سؤالاً${note}`, 'ok');
-        if (parsed.warnings.length) console.warn('تنبيهات الاستيراد:', parsed.warnings);
+        const note = parsed.warnings.length ? t('bWarnCount', { n: parsed.warnings.length }) : '';
+        toast(t('bImportedOk', { count, note }), 'ok');
+        if (parsed.warnings.length) console.warn(t('bimportWarnings'), parsed.warnings);
       });
 
-      const example = el('button', { class: 'btn sm ghost', type: 'button' }, '📋 مثال');
+      const example = el('button', { class: 'btn sm ghost', type: 'button' }, t('bexample'));
       example.addEventListener('click', () => {
         textarea.value = JSON.stringify(IMPORT_EXAMPLE, null, 2);
-        result.textContent = 'هذا مثال يوضح الصيغة — عدّله أو الصق مكانه';
+        result.textContent = t('bthisExampleShowsThe');
         result.style.color = '';
       });
 
-      const copyPrompt = el('button', { class: 'btn sm ghost', type: 'button' }, '🤖 نسخ برومبت المساعد');
+      const copyPrompt = el('button', { class: 'btn sm ghost', type: 'button' }, t('bcopyTheAssistantPrompt'));
       copyPrompt.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(AI_PROMPT);
-          toast('نُسخ البرومبت — الصقه في مساعدك الذكي', 'ok');
+          toast(t('bpromptCopiedPasteIt'), 'ok');
         } catch {
           textarea.value = AI_PROMPT;
-          toast('تعذّر النسخ التلقائي — البرومبت الآن في الصندوق، انسخه يدوياً');
+          toast(t('bautomaticCopyFailedThe'));
         }
       });
 
       return el('div', { class: 'card stack' }, [
         el('div', { class: 'row between' }, [
-          el('h2', { text: 'أو حوّل JSON إلى نشاط ⚡', style: { margin: 0 } }),
+          el('h2', { text: t('borTurnJsonInto'), style: { margin: 0 } }),
           el('div', { class: 'row', style: { gap: '6px' } }, [example, copyPrompt]),
         ]),
         el('p', {
           class: 'muted small',
           style: { margin: 0 },
-          text: 'اطلب من أي مساعد ذكي توليد الأسئلة (زر البرومبت يعطيه التعليمات الكاملة)، ثم الصق الناتج هنا.',
+          text: t('baskAnyAiAssistant'),
         }),
         textarea,
         convert,
@@ -621,23 +627,23 @@
     }
 
     function autoDelayRow() {
-      const select = el('select', {}, [3, 5, 6, 8, 10, 15].map((sec) => el('option', { value: String(sec) }, sec + ' ثوانٍ')));
+      const select = el('select', {}, [3, 5, 6, 8, 10, 15].map((sec) => el('option', { value: String(sec) }, sec + t('bseconds'))));
       select.value = String(draft.settings.autoAdvanceSec || 6);
       select.addEventListener('change', () => {
         draft.settings.autoAdvanceSec = Number(select.value);
         saveDraft(draft);
       });
-      return el('div', {}, [el('label', { text: 'مدة عرض النتائج قبل الانتقال' }), select]);
+      return el('div', {}, [el('label', { text: t('bhowLongResultsStay') }), select]);
     }
 
     function teamCountRow() {
-      const select = el('select', {}, [2, 3, 4, 5, 6, 7, 8].map((n) => el('option', { value: String(n) }, n + ' فرق')));
+      const select = el('select', {}, [2, 3, 4, 5, 6, 7, 8].map((n) => el('option', { value: String(n) }, n + t('bteams'))));
       select.value = String(draft.settings.teamCount || 4);
       select.addEventListener('change', () => {
         draft.settings.teamCount = Number(select.value);
         saveDraft(draft);
       });
-      return el('div', {}, [el('label', { text: 'عدد الفرق' }), select]);
+      return el('div', {}, [el('label', { text: t('bnumberOfTeams') }), select]);
     }
 
     /**
@@ -662,16 +668,16 @@
           const stamp = Date.parse(draft.settings.opensAt);
           parts.push(
             Number.isFinite(stamp)
-              ? `يفتح تلقائياً ${new Date(stamp).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' })}`
-              : 'موعد غير مفهوم'
+              ? t('bOpensOn', { when: new Date(stamp).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) })
+              : t('bdateNotUnderstood')
           );
         } else {
-          parts.push('بلا موعد: يبدأ حين تضغط «بدء النشاط»');
+          parts.push(t('bnoScheduleItStarts'));
         }
         parts.push(
           draft.settings.durationMinutes > 0
-            ? `ويُقفل تلقائياً بعد ${draft.settings.durationMinutes} دقيقة من بدايته`
-            : 'وبلا حدّ زمني للاختبار كاملاً'
+            ? t('bClosesAfter', { n: draft.settings.durationMinutes })
+            : t('bandNoOverallTime')
         );
         hint.textContent = parts.join(' · ');
       };
@@ -703,7 +709,7 @@
                 saveDraft(draft);
               },
             },
-            value === 0 ? 'بلا حدّ' : value + ' د'
+            value === 0 ? t('bnoLimit') : value + t('bmin')
           )
         )
       );
@@ -720,13 +726,13 @@
             saveDraft(draft);
           },
         },
-        '✕ إلغاء الموعد'
+        t('bclearTheSchedule')
       );
 
       return el('div', { class: 'stack tight' }, [
         el('div', { class: 'grid two' }, [
-          el('div', {}, [el('label', { text: 'موعد فتح الاختبار (اختياري)' }), when, el('div', { class: 'row', style: { marginTop: '6px' } }, [clear])]),
-          el('div', {}, [el('label', { text: 'مدة الاختبار بالدقائق' }), minutes, presets]),
+          el('div', {}, [el('label', { text: t('bquizOpeningTimeOptional') }), when, el('div', { class: 'row', style: { marginTop: '6px' } }, [clear])]),
+          el('div', {}, [el('label', { text: t('bquizDurationInMinutes') }), minutes, presets]),
         ]),
         hint,
       ]);
@@ -767,7 +773,7 @@
       // نوع السؤال
       body.append(
         el('div', {}, [
-          el('label', { text: 'نوع السؤال' }),
+          el('label', { text: t('bquestionType') }),
           el('div', { class: 'types' }, TYPES.map((type) =>
             el(
               'button',
@@ -790,7 +796,7 @@
       );
 
       // نص السؤال
-      const text = el('textarea', { maxlength: 300, placeholder: 'اكتب نص السؤال…' });
+      const text = el('textarea', { maxlength: 300, placeholder: t('bwriteTheQuestionText') });
       text.value = question.text;
       text.addEventListener('input', () => {
         question.text = text.value;
@@ -799,7 +805,7 @@
       });
       body.append(
         el('div', {}, [
-          el('label', { text: question.type === 'blank' ? 'نص الجملة (ضع ___ مكان كل فراغ)' : 'نص السؤال' }),
+          el('label', { text: question.type === 'blank' ? t('bsentenceTextPutWhere') : t('bquestionText') }),
           text,
         ])
       );
@@ -817,15 +823,15 @@
           question.points = Math.max(1, count);
           if (syncMarks) syncMarks();
         }
-        blanksBox.append(el('label', { text: `الإجابات المتوقعة (${count} ${count === 1 ? 'فراغ' : 'فراغات'})` }));
+        blanksBox.append(el('label', { text: t('bExpectedTitle', { count, word: count === 1 ? t('bBlankOne') : t('bBlankMany') }) }));
         if (!count) {
           blanksBox.append(
-            el('div', { class: 'note warn small', text: 'لا يوجد فراغ في الجملة — اكتب ___ (ثلاث شرطات سفلية) في المكان الذي يملؤه الطالب.' })
+            el('div', { class: 'note warn small', text: t('bnoBlankInThe') })
           );
           return;
         }
         question.blanks.forEach((value, i) => {
-          const input = el('input', { maxlength: 60, placeholder: `الإجابة المتوقعة للفراغ ${i + 1} (اختيارية)`, value });
+          const input = el('input', { maxlength: 60, placeholder: t('bExpectedBlank', { n: i + 1 }), value });
           input.addEventListener('input', () => {
             question.blanks[i] = input.value;
             saveDraft(draft);
@@ -833,7 +839,7 @@
           blanksBox.append(input);
         });
         blanksBox.append(
-          el('div', { class: 'muted small', text: 'تظهر لك وحدك أثناء التصحيح لتقارن بها إجابة الطالب — التصحيح يبقى بيدك.' })
+          el('div', { class: 'muted small', text: t('bshownToYouOnly') })
         );
       };
       text.addEventListener('input', drawBlanks);
@@ -854,11 +860,11 @@
                   type: 'button',
                   onclick: () =>
                     toast(
-                      `🖼 إضافة صورة للسؤال ميزة بريميوم — للاشتراك واتساب ${premiumState?.plan?.whatsapp || '970597034066'} (${premiumState?.plan?.priceUsd || 3}$ شهرياً)`,
+                      t('bImagePremium', { phone: premiumState?.plan?.whatsapp || '970597034066', price: premiumState?.plan?.priceUsd || 5 }),
                       'warn'
                     ),
                 },
-                '🖼 إضافة صورة ⭐'
+                t('baddAnImage')
               ),
             ])
           );
@@ -867,7 +873,7 @@
         if (question.image) {
           imageBox.append(
             el('div', { class: 'img-edit' }, [
-              el('img', { src: question.image, alt: 'صورة السؤال' }),
+              el('img', { src: question.image, alt: t('pQuestionImage') }),
               el(
                 'button',
                 {
@@ -879,32 +885,32 @@
                     drawImage();
                   },
                 },
-                '🗑 إزالة الصورة'
+                t('bremoveTheImage')
               ),
             ])
           );
           return;
         }
         const picker = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
-        const pick = el('button', { class: 'btn ghost sm', type: 'button', onclick: () => picker.click() }, '🖼 إضافة صورة');
+        const pick = el('button', { class: 'btn ghost sm', type: 'button', onclick: () => picker.click() }, t('baddAnImage2'));
         picker.addEventListener('change', async () => {
           const file = picker.files && picker.files[0];
           if (!file) return;
           pick.disabled = true;
-          pick.textContent = 'جارٍ تجهيز الصورة…';
+          pick.textContent = t('bpreparingTheImage');
           try {
             question.image = await compressImage(file);
             saveDraft(draft);
             drawImage();
           } catch (err) {
-            alert(err.message || 'تعذّر تجهيز الصورة');
+            alert(err.message || t('bcouldNotPrepareThe'));
             pick.disabled = false;
-            pick.textContent = '🖼 إضافة صورة';
+            pick.textContent = t('baddAnImage2');
           }
           picker.value = '';
         });
         imageBox.append(
-          el('div', { class: 'row' }, [pick, picker, el('span', { class: 'muted small', text: 'تُصغَّر تلقائياً لتصل بسرعة لكل الأجهزة' })])
+          el('div', { class: 'row' }, [pick, picker, el('span', { class: 'muted small', text: t('bautomaticallyResizedSoIt') })])
         );
       };
       drawImage();
@@ -914,7 +920,7 @@
       if (question.type === 'mc' || question.type === 'poll') {
         const optionsBox = el('div', { class: 'stack' });
         question.options.forEach((option, oIndex) => {
-          const input = el('input', { maxlength: 120, placeholder: `الخيار ${oIndex + 1}`, value: option.text });
+          const input = el('input', { maxlength: 120, placeholder: t('bOptionN', { n: oIndex + 1 }), value: option.text });
           input.addEventListener('input', () => {
             option.text = input.value;
             saveDraft(draft);
@@ -927,7 +933,7 @@
               {
                 class: 'mark' + (question.correct.includes(option.id) ? ' on' : ''),
                 type: 'button',
-                title: 'تحديد كإجابة صحيحة',
+                title: t('bmarkAsTheCorrect'),
               },
               '✓'
             );
@@ -942,7 +948,7 @@
           }
 
           if (question.options.length > 2) {
-            const remove = el('button', { class: 'mark', type: 'button', title: 'حذف الخيار' }, '✕');
+            const remove = el('button', { class: 'mark', type: 'button', title: t('bdeleteOption') }, '✕');
             remove.addEventListener('click', () => {
               question.options.splice(oIndex, 1);
               question.correct = question.correct.filter((c) => c !== option.id);
@@ -965,7 +971,7 @@
                   update();
                 },
               },
-              '+ إضافة خيار'
+              t('baddOption')
             )
           );
         }
@@ -973,7 +979,7 @@
         body.append(
           el('div', {}, [
             el('label', {
-              text: question.type === 'mc' ? 'الخيارات (اضغط ✓ للإجابة الصحيحة)' : 'الخيارات',
+              text: question.type === 'mc' ? t('boptionsPressForThe') : t('boptions'),
             }),
             optionsBox,
           ])
@@ -993,15 +999,15 @@
           });
           return button;
         };
-        const group = el('div', { class: 'row' }, [choiceBtn('صحيح', 'true'), choiceBtn('خطأ', 'false')]);
-        body.append(el('div', {}, [el('label', { text: 'الإجابة الصحيحة' }), group]));
+        const group = el('div', { class: 'row' }, [choiceBtn(t('btrue2'), 'true'), choiceBtn(t('bwrong'), 'false')]);
+        body.append(el('div', {}, [el('label', { text: t('bcorrectAnswer') }), group]));
       }
 
       if (question.type === 'scale') {
         const min = el('input', { type: 'number', min: 0, max: 9, value: question.scale.min });
         const max = el('input', { type: 'number', min: 2, max: 10, value: question.scale.max });
-        const minLabel = el('input', { maxlength: 40, value: question.scale.minLabel, placeholder: 'وصف الطرف الأدنى' });
-        const maxLabel = el('input', { maxlength: 40, value: question.scale.maxLabel, placeholder: 'وصف الطرف الأعلى' });
+        const minLabel = el('input', { maxlength: 40, value: question.scale.minLabel, placeholder: t('blabelForTheLow') });
+        const maxLabel = el('input', { maxlength: 40, value: question.scale.maxLabel, placeholder: t('blabelForTheHigh') });
         [min, max, minLabel, maxLabel].forEach((input) =>
           input.addEventListener('input', () => {
             question.scale = {
@@ -1015,18 +1021,18 @@
         );
         body.append(
           el('div', { class: 'grid two' }, [
-            el('div', {}, [el('label', { text: 'من' }), min]),
-            el('div', {}, [el('label', { text: 'إلى' }), max]),
-            el('div', {}, [el('label', { text: 'وصف الأدنى' }), minLabel]),
-            el('div', {}, [el('label', { text: 'وصف الأعلى' }), maxLabel]),
+            el('div', {}, [el('label', { text: t('bfrom') }), min]),
+            el('div', {}, [el('label', { text: t('bto') }), max]),
+            el('div', {}, [el('label', { text: t('blowLabel') }), minLabel]),
+            el('div', {}, [el('label', { text: t('bhighLabel') }), maxLabel]),
           ])
         );
       }
 
       // الوقت والنقاط
       const timeSelect = el('select', {}, [
-        el('option', { value: '0' }, 'بلا مؤقّت'),
-        ...[10, 15, 20, 30, 45, 60, 90, 120].map((seconds) => el('option', { value: String(seconds) }, seconds + ' ثانية')),
+        el('option', { value: '0' }, t('bnoTimer')),
+        ...[10, 15, 20, 30, 45, 60, 90, 120].map((seconds) => el('option', { value: String(seconds) }, seconds + t('bseconds2'))),
       ]);
       timeSelect.value = String(question.timeLimit || 0);
       timeSelect.addEventListener('change', () => {
@@ -1034,7 +1040,7 @@
         saveDraft(draft);
       });
 
-      const timeAndPoints = el('div', { class: 'grid two' }, [el('div', {}, [el('label', { text: 'مدة الإجابة' }), timeSelect])]);
+      const timeAndPoints = el('div', { class: 'grid two' }, [el('div', {}, [el('label', { text: t('banswerTime') }), timeSelect])]);
 
       if (question.type === 'open' || question.type === 'blank') {
         // علامة السؤال النصّي: صفر = رأي حرّ بلا تصحيح، وأكبر من صفر = يصحّحه المدرب بنفسه
@@ -1049,8 +1055,8 @@
         const hint = el('div', { class: 'muted small', style: { marginTop: '4px' } });
         const paintHint = () => {
           hint.textContent = question.points > 0
-            ? `يصحّحه المدرب يدوياً: صح (${question.points}) أو خطأ (0) أو علامة جزئية بينهما، ولا يرى الطالب نتيجته قبل التصحيح.`
-            : 'صفر = سؤال رأي حرّ بلا علامة ولا تصحيح.';
+            ? t('bManualHint', { max: question.points })
+            : t('bzeroAFreeOpinion');
         };
         marks.addEventListener('input', () => {
           const value = Number(marks.value);
@@ -1067,7 +1073,7 @@
         paintHint();
         timeAndPoints.append(
           el('div', {}, [
-            el('label', { text: 'علامة السؤال (للتصحيح اليدوي)' }),
+            el('label', { text: t('bquestionScoreForManual') }),
             marks,
             el('div', { class: 'row', style: { gap: '6px', marginTop: '6px' } },
               [0, 3, 5, 10].map((value) =>
@@ -1084,7 +1090,7 @@
                       saveDraft(draft);
                     },
                   },
-                  value === 0 ? 'بلا علامة' : String(value)
+                  value === 0 ? t('bnoScore') : String(value)
                 )
               )
             ),
@@ -1116,7 +1122,7 @@
                   saveDraft(draft);
                 },
               },
-              value === 0 ? 'بلا علامة' : String(value)
+              value === 0 ? t('bnoScore') : String(value)
             )
           )
         );
@@ -1126,7 +1132,7 @@
           saveDraft(draft);
         });
         timeAndPoints.append(
-          el('div', {}, [el('label', { text: 'علامة السؤال' }), pointsInput, presets])
+          el('div', {}, [el('label', { text: t('bquestionScore') }), pointsInput, presets])
         );
       }
       body.append(timeAndPoints);
@@ -1135,7 +1141,7 @@
       if (question.type === 'mc' || question.type === 'truefalse') {
         const explanation = el('textarea', {
           maxlength: 400,
-          placeholder: 'مثال: عمّان هي العاصمة منذ عام ١٩٢١…',
+          placeholder: t('beGAmmanHas'),
           style: { minHeight: '64px' },
         });
         explanation.value = question.explanation || '';
@@ -1145,12 +1151,12 @@
         });
         body.append(
           el('div', {}, [
-            el('label', { text: 'شرح الإجابة الصحيحة (اختياري)' }),
+            el('label', { text: t('bexplanationOfTheCorrect') }),
             explanation,
             el('div', {
               class: 'muted small',
               style: { marginTop: '4px' },
-              text: 'يظهر للمتدرب مع الإجابة الصحيحة — يحتاج تفعيل «إظهار الإجابة الصحيحة» في إعدادات النشاط.',
+              text: t('bshownToTheLearner'),
             }),
           ])
         );
@@ -1164,7 +1170,7 @@
             {
               class: 'icon-btn',
               type: 'button',
-              title: 'تحريك لأعلى',
+              title: t('bmoveUp'),
               disabled: index === 0,
               onclick: () => {
                 if (index === 0) return;
@@ -1180,7 +1186,7 @@
             {
               class: 'icon-btn',
               type: 'button',
-              title: 'تحريك لأسفل',
+              title: t('bmoveDown'),
               disabled: index === draft.questions.length - 1,
               onclick: () => {
                 if (index === draft.questions.length - 1) return;
@@ -1196,7 +1202,7 @@
             {
               class: 'icon-btn',
               type: 'button',
-              title: 'نسخ السؤال',
+              title: t('bduplicateQuestion'),
               onclick: () => {
                 const copy = JSON.parse(JSON.stringify(question));
                 copy.id = uid();
@@ -1221,7 +1227,7 @@
                 update();
               },
             },
-            'حذف السؤال'
+            t('bdeleteQuestion')
           ),
         ])
       );
@@ -1232,13 +1238,13 @@
 
     /** زر «احفظ في البنك» على كل سؤال — يحتاج تسجيل دخول، والرسالة من الخادم كافية بلا صياغة إضافية */
     function bankSaveButton(question) {
-      const btn = el('button', { class: 'icon-btn', type: 'button', title: 'احفظ السؤال في بنك أسئلتك' }, '📚');
+      const btn = el('button', { class: 'icon-btn', type: 'button', title: t('bsaveTheQuestionTo') }, '📚');
       btn.addEventListener('click', async () => {
-        if (!question.text.trim()) return toast('اكتب نص السؤال أولاً', 'bad');
+        if (!question.text.trim()) return toast(t('bwriteTheQuestionText2'), 'bad');
         btn.disabled = true;
         try {
           await api('/api/bank', { method: 'POST', body: { question } });
-          toast('حُفظ في بنك الأسئلة 📚', 'ok');
+          toast(t('bsavedToTheQuestion'), 'ok');
           update();
         } catch (err) {
           toast(err.message, 'bad');
@@ -1257,18 +1263,18 @@
       } catch {
         row.innerHTML = '';
         row.append(
-          el('a', { class: 'btn ghost sm', href: '/login.html?next=' + encodeURIComponent('/host.html#/') }, '🔐 سجّل الدخول لاستخدام بنك الأسئلة')
+          el('a', { class: 'btn ghost sm', href: '/login.html?next=' + encodeURIComponent('/host.html#/') }, t('bsignInToUse'))
         );
         return;
       }
       row.innerHTML = '';
       if (!data.questions.length) {
-        row.append(el('span', { class: 'muted small', text: 'لا توجد أسئلة محفوظة بعد — احفظ سؤالاً بزر 📚 على أي بطاقة أعلاه.' }));
+        row.append(el('span', { class: 'muted small', text: t('bnoSavedQuestionsYet') }));
         return;
       }
       data.questions.forEach((item) => {
         const q = item.question;
-        const addBtn = el('button', { class: 'btn sm ghost', type: 'button', title: 'أضف إلى هذا النشاط' }, '➕ أضف');
+        const addBtn = el('button', { class: 'btn sm ghost', type: 'button', title: t('baddToThisActivity') }, t('badd'));
         addBtn.addEventListener('click', () => {
           const copy = JSON.parse(JSON.stringify(q));
           copy.id = uid();
@@ -1276,9 +1282,9 @@
           openIndex = draft.questions.length - 1;
           update();
         });
-        const delBtn = el('button', { class: 'icon-btn', type: 'button', title: 'حذف من البنك' }, '🗑');
+        const delBtn = el('button', { class: 'icon-btn', type: 'button', title: t('bdeleteFromTheBank') }, '🗑');
         delBtn.addEventListener('click', async () => {
-          if (!confirm('حذف هذا السؤال من البنك نهائياً؟')) return;
+          if (!confirm(t('bdeleteThisQuestionFrom'))) return;
           try {
             await api('/api/bank/' + item.id, { method: 'DELETE' });
             loadBank(row);
@@ -1302,13 +1308,13 @@
       const templates = global.TEMPLATES || [];
       row.innerHTML = '';
       if (!templates.length) {
-        row.append(el('span', { class: 'muted small', text: 'لا توجد قوالب' }));
+        row.append(el('span', { class: 'muted small', text: t('bnoTemplates') }));
         return;
       }
       templates.forEach((template) => {
-        const button = el('button', { class: 'btn sm ghost', type: 'button', title: template.description }, template.name);
+        const button = el('button', { class: 'btn sm ghost', type: 'button', title: tplText(template, 'description') }, tplText(template, 'name'));
         button.addEventListener('click', () => {
-          if (!confirm(`استبدال المسودة الحالية بقالب «${template.name}»؟`)) return;
+          if (!confirm(t('bReplaceTemplate', { name: tplText(template, 'name') }))) return;
           applyTemplate(template);
         });
         row.append(button);
@@ -1335,19 +1341,19 @@
   function validate(draft) {
     for (let i = 0; i < draft.questions.length; i++) {
       const question = draft.questions[i];
-      if (!question.text.trim()) return `السؤال ${i + 1}: اكتب نص السؤال`;
+      if (!question.text.trim()) return t('bValText', { n: i + 1 });
       if (question.type === 'mc' || question.type === 'poll') {
         const filled = question.options.filter((option) => option.text.trim());
-        if (filled.length < 2) return `السؤال ${i + 1}: أضف خيارين على الأقل`;
+        if (filled.length < 2) return t('bValOptions', { n: i + 1 });
       }
       if (question.type === 'mc' && question.points > 0 && question.correct.length === 0) {
-        return `السؤال ${i + 1}: حدّد الإجابة الصحيحة أو اجعل النقاط «بلا نقاط»`;
+        return t('bValCorrect', { n: i + 1 });
       }
       if (question.type === 'truefalse' && question.points > 0 && question.correct.length === 0) {
-        return `السؤال ${i + 1}: حدّد الإجابة الصحيحة`;
+        return t('bValCorrect2', { n: i + 1 });
       }
       if (question.type === 'blank' && countBlanks(question.text) === 0) {
-        return `السؤال ${i + 1}: اكتب ___ مكان الفراغ الذي يملؤه الطالب`;
+        return t('bValBlank', { n: i + 1 });
       }
     }
     return null;

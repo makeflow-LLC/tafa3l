@@ -9,14 +9,15 @@
    */
 
   const { el, api, toast, store, TYPE_LABELS, TYPE_EMOJI } = global.T;
+  const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
   const CHAT_KEY = 'tapio:ai:chat';
   const MAX_KEPT = 30;
 
   const STARTERS = [
-    'اختبار مراجعة لمادة العلوم — الصف السابع، ٨ أسئلة اختيار من متعدد',
-    'نشاط كسر جمود في بداية ورشة تدريبية للكبار',
-    'استطلاع رأي سريع عن رضا المتدربين بعد الدورة',
-    'مسابقة ممتعة عن الثقافة العامة، ١٠ أسئلة متدرجة الصعوبة',
+    t('cStarter1'),
+    t('cStarter2'),
+    t('cStarter3'),
+    t('cStarter4'),
   ];
 
   function loadChat() {
@@ -41,22 +42,22 @@
     const input = el('textarea', {
       class: 'chat-input',
       rows: 2,
-      placeholder: 'اكتب ما تريد… مثال: اختبار عن دورة المياه لطلاب الصف الخامس، ٦ أسئلة',
+      placeholder: t('cPlaceholder'),
       maxlength: 4000,
     });
-    const sendBtn = el('button', { class: 'btn primary', type: 'button' }, '➤ إرسال');
-    const clearBtn = el('button', { class: 'btn ghost sm', type: 'button' }, '🗑 محادثة جديدة');
+    const sendBtn = el('button', { class: 'btn primary', type: 'button' }, t('cSend'));
+    const clearBtn = el('button', { class: 'btn ghost sm', type: 'button' }, t('cNewChat'));
 
     root.innerHTML = '';
     root.append(
       el('div', { class: 'card stack' }, [
         el('div', { class: 'row between' }, [
-          el('h2', { style: { margin: 0 }, text: '🤖 صمّم نشاطك بالذكاء الاصطناعي' }),
+          el('h2', { style: { margin: 0 }, text: t('cTitle') }),
           clearBtn,
         ]),
         el('p', {
           class: 'muted small',
-          text: 'احكِ للمساعد عن درسك أو ورشتك: الموضوع، المستوى، وعدد الأسئلة. سيصوغ لك النشاط ويعرضه عليك، وعند موافقتك يفتحه في المحرّر جاهزاً للإطلاق.',
+          text: t('cIntro'),
         }),
         thread,
         el('div', { class: 'chat-compose' }, [input, sendBtn]),
@@ -66,7 +67,7 @@
 
     function bubble(role, text) {
       return el('div', { class: 'bubble ' + (role === 'user' ? 'me' : 'ai') }, [
-        el('span', { class: 'who', text: role === 'user' ? 'أنت' : 'المساعد' }),
+        el('span', { class: 'who', text: role === 'user' ? t('cYou') : t('cAssistant') }),
         el('div', { class: 'body', text }),
       ]);
     }
@@ -76,7 +77,7 @@
       if (!state.messages.length) {
         thread.append(
           el('div', { class: 'stack' }, [
-            el('p', { class: 'muted small', text: 'ابدأ بأحد هذه الأمثلة أو اكتب طلبك بحرّية:' }),
+            el('p', { class: 'muted small', text: t('cStartHint') }),
             el(
               'div',
               { class: 'row wrap' },
@@ -102,8 +103,8 @@
       if (state.busy) {
         thread.append(
           el('div', { class: 'bubble ai' }, [
-            el('span', { class: 'who', text: 'المساعد' }),
-            el('div', { class: 'row' }, [el('span', { class: 'spinner sm' }), el('span', { class: 'muted small', text: 'يفكّر…' })]),
+            el('span', { class: 'who', text: t('cAssistant') }),
+            el('div', { class: 'row' }, [el('span', { class: 'spinner sm' }), el('span', { class: 'muted small', text: t('cThinking') })]),
           ])
         );
       }
@@ -117,9 +118,9 @@
       }
       if (q.correct && q.correct.length) {
         const labels = q.correct
-          .map((id) => (q.options || []).find((o) => o.id === id)?.text || (id === 'true' ? 'صحيح' : id === 'false' ? 'خطأ' : id))
+          .map((id) => (q.options || []).find((o) => o.id === id)?.text || (id === 'true' ? t('cTrue') : id === 'false' ? t('cFalse') : id))
           .filter(Boolean);
-        if (labels.length) bits.push('✅ ' + labels.join('، '));
+        if (labels.length) bits.push('✅ ' + labels.join(t('listSep')));
       }
       if (q.scale) bits.push(`${q.scale.min}–${q.scale.max} · ${q.scale.minLabel} ← ${q.scale.maxLabel}`);
       return el('div', { class: 'q-preview' }, [
@@ -136,28 +137,28 @@
       if (!state.draft) return;
       const { draft, warnings } = state.draft;
 
-      const approve = el('button', { class: 'btn primary', type: 'button' }, '✅ اعتمد وافتح في المحرّر');
+      const approve = el('button', { class: 'btn primary', type: 'button' }, t('cApprove'));
       approve.addEventListener('click', () => {
         opts.onApprove(draft);
       });
-      const tweak = el('button', { class: 'btn ghost', type: 'button' }, '✏️ اطلب تعديلاً');
+      const tweak = el('button', { class: 'btn ghost', type: 'button' }, t('cTweak'));
       tweak.addEventListener('click', () => {
         input.value = '';
-        input.placeholder = 'مثال: اجعل الأسئلة أسهل، وأضف سؤال استطلاع في النهاية';
+        input.placeholder = t('cTweakHint');
         input.focus();
       });
 
       preview.append(
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row between' }, [
-            el('h2', { style: { margin: 0 }, text: '📋 المسودة المقترحة' }),
-            el('span', { class: 'badge', text: `${draft.questions.length} سؤالاً` }),
+            el('h2', { style: { margin: 0 }, text: t('cDraftTitle') }),
+            el('span', { class: 'badge', text: t('hQuestionCount', { count: draft.questions.length }) }),
           ]),
-          el('strong', { text: draft.title || 'نشاط بلا عنوان' }),
+          el('strong', { text: draft.title || t('cUntitled') }),
           el('div', { class: 'stack tight' }, draft.questions.map(questionLine)),
           warnings && warnings.length
             ? el('div', { class: 'note warn stack tight' }, [
-                el('strong', { text: 'ملاحظات على المسودة:' }),
+                el('strong', { text: t('cDraftNotes') }),
                 ...warnings.map((w) => el('span', { class: 'small', text: '• ' + w })),
               ])
             : null,
@@ -183,14 +184,14 @@
         if (data.draft) {
           const parsed = global.Builder.parseImport(JSON.stringify(data.draft));
           if (parsed.error) {
-            state.messages.push({ role: 'assistant', content: 'وصلت مسودة غير مكتملة — اطلب مني إعادة صياغتها.' });
+            state.messages.push({ role: 'assistant', content: t('cBadDraft') });
           } else {
             state.draft = parsed;
           }
         }
       } catch (err) {
-        toast(err.message || 'تعذّر الاتصال بالمساعد', 'bad');
-        state.messages.push({ role: 'assistant', content: '⚠️ ' + (err.message || 'تعذّر الاتصال بالمساعد') });
+        toast(err.message || t('cNoConnection'), 'bad');
+        state.messages.push({ role: 'assistant', content: '⚠️ ' + (err.message || t('cNoConnection')) });
       } finally {
         state.busy = false;
         sendBtn.disabled = false;

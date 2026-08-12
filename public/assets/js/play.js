@@ -5,6 +5,8 @@
   const { $, el, avatarNode, toast, api, connect, store, vibrate, countdownTo } = window.T;
   // اختصار الترجمة — إن لم يُحمَّل المحرّك لأي سبب نعرض المفتاح بدل الانهيار
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
+  /** لغة التنسيق للتواريخ والأرقام */
+  const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
   const Fx = window.Fx;
 
   // نصوص الشريط العلوي ومبدّل اللغة (الصفحة نفسها بلا نصوص ثابتة)
@@ -121,11 +123,33 @@
   async function boot() {
     try {
       state.info = await api('/api/sessions/' + code);
+      // لغة النشاط تسبق لغة المتصفح: يرى الطالب النشاط بلغة معلّمه
+      applyActivityLang(state.info.lang);
       document.title = state.info.title + ' — Tapio';
       $('#quizTitle').textContent = state.info.title;
       if (!store.get(SESSION_KEY, null)) renderJoin();
     } catch (err) {
       renderMessage('❓', t('pSessionNotFound'), err.message);
+    }
+  }
+
+  /** يفرض لغة النشاط على هذه الصفحة (بلا حفظها كتفضيل للطالب) */
+  function applyActivityLang(lang) {
+    if (!window.I18n || (lang !== 'ar' && lang !== 'en')) return;
+    if (window.I18n.getLang() === lang) return;
+    window.I18n.setLang(lang, { remember: false });
+    // الشريط العلوي رُسم قبل معرفة اللغة، فنعيد نصوصه ومبدّله
+    const row = $('#langRow');
+    if (row) {
+      row.innerHTML = '';
+      window.I18n.mountToggle(row);
+    }
+    for (const [id, key] of [
+      ['#exitBtn', 'pLeaveTitle'],
+      ['#soundBtn', 'pSoundTitle'],
+    ]) {
+      const node = $(id);
+      if (node) node.title = t(key);
     }
   }
 
@@ -312,7 +336,7 @@
               countdownNode,
               el('span', {
                 class: 'muted small',
-                text: new Date(opensIn).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' }),
+                text: new Date(opensIn).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }),
               }),
             ])
           : el('p', { class: 'muted', text: waitingReason }),
@@ -1174,7 +1198,7 @@
     // التذييل
     ctx.fillStyle = '#a9a5cc';
     ctx.font = `600 30px ${FONT}`;
-    const when = new Date().toLocaleDateString('ar', { year: 'numeric', month: 'long', day: 'numeric' });
+    const when = new Date().toLocaleDateString(loc(), { year: 'numeric', month: 'long', day: 'numeric' });
     ctx.fillText(when, W / 2, H - 115);
     ctx.fillStyle = '#8f8ab5';
     ctx.font = `600 28px ${FONT}`;

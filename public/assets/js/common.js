@@ -225,26 +225,33 @@
     },
   };
 
-  // أسماء الأنواع تتبع لغة الصفحة إن كان محرّك الترجمة محمّلاً، وإلا تبقى عربية
-  const TYPE_LABELS = global.I18n
-    ? {
-        mc: global.I18n.t('typeMc'),
-        truefalse: global.I18n.t('typeTruefalse'),
-        poll: global.I18n.t('typePoll'),
-        word: global.I18n.t('typeWord'),
-        scale: global.I18n.t('typeScale'),
-        open: global.I18n.t('typeOpen'),
-        blank: global.I18n.t('typeBlank'),
-      }
-    : {
-        mc: 'اختيار من متعدد',
-        truefalse: 'صح / خطأ',
-        poll: 'استطلاع رأي',
-        word: 'سحابة كلمات',
-        scale: 'مقياس',
-        open: 'إجابة مفتوحة',
-        blank: 'أكمل الفراغ',
-      };
+  // أسماء الأنواع تُقرأ عند الاستعمال لا عند التحميل: شاشة الطالب قد تبدّل
+  // لغتها بعد الإقلاع (لتتبع لغة النشاط) فيجب أن تتبعها الأسماء فوراً.
+  const TYPE_FALLBACK = {
+    mc: 'اختيار من متعدد',
+    truefalse: 'صح / خطأ',
+    poll: 'استطلاع رأي',
+    word: 'سحابة كلمات',
+    scale: 'مقياس',
+    open: 'إجابة مفتوحة',
+    blank: 'أكمل الفراغ',
+  };
+  const TYPE_KEYS = {
+    mc: 'typeMc',
+    truefalse: 'typeTruefalse',
+    poll: 'typePoll',
+    word: 'typeWord',
+    scale: 'typeScale',
+    open: 'typeOpen',
+    blank: 'typeBlank',
+  };
+  const TYPE_LABELS = {};
+  for (const type of Object.keys(TYPE_FALLBACK)) {
+    Object.defineProperty(TYPE_LABELS, type, {
+      enumerable: true,
+      get: () => (global.I18n ? global.I18n.t(TYPE_KEYS[type]) : TYPE_FALLBACK[type]),
+    });
+  }
 
   const TYPE_EMOJI = {
     mc: '🎯',
@@ -258,7 +265,7 @@
 
   function fmtMs(ms) {
     if (!ms) return '—';
-    return (Math.round(ms / 100) / 10).toFixed(1) + 'ث';
+    return (Math.round(ms / 100) / 10).toFixed(1) + (global.I18n ? global.I18n.t('aSecShort') : 'ث');
   }
 
   function escapeHtml(text) {

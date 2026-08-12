@@ -5,6 +5,24 @@
   const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner } =
     window.T;
   const Fx = window.Fx;
+  // اختصار الترجمة — إن غاب المحرّك نعرض المفتاح بدل الانهيار
+  const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
+  /** لغة التنسيق للتواريخ والأرقام */
+  const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
+
+  // نصوص الشريط العلوي ومبدّل اللغة
+  const guide = $('#guideLink');
+  if (guide) {
+    guide.textContent = '📖 ' + t('hguideShort');
+    guide.title = t('hteacherGuideTip');
+  }
+  for (const [id, key] of [['#homeBtn', 'hhomePage'], ['#soundBtn', 'hsound']]) {
+    const node = $(id);
+    if (!node) continue;
+    node.title = t(key);
+    node.setAttribute('aria-label', t(key));
+  }
+  if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
 
   const app = $('#app');
   const bar = $('#bar');
@@ -103,25 +121,25 @@
         el('a', { class: 'btn ghost sm', href: '#/mine', title: state.user.email }, '📚 ' + state.user.name)
       );
       if (state.premium?.isAdmin) {
-        slot.append(el('a', { class: 'btn ghost sm', href: '#/admin', title: 'لوحة المالك' }, '👑'));
+        slot.append(el('a', { class: 'btn ghost sm', href: '#/admin', title: t('hownerPanel') }, '👑'));
       }
       // زر خروج ظاهر دائماً — لا مدفون داخل صفحة «نشاطاتي»
       slot.append(
-        el('button', { class: 'btn ghost sm', type: 'button', title: 'تسجيل الخروج', onclick: logout }, '🚪 خروج')
+        el('button', { class: 'btn ghost sm', type: 'button', title: t('hsignOut'), onclick: logout }, t('hsignOut2'))
       );
     } else {
-      slot.append(el('a', { class: 'btn ghost sm', href: '/login.html' }, '🔐 دخول'));
+      slot.append(el('a', { class: 'btn ghost sm', href: '/login.html' }, t('hsignIn')));
     }
   }
 
   /** الاسم الأول فقط — الترحيب بالاسم الكامل يبدو رسمياً وطويلاً */
   function firstName(name) {
-    return String(name || '').trim().split(/\s+/)[0] || 'بك';
+    return String(name || '').trim().split(/\s+/)[0] || t('hthere');
   }
 
   /** تسجيل الخروج من أي صفحة */
   async function logout() {
-    if (!confirm('تسجيل الخروج من حسابك؟')) return;
+    if (!confirm(t('hsignOutOfYour'))) return;
     try {
       await api('/api/auth/logout', { method: 'POST' });
     } catch {
@@ -152,31 +170,31 @@
       activities = (await api('/api/activities')).activities;
     } catch (err) {
       app.innerHTML = '';
-      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: 'تعذّر جلب أنشطتك' }), el('p', { class: 'muted small', text: err.message })]));
+      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('hcouldNotLoadYour') }), el('p', { class: 'muted small', text: err.message })]));
       return;
     }
 
     app.innerHTML = '';
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الصفحة الرئيسية'),
+        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('a', { class: 'btn ghost sm', href: '#/ai' }, '🤖 صمّم بالذكاء الاصطناعي'),
-          el('a', { class: 'btn accent sm', href: '#/' }, '➕ نشاط جديد'),
+          el('a', { class: 'btn ghost sm', href: '#/ai' }, t('hdesignWithAi')),
+          el('a', { class: 'btn accent sm', href: '#/' }, t('hnewActivity')),
         ]),
       ])
     );
-    app.append(el('h1', { text: `👋 أهلاً ${firstName(user.name)}` }));
-    app.append(el('h2', { style: { margin: '0 0 6px' }, text: '📚 نشاطاتي' }));
+    app.append(el('h1', { text: t('hHelloUser', { name: firstName(user.name) }) }));
+    app.append(el('h2', { style: { margin: '0 0 6px' }, text: t('hmyActivities') }));
     app.append(
-      el('p', { class: 'muted small' }, `${user.name} · ${activities.length} نشاطاً محفوظاً · كل نشاط تطلقه يُحفظ هنا تلقائياً، وإنهاء الجلسة لا يحذفه. تُحفظ الأسئلة فقط — نتائج الطلاب تبقى مؤقتة.`)
+      el('p', { class: 'muted small' }, t('hMineIntro', { name: user.name, count: activities.length }))
     );
 
     if (state.durable === false) {
       app.append(
         el('div', { class: 'banner', style: { marginBottom: '12px' } }, [
-          el('strong', { text: '⚠️ التخزين غير دائم على هذا الخادم' }),
-          el('div', { class: 'small', text: 'الحسابات والأنشطة محفوظة في ملف محلي وتضيع مع كل نشر — اضبط DATABASE_URL لقاعدة Postgres.' }),
+          el('strong', { text: t('hstorageIsNotDurable') }),
+          el('div', { class: 'small', text: t('haccountsAndActivitiesAre') }),
         ])
       );
     }
@@ -185,9 +203,9 @@
       app.append(
         el('div', { class: 'card stack center' }, [
           el('div', { style: { fontSize: '2.4rem' }, text: '📭' }),
-          el('h2', { text: 'لا توجد أنشطة محفوظة بعد' }),
-          el('p', { class: 'muted small', text: 'أنشئ نشاطاً ثم اضغط «حفظ في حسابي» ليظهر هنا.' }),
-          el('a', { class: 'btn primary', href: '#/' }, 'إنشاء نشاط'),
+          el('h2', { text: t('hnoSavedActivitiesYet') }),
+          el('p', { class: 'muted small', text: t('hcreateAnActivityThen') }),
+          el('a', { class: 'btn primary', href: '#/' }, t('hcreateAnActivity')),
         ])
       );
     } else {
@@ -203,7 +221,7 @@
           el(
             'button',
             { class: 'btn ghost sm', type: 'button', onclick: logout },
-            '🚪 تسجيل الخروج'
+            t('hsignOut3')
           ),
         ]),
       ])
@@ -211,13 +229,13 @@
   }
 
   function activityCard(activity) {
-    const when = new Date(activity.updatedAt).toLocaleDateString('ar', { year: 'numeric', month: 'short', day: 'numeric' });
-    const pace = { host: '🎛️ المدرب', auto: '⏱️ تلقائي', self: '🏃 حر' }[activity.settings?.pace] || '';
+    const when = new Date(activity.updatedAt).toLocaleDateString(loc(), { year: 'numeric', month: 'short', day: 'numeric' });
+    const pace = { host: t('hteacherPaced'), auto: t('hauto'), self: t('hselfPaced') }[activity.settings?.pace] || '';
 
-    const launch = el('button', { class: 'btn accent sm', type: 'button' }, '🚀 إطلاق جلسة');
+    const launch = el('button', { class: 'btn accent sm', type: 'button' }, t('hlaunchASession'));
     launch.addEventListener('click', async () => {
       launch.disabled = true;
-      launch.textContent = 'جارٍ الإطلاق…';
+      launch.textContent = t('hlaunching');
       try {
         const created = await api(`/api/activities/${activity.id}/launch`, { method: 'POST' });
         rememberHost(created.code, created.hostToken, created.title);
@@ -225,28 +243,28 @@
       } catch (err) {
         toast(err.message, 'bad');
         launch.disabled = false;
-        launch.textContent = '🚀 إطلاق جلسة';
+        launch.textContent = t('hlaunchASession');
       }
     });
 
-    const remove = el('button', { class: 'btn danger sm', type: 'button' }, '🗑 حذف');
+    const remove = el('button', { class: 'btn danger sm', type: 'button' }, t('hdelete'));
     remove.addEventListener('click', async () => {
-      if (!confirm(`حذف «${activity.title}» نهائياً؟`)) return;
+      if (!confirm(t('hDeleteConfirm', { title: activity.title }))) return;
       try {
         await api(`/api/activities/${activity.id}`, { method: 'DELETE' });
-        toast('حُذف النشاط', 'ok');
+        toast(t('hactivityDeleted'), 'ok');
         openMyActivities();
       } catch (err) {
         toast(err.message, 'bad');
       }
     });
 
-    const duplicate = el('button', { class: 'btn ghost sm', type: 'button' }, '📄 استنساخ');
+    const duplicate = el('button', { class: 'btn ghost sm', type: 'button' }, t('hduplicate'));
     duplicate.addEventListener('click', async () => {
       duplicate.disabled = true;
       try {
         const { activity: copy } = await api(`/api/activities/${activity.id}/duplicate`, { method: 'POST' });
-        toast(`نُسخ إلى «${copy.title}»`, 'ok');
+        toast(t('hCopiedTo', { title: copy.title }), 'ok');
         openMyActivities();
       } catch (err) {
         toast(err.message, 'bad');
@@ -257,18 +275,18 @@
     return el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
         el('h2', { text: activity.title, style: { margin: 0, fontSize: '1.05rem' } }),
-        activity.live ? el('span', { class: 'badge live' }, `مباشر · ${activity.live.code}`) : null,
+        activity.live ? el('span', { class: 'badge live' }, t('hLiveCode', { code: activity.live.code })) : null,
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
-        el('span', { class: 'badge', text: `${activity.questionCount} سؤالاً` }),
+        el('span', { class: 'badge', text: t('hQuestionCount', { count: activity.questionCount }) }),
         pace ? el('span', { class: 'badge', text: pace }) : null,
-        el('span', { class: 'muted small', text: 'آخر تعديل ' + when }),
+        el('span', { class: 'muted small', text: t('hlastEdited') + when }),
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
         activity.live
-          ? el('a', { class: 'btn primary sm', href: '#/live/' + activity.live.code }, '↩ العودة للجلسة')
+          ? el('a', { class: 'btn primary sm', href: '#/live/' + activity.live.code }, t('hbackToTheSession'))
           : launch,
-        el('a', { class: 'btn ghost sm', href: '#/edit/' + activity.id }, '✏️ فتح وتعديل'),
+        el('a', { class: 'btn ghost sm', href: '#/edit/' + activity.id }, t('hopenAndEdit')),
         duplicate,
         el('span', { class: 'grow' }),
         remove,
@@ -286,7 +304,7 @@
       window.Builder.saveDraft({ title: activity.title, settings: activity.settings, questions: activity.questions });
       setEditingActivity(activity.id);
       openBuilder();
-      toast('فُتح «' + activity.title + '» للتعديل', 'ok');
+      toast(t('hopened') + activity.title + t('htoEdit'), 'ok');
     } catch (err) {
       toast(err.message, 'bad');
       location.hash = '#/mine';
@@ -297,7 +315,7 @@
   async function startDemo() {
     teardown();
     app.innerHTML = '';
-    app.append(el('div', { class: 'card center stack' }, [el('div', { class: 'spinner' }), el('p', { class: 'muted', text: 'جارٍ تجهيز تجربة سريعة…' })]));
+    app.append(el('div', { class: 'card center stack' }, [el('div', { class: 'spinner' }), el('p', { class: 'muted', text: t('hpreparingAQuickDemo') })]));
     const template = (window.TEMPLATES || []).find((item) => item.key === 'quiz') || (window.TEMPLATES || [])[0];
     try {
       const created = await api('/api/sessions', {
@@ -311,9 +329,9 @@
       showOfflineBanner(app);
       app.append(
         el('div', { class: 'card stack center' }, [
-          el('h2', { text: 'تعذّر بدء التجربة' }),
+          el('h2', { text: t('hcouldNotStartThe') }),
           el('p', { class: 'muted small', text: err.message }),
-          el('a', { class: 'btn primary', href: '#/' }, 'الذهاب إلى المحرّر'),
+          el('a', { class: 'btn primary', href: '#/' }, t('hgoToTheEditor')),
         ])
       );
     }
@@ -347,10 +365,10 @@
     // زر رجوع صريح — لا يكفي الأيقونة الصغيرة في الشريط العلوي
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الصفحة الرئيسية'),
+        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('a', { class: 'btn ghost sm', href: '/help.html' }, '📖 دليل المعلّم'),
-          el('span', { class: 'muted small', text: 'مسودتك تُحفظ تلقائياً' }),
+          el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuide')),
+          el('span', { class: 'muted small', text: t('hyourDraftIsSaved') }),
         ]),
       ])
     );
@@ -358,24 +376,24 @@
       // ترحيب باسم صاحب الحساب — أول ما يراه المعلّم بعد الدخول
       app.append(
         el('div', { class: 'welcome' }, [
-          el('h1', { style: { margin: 0 }, text: `👋 أهلاً ${firstName(state.user.name)}` }),
+          el('h1', { style: { margin: 0 }, text: t('hHelloUser', { name: firstName(state.user.name) }) }),
           el('p', {
             class: 'muted small',
             style: { margin: 0 },
-            text: state.premium?.isPremium ? 'حسابك بريميوم — كل الميزات مفتوحة لك.' : 'جاهز لنشاط جديد؟ ابدأ من الأسفل.',
+            text: state.premium?.isPremium ? t('hyourAccountIsPremium') : t('hreadyForANew'),
           }),
         ])
       );
     }
-    app.append(el('h1', { text: 'إنشاء نشاط تفاعلي' }));
+    app.append(el('h1', { text: t('hcreateAnInteractiveActivity') }));
     // مدخل المساعد الذكي: أسرع طريق لمدرب لا يريد كتابة الأسئلة يدوياً
     app.append(
       el('div', { class: 'card row between', style: { marginBottom: '12px' } }, [
         el('div', { class: 'stack tight' }, [
-          el('strong', { text: '🤖 لا تعرف من أين تبدأ؟' }),
-          el('span', { class: 'muted small', text: 'احكِ للمساعد عن درسك وسيصوغ لك الأسئلة ويعرضها عليك قبل الاعتماد.' }),
+          el('strong', { text: t('hnotSureWhereTo') }),
+          el('span', { class: 'muted small', text: t('htellTheAssistantAbout') }),
         ]),
-        el('a', { class: 'btn accent', href: '#/ai' }, 'صمّم بالذكاء الاصطناعي'),
+        el('a', { class: 'btn accent', href: '#/ai' }, t('hdesignWithAi2')),
       ])
     );
     app.append(root);
@@ -395,7 +413,7 @@
   /** تاريخ مقروء بالعربية، أو «—» */
   function fmtDate(ms) {
     if (!ms) return '—';
-    return new Date(ms).toLocaleDateString('ar', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(ms).toLocaleDateString(loc(), { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   /** كم يوماً بقي على الاشتراك (سالب = منتهٍ) */
@@ -425,9 +443,9 @@
       app.innerHTML = '';
       app.append(
         el('div', { class: 'card stack center' }, [
-          el('h2', { text: 'الصفحة غير متاحة' }),
+          el('h2', { text: t('hpageNotAvailable') }),
           el('p', { class: 'muted small', text: err.message }),
-          el('a', { class: 'btn ghost', href: '#/' }, 'العودة'),
+          el('a', { class: 'btn ghost', href: '#/' }, t('hback')),
         ])
       );
       return;
@@ -440,28 +458,28 @@
       app.innerHTML = '';
       app.append(
         el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-          el('a', { class: 'btn ghost sm', href: '#/' }, '⟩ العودة'),
-          el('button', { class: 'btn ghost sm', type: 'button', onclick: openAdmin }, '🔄 تحديث'),
+          el('a', { class: 'btn ghost sm', href: '#/' }, t('hback2')),
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: openAdmin }, t('hrefresh')),
         ])
       );
-      app.append(el('h1', { text: '👑 لوحة المالك' }));
+      app.append(el('h1', { text: t('hownerPanel2') }));
       app.append(
         el('div', { class: 'stats' }, [
-          stat(users.length, 'مدرباً مسجّلاً'),
-          stat(active, 'اشتراك بريميوم فعّال'),
-          stat(users.filter((u) => u.premiumUntil && !u.isPremium).length, 'اشتراك منتهٍ'),
+          stat(users.length, t('hregisteredTeachers')),
+          stat(active, t('hactivePremiumSubscriptions')),
+          stat(users.filter((u) => u.premiumUntil && !u.isPremium).length, t('hexpiredSubscriptions')),
         ])
       );
 
       const rows = users.map((user) => {
         const left = daysLeft(user.premiumUntil);
         const statusBadge = user.isAdmin
-          ? el('span', { class: 'badge', text: '👑 المالك' })
+          ? el('span', { class: 'badge', text: t('howner') })
           : user.isPremium
-            ? el('span', { class: 'badge ok', text: `بريميوم · ${left} يوم` })
+            ? el('span', { class: 'badge ok', text: t('hPremiumDays', { days: left }) })
             : user.premiumUntil
-              ? el('span', { class: 'badge bad', text: 'منتهٍ' })
-              : el('span', { class: 'badge', text: 'مجاني' });
+              ? el('span', { class: 'badge bad', text: t('hexpired') })
+              : el('span', { class: 'badge', text: t('hfree') });
 
         const apply = async (body, label) => {
           try {
@@ -476,9 +494,9 @@
         };
 
         const controls = el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('button', { class: 'btn sm ok', type: 'button', onclick: () => apply({ addDays: 30 }, 'أُضيف شهر') }, '+ شهر'),
-          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: 365 }, 'أُضيفت سنة') }, '+ سنة'),
-          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: -30 }, 'خُصم شهر') }, '− شهر'),
+          el('button', { class: 'btn sm ok', type: 'button', onclick: () => apply({ addDays: 30 }, t('haMonthWasAdded')) }, t('hmonth')),
+          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: 365 }, t('haYearWasAdded')) }, t('hyear')),
+          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: -30 }, t('haMonthWasDeducted')) }, t('hmonth2')),
           el(
             'button',
             {
@@ -486,15 +504,15 @@
               type: 'button',
               onclick: () => {
                 const current = user.premiumUntil ? new Date(user.premiumUntil).toISOString().slice(0, 10) : '';
-                const answer = prompt('تاريخ انتهاء الاشتراك (YYYY-MM-DD) — اتركه فارغاً للإلغاء:', current);
+                const answer = prompt(t('hsubscriptionExpiryDateYyyy'), current);
                 if (answer === null) return;
-                if (!answer.trim()) return apply({ until: null }, 'أُلغي الاشتراك');
+                if (!answer.trim()) return apply({ until: null }, t('hsubscriptionCancelled'));
                 const stamp = Date.parse(answer + 'T23:59:59');
-                if (Number.isNaN(stamp)) return toast('تاريخ غير مفهوم — اكتبه هكذا 2026-12-31', 'bad');
-                apply({ until: stamp }, 'حُدّث التاريخ');
+                if (Number.isNaN(stamp)) return toast(t('hdateNotUnderstoodWrite'), 'bad');
+                apply({ until: stamp }, t('hdateUpdated'));
               },
             },
-            '📅 تاريخ'
+            t('hdate')
           ),
           user.premiumUntil
             ? el(
@@ -502,9 +520,9 @@
                 {
                   class: 'btn sm danger',
                   type: 'button',
-                  onclick: () => confirm(`إلغاء اشتراك ${user.name} فوراً؟`) && apply({ until: null }, 'أُلغي الاشتراك'),
+                  onclick: () => confirm(t('hCancelSubConfirm', { name: user.name })) && apply({ until: null }, t('hsubscriptionCancelled')),
                 },
-                '✕ إلغاء'
+                t('hcancel')
               )
             : null,
         ]);
@@ -521,11 +539,11 @@
 
       app.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { style: { margin: 0 }, text: 'المدربون المسجّلون' }),
-          el('p', { class: 'muted small', style: { margin: 0 }, text: 'التمديد يبدأ من تاريخ الانتهاء الحالي إن كان سارياً، وإلا من اليوم.' }),
+          el('h2', { style: { margin: 0 }, text: t('hregisteredTeachers2') }),
+          el('p', { class: 'muted small', style: { margin: 0 }, text: t('hextensionsStartFromThe') }),
           el('div', { class: 'table-wrap' }, [
             el('table', {}, [
-              el('thead', {}, el('tr', {}, [el('th', {}, 'المدرب'), el('th', {}, 'تاريخ التسجيل'), el('th', {}, 'الاشتراك'), el('th', {}, 'التحكّم')])),
+              el('thead', {}, el('tr', {}, [el('th', {}, t('hteacher')), el('th', {}, t('hsignedUp')), el('th', {}, t('hsubscription')), el('th', {}, t('hcontrols'))])),
               el('tbody', {}, rows),
             ]),
           ]),
@@ -538,7 +556,7 @@
 
   /** رابط واتساب جاهز برسالة مكتوبة — أقصر طريق من رغبة الاشتراك إلى محادثة */
   function whatsappLink(plan, note) {
-    const text = `مرحباً، أريد الاشتراك في بريميوم Tapio (${plan.priceUsd}$ شهرياً).${note ? ' ' + note : ''}`;
+    const text = t('hWhatsappMsg', { price: plan.priceUsd }) + (note ? ' ' + note : '');
     return `https://wa.me/${plan.whatsapp}?text=${encodeURIComponent(text)}`;
   }
 
@@ -546,17 +564,17 @@
   function upgradeCard(plan, title) {
     const p = plan || { whatsapp: '970597034066', priceUsd: 3, perks: [] };
     return el('div', { class: 'card stack' }, [
-      el('h2', { style: { margin: 0 }, text: title || '⭐ ميزة بريميوم' }),
-      el('p', { class: 'muted small', style: { margin: 0 }, text: 'اشتراك بريميوم يفتح لك:' }),
+      el('h2', { style: { margin: 0 }, text: title || t('hpremiumFeature') }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('haPremiumSubscriptionUnlocks') }),
       el('div', { class: 'stack tight' }, [
-        el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '🤖' }), el('span', { class: 'grow', text: 'تصميم النشاط بالذكاء الاصطناعي' })]),
-        el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '📊' }), el('span', { class: 'grow', text: 'تصدير النتائج Excel و PDF' })]),
+        el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '🤖' }), el('span', { class: 'grow', text: t('hdesignTheActivityWith') })]),
+        el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '📊' }), el('span', { class: 'grow', text: t('hexportResultsToExcel') })]),
       ]),
       el('div', { class: 'row between' }, [
-        el('strong', { text: `${p.priceUsd}$ شهرياً فقط` }),
-        el('a', { class: 'btn primary', href: whatsappLink(p), target: '_blank', rel: 'noopener' }, `💬 اشترك عبر واتساب ${p.whatsapp}`),
+        el('strong', { text: t('hPriceMonthly', { price: p.priceUsd }) }),
+        el('a', { class: 'btn primary', href: whatsappLink(p), target: '_blank', rel: 'noopener' }, t('hWhatsappBtn', { phone: p.whatsapp })),
       ]),
-      el('p', { class: 'muted small', style: { margin: 0 }, text: 'بعد التواصل يُفعَّل حسابك خلال دقائق على نفس بريدك المسجّل.' }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('hafterYouGetIn') }),
     ]);
   }
 
@@ -569,8 +587,8 @@
     app.innerHTML = '';
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '#/' }, '⟩ العودة للمحرّر'),
-        el('a', { class: 'btn ghost sm', href: '/' }, '🏠 الرئيسية'),
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hbackToTheEditor')),
+        el('a', { class: 'btn ghost sm', href: '/' }, t('hhome')),
       ])
     );
     const root = el('div', { class: 'stack' });
@@ -580,9 +598,9 @@
     if (!state.user) {
       root.append(
         el('div', { class: 'card stack center' }, [
-          el('h2', { text: '🤖 صمّم نشاطك بالذكاء الاصطناعي' }),
-          el('p', { class: 'muted', text: 'سجّل الدخول أولاً كي يتذكّر المساعد نشاطاتك ويحفظ ما يصممه لك.' }),
-          el('a', { class: 'btn primary', href: '/login.html?next=' + encodeURIComponent('/host.html#/ai') }, 'تسجيل الدخول بجوجل'),
+          el('h2', { text: t('hdesignYourActivityWith') }),
+          el('p', { class: 'muted', text: t('hsignInFirstSo') }),
+          el('a', { class: 'btn primary', href: '/login.html?next=' + encodeURIComponent('/host.html#/ai') }, t('hsignInWithGoogle')),
         ])
       );
       return;
@@ -592,11 +610,11 @@
       root.append(
         el('div', { class: 'card stack center' }, [
           el('div', { style: { fontSize: '2.2rem' }, text: '🤖' }),
-          el('h2', { style: { margin: 0 }, text: 'صمّم نشاطك بالذكاء الاصطناعي' }),
-          el('p', { class: 'muted', style: { margin: 0 }, text: 'احكِ للمساعد عن درسك فيصوغ لك الأسئلة كاملة ويعرضها عليك قبل الاعتماد — ميزة للمشتركين.' }),
+          el('h2', { style: { margin: 0 }, text: t('hdesignYourActivityWith2') }),
+          el('p', { class: 'muted', style: { margin: 0 }, text: t('htellTheAssistantAbout2') }),
         ])
       );
-      root.append(upgradeCard(state.premium?.plan, '⭐ افتح المساعد الذكي'));
+      root.append(upgradeCard(state.premium?.plan, t('hunlockTheAiAssistant')));
       return;
     }
 
@@ -604,7 +622,7 @@
       onApprove: (draft) => {
         window.Builder.saveDraft(draft);
         setEditingActivity(null);
-        toast('✅ فُتحت المسودة في المحرّر — عدّل ما تشاء ثم أطلقها', 'ok');
+        toast(t('htheDraftIsOpen'), 'ok');
         location.hash = '#/';
       },
     });
@@ -614,7 +632,7 @@
         if (!status.configured) {
           root.prepend(
             el('div', { class: 'note warn small' },
-              'المساعد غير مُفعّل على الخادم بعد — أضف المتغيّر AZURE_OPENAI_KEY في إعدادات الاستضافة ثم أعد النشر.')
+              t('htheAssistantIsNot'))
           );
         }
       })
@@ -628,7 +646,8 @@
       try {
         const payload = {
           title: draft.title,
-          settings: draft.settings,
+          // لغة النشاط = لغة واجهة منشئه، فتتبعها شاشات الطلاب
+          settings: { ...draft.settings, lang: window.I18n ? window.I18n.getLang() : 'ar' },
           questions: draft.questions.map((question) => ({
             ...question,
             options: (question.options || []).filter((option) => option.text.trim()),
@@ -640,7 +659,7 @@
         // الخادم يحفظ النشاط تلقائياً للمدرب المسجّل — نتذكر معرّفه حتى لا يتكرر
         if (created.activityId) {
           setEditingActivity(created.activityId);
-          toast('💾 حُفظ النشاط في «نشاطاتي» تلقائياً', 'ok');
+          toast(t('htheActivityWasSaved'), 'ok');
         }
         location.hash = '#/live/' + created.code;
       } catch (err) {
@@ -654,7 +673,7 @@
       return;
     } catch (err) {
       // السبب الأشيع: مسودة محفوظة من نسخة قديمة — نمسحها ونعيد المحاولة
-      console.error('تعذّر بناء المحرّر:', err);
+      console.error(t('hcouldNotBuildThe'), err);
       try {
         localStorage.removeItem(window.Builder.DRAFT_KEY);
       } catch {
@@ -663,7 +682,7 @@
       root.innerHTML = '';
       try {
         window.Builder.mount(root, onLaunch, saveAction);
-        toast('أُعيد ضبط المسودة بعد عطل', 'ok');
+        toast(t('htheDraftWasReset'), 'ok');
         return;
       } catch (err2) {
         showBuilderError(root, err2);
@@ -680,12 +699,12 @@
       return el(
         'a',
         { class: 'btn ghost', href: '/login.html?next=' + encodeURIComponent('/host.html#/') },
-        '🔐 سجّل الدخول لحفظ النشاط في حسابك'
+        t('hsignInToSave')
       );
     }
 
     const editing = !!state.editingActivityId;
-    const button = el('button', { class: 'btn ghost', type: 'button' }, editing ? '💾 حفظ التعديلات' : '💾 حفظ في حسابي');
+    const button = el('button', { class: 'btn ghost', type: 'button' }, editing ? t('hsaveChanges') : t('hsaveToMyAccount'));
     button.addEventListener('click', async () => {
       const problem = validate(draft);
       if (problem) return toast(problem, 'bad');
@@ -698,21 +717,21 @@
         })),
       };
       button.disabled = true;
-      button.textContent = 'جارٍ الحفظ…';
+      button.textContent = t('hsaving');
       try {
         if (editing) {
           await api('/api/activities/' + state.editingActivityId, { method: 'PUT', body: payload });
-          toast('حُفظت التعديلات ✅', 'ok');
+          toast(t('hchangesSaved'), 'ok');
         } else {
           const { activity } = await api('/api/activities', { method: 'POST', body: payload });
           setEditingActivity(activity.id);
-          toast('حُفظ في حسابك ✅', 'ok');
+          toast(t('hsavedToYourAccount'), 'ok');
         }
       } catch (err) {
         toast(err.message, 'bad');
       } finally {
         button.disabled = false;
-        button.textContent = state.editingActivityId ? '💾 حفظ التعديلات' : '💾 حفظ في حسابي';
+        button.textContent = state.editingActivityId ? t('hsaveChanges') : t('hsaveToMyAccount');
       }
     });
     return button;
@@ -723,8 +742,8 @@
     root.innerHTML = '';
     root.append(
       el('div', { class: 'card stack' }, [
-        el('h2', { text: '⚠️ تعذّر فتح محرّر الأسئلة' }),
-        el('p', { class: 'muted small', text: 'جرّب إعادة الضبط. إن تكرر العطل أرسل نص الرسالة التالية:' }),
+        el('h2', { text: t('hcouldNotOpenThe') }),
+        el('p', { class: 'muted small', text: t('htryResettingIfIt') }),
         el('pre', {
           style: {
             direction: 'ltr',
@@ -753,7 +772,7 @@
               location.reload();
             },
           },
-          '🔄 إعادة الضبط وإعادة التحميل'
+          t('hresetAndReload')
         ),
       ])
     );
@@ -767,9 +786,9 @@
       app.innerHTML = '';
       app.append(
         el('div', { class: 'card stack center' }, [
-          el('h2', { text: 'لا نملك مفتاح هذه الجلسة على هذا الجهاز' }),
-          el('p', { class: 'muted small', text: 'مفتاح المضيف محفوظ في متصفح الجهاز الذي أنشأ الجلسة فقط.' }),
-          el('a', { class: 'btn primary', href: '#/' }, 'إنشاء نشاط جديد'),
+          el('h2', { text: t('hweDoNotHave') }),
+          el('p', { class: 'muted small', text: t('htheHostKeyIs') }),
+          el('a', { class: 'btn primary', href: '#/' }, t('hcreateANewActivity')),
         ])
       );
       return;
@@ -789,7 +808,7 @@
       onOpen: () => state.socket.send({ t: 'host:hello', code, hostToken }),
       onStatus: (status) => {
         connBadge.className = 'badge ' + (status === 'online' ? 'ok' : status === 'offline' ? 'bad' : '');
-        connBadge.textContent = status === 'online' ? 'مباشر' : status === 'offline' ? 'انقطع' : 'اتصال…';
+        connBadge.textContent = status === 'online' ? t('hlive') : status === 'offline' ? t('hoffline') : t('hconnecting');
       },
       onMessage: (msg) => {
         if (msg.t === 'state') {
@@ -806,7 +825,7 @@
           // لوحة التحكم ومسرح الوضع الحر كلاهما يرسمان من هذه البيانات
           if (state.tab === 'dashboard' || state.live?.pace === 'self') renderLive();
         } else if (msg.t === 'session:closed') {
-          toast('انتهت الجلسة', 'bad');
+          toast(t('hsessionEnded'), 'bad');
           teardown();
           location.hash = '#/';
         } else if (msg.t === 'error') {
@@ -853,7 +872,7 @@
   }
 
   function send(type, extra) {
-    if (!state.socket?.send({ t: type, ...(extra || {}) })) toast('لا يوجد اتصال', 'bad');
+    if (!state.socket?.send({ t: type, ...(extra || {}) })) toast(t('hnoConnection'), 'bad');
   }
 
   // ------------------------------------------------------------- الرسم
@@ -875,10 +894,10 @@
     );
 
     const tabs = el('div', { class: 'tabs', style: { marginBottom: '12px' } }, [
-      tabBtn('stage', '🎬 العرض'),
-      tabBtn('dashboard', '📊 لوحة التحكم'),
-      tabBtn('analytics', '📈 التحليل'),
-      tabBtn('share', '🔗 المشاركة'),
+      tabBtn('stage', t('hstage')),
+      tabBtn('dashboard', t('hdashboard')),
+      tabBtn('analytics', t('hanalysis')),
+      tabBtn('share', t('hshare')),
     ]);
     app.append(tabs);
 
@@ -901,14 +920,14 @@
     return button;
   }
 
-  const PACE_LABEL = { host: '🎛️ أنت تنقل الشرائح', auto: '⏱️ انتقال تلقائي', self: '🏃 كل متدرب بسرعته' };
+  const PACE_LABEL = { host: t('hyouControlThePace'), auto: t('hautoAdvance'), self: t('heveryoneAtTheirOwn') };
 
   function statusLabel(s) {
-    if (s.status === 'ended') return 'انتهى النشاط';
-    if (s.status === 'lobby') return `في انتظار البدء · ${PACE_LABEL[s.pace] || ''}`;
-    if (s.pace === 'self') return `${PACE_LABEL.self} · ${s.total} أسئلة`;
-    const phase = { question: 'الإجابة جارية', results: 'عرض النتائج', leaderboard: 'لوحة الترتيب' }[s.phase] || '';
-    return `سؤال ${s.index + 1} من ${s.total} · ${phase}${s.pace === 'auto' ? ' · تلقائي' : ''}`;
+    if (s.status === 'ended') return t('pActivityEnded');
+    if (s.status === 'lobby') return t('hWaitingStart', { pace: PACE_LABEL[s.pace] || '' });
+    if (s.pace === 'self') return t('hSelfTotal', { pace: PACE_LABEL.self, total: s.total });
+    const phase = { question: t('hanswering'), results: t('hshowResults'), leaderboard: t('hleaderboard') }[s.phase] || '';
+    return t('hStatusLine', { index: s.index + 1, total: s.total, phase, auto: s.pace === 'auto' ? ' · ' + t('hAutoSuffix') : '' });
   }
 
   // ------------------------------------------------------------- المسرح
@@ -917,7 +936,7 @@
     if (s.status === 'lobby') return renderLobby(s);
     if (s.deadlineAt && s.deadlineAt > serverTime()) {
       const value = el('strong', {});
-      app.append(el('div', { class: 'deadline-bar' }, [el('span', { text: '⏳ ينتهي الاختبار خلال' }), value]));
+      app.append(el('div', { class: 'deadline-bar' }, [el('span', { text: t('htheQuizEndsIn') }), value]));
       state.stopDeadline = countdownTo(value, s.deadlineAt);
     }
     if (s.status === 'ended' || s.phase === 'final') return renderFinal(s);
@@ -934,8 +953,8 @@
     app.append(
       el('div', { class: 'card stack' }, [
         el('div', { class: 'row between' }, [
-          el('span', { class: 'badge' }, '🏃 وضع حر — كل متدرب بسرعته'),
-          el('span', { class: 'badge' + (done === total && total ? ' ok' : '') }, `أنهى ${done} من ${total}`),
+          el('span', { class: 'badge' }, t('hselfPacedEveryoneAt')),
+          el('span', { class: 'badge' + (done === total && total ? ' ok' : '') }, t('hFinishedOf', { done, total })),
         ]),
         el('div', { class: 'progress' }, el('i', { style: { width: (total ? (done / total) * 100 : 0) + '%' } })),
       ])
@@ -943,17 +962,17 @@
 
     // أين وصل كل متدرب
     const people = el('div', { class: 'people' });
-    if (!total) people.append(el('span', { class: 'muted small', text: 'لا يوجد مشاركون' }));
+    if (!total) people.append(el('span', { class: 'muted small', text: t('hnoParticipants') }));
     s.participants.forEach((p) => {
       people.append(
         el('span', { class: 'chip' + (p.done ? ' answered' : '') + (p.connected ? '' : ' off') }, [
           avatarNode(p.avatar, 'sm'),
           el('span', { text: p.name }),
-          el('span', { class: 'badge', text: p.done ? '✓ أنهى' : `${p.at}/${s.total}` }),
+          el('span', { class: 'badge', text: p.done ? t('hfinished') : `${p.at}/${s.total}` }),
         ])
       );
     });
-    app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'أين وصل المتدربون؟', style: { margin: 0 } }), people]));
+    app.append(el('div', { class: 'card stack' }, [el('h2', { text: t('hwhereIsEveryone'), style: { margin: 0 } }), people]));
 
     // تصفّح نتائج أي سؤال
     const picker = el('div', { class: 'tabs', style: { marginBottom: '10px' } });
@@ -970,7 +989,7 @@
     app.append(
       el('div', { class: 'card stack' }, [
         el('div', { class: 'row between' }, [
-          el('h2', { text: 'نتائج الأسئلة', style: { margin: 0 } }),
+          el('h2', { text: t('hquestionResults'), style: { margin: 0 } }),
           el('span', { class: 'badge' }, `${TYPE_EMOJI[current.type]} ${TYPE_LABELS[current.type]}`),
         ]),
         picker,
@@ -986,21 +1005,21 @@
     const row = data?.perQuestion?.[index];
     if (!row) {
       send('host:dashboard');
-      return el('p', { class: 'muted center', text: 'جارٍ التحميل…' });
+      return el('p', { class: 'muted center', text: t('hloading') });
     }
     const wrap = el('div', { class: 'stack' });
     wrap.append(
       el('div', { class: 'stats' }, [
-        stat(`${row.responses}/${row.reached}`, 'أجابوا / وصلوا'),
-        row.accuracy === null ? null : stat(row.accuracy + '٪', 'الدقة'),
-        stat(fmtMs(row.avgMs), 'متوسط الزمن'),
+        stat(`${row.responses}/${row.reached}`, t('hansweredReached')),
+        row.accuracy === null ? null : stat(row.accuracy + t('pctSuffix'), t('haccuracy')),
+        stat(fmtMs(row.avgMs), t('haverageTime')),
       ].filter(Boolean))
     );
     // النتائج الفعلية: سحابة الكلمات، أعمدة المقياس، الخيارات، أو الإجابات المفتوحة
     if (row.results && row.results.total > 0) {
       wrap.append(resultsView({ scored: row.correct !== null }, row.results, true));
     } else {
-      wrap.append(el('p', { class: 'muted center small', style: { margin: 0 }, text: 'لا توجد إجابات على هذا السؤال بعد' }));
+      wrap.append(el('p', { class: 'muted center small', style: { margin: 0 }, text: t('hnoAnswersToThis') }));
     }
     return wrap;
   }
@@ -1026,17 +1045,17 @@
     if (value) state.stopSchedule = countdownTo(value, opensAt, () => renderLive());
 
     return el('div', { class: 'card stack schedule-card' }, [
-      opensAt ? el('span', { class: 'badge', text: '⏰ اختبار مجدول' }) : el('span', { class: 'badge', text: '⏳ مدة محددة' }),
-      opensAt ? el('p', { class: 'muted', style: { margin: 0 }, text: 'يفتح تلقائياً بعد' }) : null,
+      opensAt ? el('span', { class: 'badge', text: t('hscheduledQuiz') }) : el('span', { class: 'badge', text: t('hfixedDuration') }),
+      opensAt ? el('p', { class: 'muted', style: { margin: 0 }, text: t('hopensAutomaticallyIn') }) : null,
       value,
       opensAt
         ? el('span', {
             class: 'muted small',
-            text: new Date(opensAt).toLocaleString('ar', { dateStyle: 'full', timeStyle: 'short' }),
+            text: new Date(opensAt).toLocaleString(loc(), { dateStyle: 'full', timeStyle: 'short' }),
           })
         : null,
-      duration ? el('span', { class: 'badge' }, `مدة الاختبار ${duration} دقيقة — يُقفل تلقائياً بعدها`) : null,
-      opensAt ? el('span', { class: 'muted small', text: 'يمكنك البدء قبل الموعد من زر «بدء النشاط».' }) : null,
+      duration ? el('span', { class: 'badge' }, t('hDurationNote', { n: duration })) : null,
+      opensAt ? el('span', { class: 'muted small', text: t('hyouCanStartBefore') }) : null,
     ]);
   }
 
@@ -1049,7 +1068,7 @@
         box.innerHTML = svg;
       })
       .catch(() => {
-        box.textContent = 'تعذّر توليد QR';
+        box.textContent = t('hcouldNotGenerateThe');
       });
     return box;
   }
@@ -1057,22 +1076,22 @@
   function joinInfo(s) {
     const url = state.joinUrl || `${location.origin}/j/${state.code}`;
     return el('div', { class: 'stack center' }, [
-      el('p', { class: 'muted small', style: { margin: 0 }, text: 'ادخل من المتصفح إلى' }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('hopenThisAddressIn') }),
       el('div', { style: { direction: 'ltr', fontWeight: '700' }, text: url.replace(/^https?:\/\//, '') }),
-      el('p', { class: 'muted small', style: { margin: '6px 0 0' }, text: 'أو أدخل الرمز' }),
+      el('p', { class: 'muted small', style: { margin: '6px 0 0' }, text: t('horEnterTheCode') }),
       el('div', { class: 'bigcode', text: state.code }),
       el('div', { class: 'row', style: { justifyContent: 'center' } }, [
-        el('button', { class: 'btn sm', type: 'button', onclick: () => copy(url) }, '📋 نسخ الرابط'),
-        el('button', { class: 'btn sm ghost', type: 'button', onclick: () => share(url, s.title) }, '↗ مشاركة'),
+        el('button', { class: 'btn sm', type: 'button', onclick: () => copy(url) }, t('hcopyLink')),
+        el('button', { class: 'btn sm ghost', type: 'button', onclick: () => share(url, s.title) }, t('hshare2')),
       ]),
-      el('p', { class: 'muted small', style: { margin: 0 }, text: s.settings.requireName ? 'سيُطلب من المشاركين اسم أو كنية' : 'وضع مجهول: لن يُطلب اسم' }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: s.settings.requireName ? t('hparticipantsWillBeAsked') : t('hanonymousModeNoName') }),
     ]);
   }
 
   function peopleCard(s) {
     const people = el('div', { class: 'people' });
     if (!s.participants.length) {
-      people.append(el('span', { class: 'muted small', text: 'لم ينضم أحد بعد…' }));
+      people.append(el('span', { class: 'muted small', text: t('hnobodyHasJoinedYet') }));
     }
     s.participants.forEach((participant) => {
       const team = s.teams && participant.teamId != null ? s.teams[participant.teamId] : null;
@@ -1081,16 +1100,16 @@
         { class: 'chip' + (participant.answeredCurrent ? ' answered' : '') + (participant.connected ? '' : ' off') },
         [avatarNode(participant.avatar, 'sm'), el('span', { text: (team ? team.emoji + ' ' : '') + participant.name })]
       );
-      chip.title = 'اضغط مطولاً للإخراج';
+      chip.title = t('hlongPressToRemove');
       chip.addEventListener('dblclick', () => {
-        if (confirm(`إخراج ${participant.name} من الجلسة؟`)) send('host:kick', { participantId: participant.id });
+        if (confirm(t('hKickConfirm', { name: participant.name }))) send('host:kick', { participantId: participant.id });
       });
       people.append(chip);
     });
     return el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
-        el('h2', { text: `المشاركون (${s.participants.length})`, style: { margin: 0 } }),
-        el('span', { class: 'muted small', text: 'نقرة مزدوجة على الاسم للإخراج' }),
+        el('h2', { text: t('hPeopleCount', { count: s.participants.length }), style: { margin: 0 } }),
+        el('span', { class: 'muted small', text: t('hdoubleTapAName') }),
       ]),
       people,
     ]);
@@ -1113,10 +1132,10 @@
     if (s.phase === 'question' && untilOpen > 250) {
       app.append(
         el('div', { class: 'card stack center' }, [
-          el('span', { class: 'badge' }, `${TYPE_EMOJI[q.type]} سؤال ${s.index + 1} من ${s.total}`),
-          q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال' }) : null,
+          el('span', { class: 'badge' }, t('hEmojiQuestionOf', { emoji: TYPE_EMOJI[q.type], index: s.index + 1, total: s.total })),
+          q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: t('pQuestionImage') }) : null,
           el('h2', { class: 'big-q', text: q.text }),
-          el('p', { class: 'muted', text: 'استعد… ينطلق الجميع معاً' }),
+          el('p', { class: 'muted', text: t('pGetReady') }),
         ])
       );
       state.cancelCountdown = Fx.countdown(untilOpen, () => {
@@ -1129,9 +1148,9 @@
     const head = el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
         el('span', { class: 'badge' }, `${TYPE_EMOJI[q.type]} ${TYPE_LABELS[q.type]}`),
-        el('span', { class: 'badge' + (answered === total && total > 0 ? ' ok' : '') }, `أجاب ${answered} من ${total}`),
+        el('span', { class: 'badge' + (answered === total && total > 0 ? ' ok' : '') }, t('hAnsweredOf', { answered, total })),
       ]),
-      q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: 'صورة السؤال' }) : null,
+      q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: t('pQuestionImage') }) : null,
       el('h2', { class: 'big-q', text: q.text }),
     ]);
 
@@ -1148,7 +1167,7 @@
     // شريط تقدّم الإجابات
     app.append(
       el('div', { class: 'card stack' }, [
-        el('div', { class: 'row between small muted' }, [el('span', { text: 'نسبة الإجابة' }), el('span', { text: total ? Math.round((answered / total) * 100) + '٪' : '—' })]),
+        el('div', { class: 'row between small muted' }, [el('span', { text: t('hanswerRate') }), el('span', { text: total ? Math.round((answered / total) * 100) + t('pctSuffix') : '—' })]),
         el('div', { class: 'progress thin' }, el('i', { style: { width: (total ? (answered / total) * 100 : 0) + '%' } })),
       ])
     );
@@ -1156,7 +1175,7 @@
     // مؤشر الانتقال التلقائي
     if (s.autoNextAt && s.phase !== 'question') {
       const label = el('span', { class: 'badge', id: 'autoNext' }, '…');
-      app.append(el('div', { class: 'card row between' }, [el('span', { class: 'muted small', text: '⏱️ الانتقال التلقائي بعد' }), label]));
+      app.append(el('div', { class: 'card row between' }, [el('span', { class: 'muted small', text: t('hautoAdvanceIn') }), label]));
       startAutoTick(s, label);
     }
 
@@ -1167,7 +1186,7 @@
   function resultsView(q, results, reveal) {
     const card = el('div', { class: 'card stack' });
     if (!results || results.total === 0) {
-      card.append(el('p', { class: 'muted center', style: { margin: 0 }, text: 'لا توجد إجابات بعد…' }));
+      card.append(el('p', { class: 'muted center', style: { margin: 0 }, text: t('sNoAnswersYet') }));
       return card;
     }
 
@@ -1183,7 +1202,7 @@
               el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
               el('span', { class: 'grow', text: option.text }),
               option.correct ? el('span', { class: 'badge ok', text: '✓' }) : null,
-              el('span', { class: 'count', text: `${option.percent}٪ · ${option.count}` }),
+              el('span', { class: 'count', text: `${option.percent}${t('pctSuffix')} · ${option.count}` }),
             ]
           )
         );
@@ -1191,7 +1210,7 @@
       card.append(options);
       if (q.scored) {
         card.append(
-          el('p', { class: 'muted small center', style: { margin: 0 } }, `إجابات صحيحة: ${results.correctCount} من ${results.total} · متوسط الزمن ${fmtMs(results.avgMs)}`)
+          el('p', { class: 'muted small center', style: { margin: 0 } }, t('hCorrectSummary', { correct: results.correctCount, total: results.total, time: fmtMs(results.avgMs) }))
         );
       }
       return card;
@@ -1219,11 +1238,11 @@
           el('div', { class: 'row' }, [
             el('span', { class: 'badge', text: String(bucket.value) }),
             el('div', { class: 'progress grow' }, el('i', { style: { width: bucket.percent + '%' } })),
-            el('span', { class: 'small muted', text: `${bucket.percent}٪ (${bucket.count})` }),
+            el('span', { class: 'small muted', text: `${bucket.percent}${t('pctSuffix')} (${bucket.count})` }),
           ])
         );
       });
-      card.append(el('p', { class: 'center', style: { margin: 0 } }, [el('strong', { text: 'المتوسط: ' + results.average })]));
+      card.append(el('p', { class: 'center', style: { margin: 0 } }, [el('strong', { text: t('sAverage') + results.average })]));
       return card;
     }
 
@@ -1248,7 +1267,7 @@
   }
 
   function renderBoard(s) {
-    app.append(el('h2', { class: 'center', text: '🏆 لوحة الترتيب' }));
+    app.append(el('h2', { class: 'center', text: t('hleaderboard2') }));
     app.append(el('div', { class: 'card' }, boardList(s.leaderboard || [])));
     const teamCard = teamBoard(s.teamLeaderboard);
     if (teamCard) app.append(teamCard);
@@ -1268,21 +1287,21 @@
         ])
       );
     });
-    return el('div', { class: 'card stack' }, [el('h2', { text: '🏳️ ترتيب الفرق', style: { margin: 0 } }), board]);
+    return el('div', { class: 'card stack' }, [el('h2', { text: t('pTeamBoard'), style: { margin: 0 } }), board]);
   }
 
   function renderFinal(s) {
     app.append(
       el('div', { class: 'card stack center' }, [
         el('div', { style: { fontSize: '3rem' }, text: '🎊' }),
-        el('h2', { text: 'انتهى النشاط', style: { margin: 0 } }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: 'حمّل النتائج الآن إن أردت الاحتفاظ بها — ستُحذف الجلسة تلقائياً.' }),
+        el('h2', { text: t('pActivityEnded'), style: { margin: 0 } }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hdownloadTheResultsNow') }),
         el('div', { class: 'row', style: { justifyContent: 'center' } }, [
-          el('button', { class: 'btn accent', type: 'button', onclick: () => exportAs('excel') }, '📊 تنزيل Excel'),
-          el('button', { class: 'btn accent', type: 'button', onclick: () => exportAs('pdf') }, '📄 تقرير PDF'),
+          el('button', { class: 'btn accent', type: 'button', onclick: () => exportAs('excel') }, t('hdownloadExcel')),
+          el('button', { class: 'btn accent', type: 'button', onclick: () => exportAs('pdf') }, t('hpdfReport')),
           el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, '⬇ JSON'),
         ]),
-        state.premium?.isPremium ? null : el('span', { class: 'badge', text: '⭐ Excel و PDF ميزة بريميوم' }),
+        state.premium?.isPremium ? null : el('span', { class: 'badge', text: t('hexcelAndPdfAre') }),
         el('div', { class: 'row', style: { justifyContent: 'center' } }, [
           el(
             'button',
@@ -1295,7 +1314,7 @@
                 location.href = '/host.html#/';
               },
             },
-            '➕ نشاط جديد'
+            t('hnewActivity')
           ),
           el(
             'button',
@@ -1308,15 +1327,15 @@
                 location.href = '/';
               },
             },
-            '🏠 الصفحة الرئيسية'
+            t('hhomePage')
           ),
         ]),
       ])
     );
     const board = s.leaderboard || [];
     if (board.length) {
-      app.append(el('div', { class: 'card stack' }, [el('h2', { text: '🏆 منصة التتويج', style: { margin: 0 } }), podium(board)]));
-      if (board.length > 3) app.append(el('div', { class: 'card stack' }, [el('h2', { text: 'بقية الترتيب' }), boardList(board.slice(3))]));
+      app.append(el('div', { class: 'card stack' }, [el('h2', { text: t('sPodium'), style: { margin: 0 } }), podium(board)]));
+      if (board.length > 3) app.append(el('div', { class: 'card stack' }, [el('h2', { text: t('sRestOfBoard') }), boardList(board.slice(3))]));
     }
     const teamCard = teamBoard(s.teamLeaderboard);
     if (teamCard) app.append(teamCard);
@@ -1325,7 +1344,7 @@
     if (s.badgeList?.length) {
       app.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { text: '🏅 الأوسمة', style: { margin: 0 } }),
+          el('h2', { text: t('sAwards'), style: { margin: 0 } }),
           el(
             'div',
             { class: 'stack' },
@@ -1378,7 +1397,7 @@
 
   function boardList(list) {
     const board = el('div', { class: 'board' });
-    if (!list.length) board.append(el('p', { class: 'muted center', text: 'لا توجد نتائج بعد' }));
+    if (!list.length) board.append(el('p', { class: 'muted center', text: t('sNoResults') }));
     list.forEach((entry) => {
       board.append(
         el('div', { class: 'item' }, [
@@ -1411,25 +1430,25 @@
           {
             class: 'btn sm ' + (done && answer.points >= item.maxPoints ? 'ok' : 'ghost'),
             type: 'button',
-            title: `صح — ${item.maxPoints} من ${item.maxPoints}`,
+            title: t('hFullMarkTitle', { max: item.maxPoints }),
             onclick: () => grade(item.maxPoints),
           },
-          '✓ صح'
+          t('hcorrect')
         ),
         el(
           'button',
           {
             class: 'btn sm ' + (done && answer.points === 0 ? 'danger' : 'ghost'),
             type: 'button',
-            title: 'خطأ — صفر',
+            title: t('hwrongZero'),
             onclick: () => grade(0),
           },
-          '✕ خطأ'
+          t('hwrong')
         ),
       ];
       // علامة جزئية: أرقام بين الصفر والعلامة الكاملة (تظهر فقط إن كان بينهما مجال)
       if (item.maxPoints > 1 && item.maxPoints <= 10) {
-        marks.push(el('span', { class: 'muted small', text: 'أو علامة:' }));
+        marks.push(el('span', { class: 'muted small', text: t('horAScore') }));
         for (let value = 1; value < item.maxPoints; value += 1) {
           const chosen = done && answer.points === value;
           marks.push(
@@ -1455,18 +1474,18 @@
               type: 'button',
               onclick: () => send('host:grade', { participantId: answer.participantId, questionId: item.id, points: Number(input.value) }),
             },
-            'اعتماد'
+            t('happly')
           )
         );
       }
 
       const status = answer.pending
-        ? el('span', { class: 'badge warn', text: '⏳ بانتظار التصحيح' })
-        : el('span', { class: 'badge ' + (answer.correct === true ? 'ok' : answer.correct === false ? 'bad' : '') }, `${answer.points} من ${item.maxPoints}`);
+        ? el('span', { class: 'badge warn', text: t('hawaitingGrading') })
+        : el('span', { class: 'badge ' + (answer.correct === true ? 'ok' : answer.correct === false ? 'bad' : '') }, t('hPointsOf', { points: answer.points, max: item.maxPoints }));
 
       // في «أكمل الفراغ» نعرض الإجابة المتوقعة تحت جواب الطالب للمقارنة السريعة
       const expected = item.expected && item.expected.some((value) => value)
-        ? el('p', { class: 'grade-expected', text: 'المتوقع: ' + item.expected.map((value) => value || '—').join(' · ') })
+        ? el('p', { class: 'grade-expected', text: t('hexpected') + item.expected.map((value) => value || '—').join(' · ') })
         : null;
 
       return el('div', { class: 'grade-row' + (answer.pending ? ' pending' : '') }, [
@@ -1479,13 +1498,13 @@
 
     return el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
-        el('h2', { style: { margin: 0 } }, `✍️ تصحيح: ${item.text}`),
+        el('h2', { style: { margin: 0 } }, t('hGradingTitle', { text: item.text })),
         item.pending
-          ? el('span', { class: 'badge warn' }, `${item.pending} بانتظار التصحيح`)
-          : el('span', { class: 'badge ok', text: '✓ اكتمل التصحيح' }),
+          ? el('span', { class: 'badge warn' }, t('hPendingCount', { n: item.pending }))
+          : el('span', { class: 'badge ok', text: t('hgradingComplete') }),
       ]),
-      el('p', { class: 'muted small', style: { margin: 0 } }, `العلامة القصوى ${item.maxPoints} — ضع «صح» أو «خطأ» أو علامة بينهما. لا يرى الطالب نتيجته قبل تصحيحك.`),
-      rows.length ? el('div', { class: 'stack tight' }, rows) : el('p', { class: 'muted center', text: 'لا توجد إجابات بعد' }),
+      el('p', { class: 'muted small', style: { margin: 0 } }, t('hGradingHint', { max: item.maxPoints })),
+      rows.length ? el('div', { class: 'stack tight' }, rows) : el('p', { class: 'muted center', text: t('hnoAnswersYet') }),
     ]);
   }
 
@@ -1500,7 +1519,7 @@
       state.analyticsData = await api(`/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`);
       state.analyticsAt = Date.now();
     } catch (err) {
-      state.analyticsError = err.message || 'تعذّر جلب النتائج';
+      state.analyticsError = err.message || t('hcouldNotLoadThe');
     } finally {
       state.analyticsLoading = false;
       if (state.tab === 'analytics') renderLive();
@@ -1516,9 +1535,9 @@
     if (state.analyticsError && !state.analyticsData) {
       app.append(
         el('div', { class: 'card stack center' }, [
-          el('h2', { text: 'تعذّر جلب التحليل' }),
+          el('h2', { text: t('hcouldNotLoadThe2') }),
           el('p', { class: 'muted small', text: state.analyticsError }),
-          el('button', { class: 'btn ghost', type: 'button', onclick: () => loadAnalytics(true) }, 'إعادة المحاولة'),
+          el('button', { class: 'btn ghost', type: 'button', onclick: () => loadAnalytics(true) }, t('htryAgain')),
         ])
       );
       return;
@@ -1527,22 +1546,22 @@
     const analysis = window.Analytics.compute(state.analyticsData);
     const head = el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
       el('div', { class: 'stack tight' }, [
-        el('h2', { style: { margin: 0 }, text: '📈 تحليل النتائج' }),
+        el('h2', { style: { margin: 0 }, text: t('hresultsAnalysis') }),
         el('span', {
           class: 'muted small',
           text: [
-            state.analyticsData?.teacher ? 'المعلّم: ' + state.analyticsData.teacher : null,
+            state.analyticsData?.teacher ? t('hteacher2') + state.analyticsData.teacher : null,
             analysis.title,
-            new Date(analysis.startedAt).toLocaleString('ar'),
-            `${analysis.durationMinutes} دقيقة`,
+            new Date(analysis.startedAt).toLocaleString(loc()),
+            t('hMinutes', { n: analysis.durationMinutes }),
           ]
             .filter(Boolean)
             .join(' · '),
         }),
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
-        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => loadAnalytics(true) }, '🔄 تحديث'),
-        el('button', { class: 'btn ok sm', type: 'button', onclick: () => exportAs('pdf') }, '📄 تقرير PDF'),
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => loadAnalytics(true) }, t('hrefresh')),
+        el('button', { class: 'btn ok sm', type: 'button', onclick: () => exportAs('pdf') }, t('hpdfReport')),
         el('button', { class: 'btn ok sm', type: 'button', onclick: () => exportAs('excel') }, '📊 Excel'),
       ]),
     ]);
@@ -1564,12 +1583,12 @@
 
     app.append(
       el('div', { class: 'stats' }, [
-        stat(summary.participants, 'مشارك'),
-        stat(summary.connected, 'متصل الآن'),
-        stat(summary.asked + ' / ' + data.questionCount, 'أسئلة عُرضت'),
-        stat(summary.participation + '٪', 'نسبة التفاعل'),
-        data.hasScores ? stat(summary.avgScore, 'متوسط النقاط') : null,
-        data.hasScores && summary.avgAccuracy !== null ? stat(summary.avgAccuracy + '٪', 'متوسط الدقة') : null,
+        stat(summary.participants, t('hparticipants')),
+        stat(summary.connected, t('honlineNow')),
+        stat(summary.asked + ' / ' + data.questionCount, t('hquestionsShown')),
+        stat(summary.participation + t('pctSuffix'), t('hparticipationRate')),
+        data.hasScores ? stat(summary.avgScore, t('haveragePoints')) : null,
+        data.hasScores && summary.avgAccuracy !== null ? stat(summary.avgAccuracy + t('pctSuffix'), t('haverageAccuracy')) : null,
       ].filter(Boolean))
     );
 
@@ -1584,10 +1603,10 @@
         el('td', {}, [el('span', { class: 'badge', text: TYPE_EMOJI[question.type] }), ' ' + (question.index + 1)]),
         el('td', { style: { whiteSpace: 'normal', minWidth: '180px' } }, [
           el('span', { text: question.text + ' ' }),
-          el('span', { class: 'muted small', text: open ? '▲' : '▼ النتائج' }),
+          el('span', { class: 'muted small', text: open ? '▲' : t('hresults') }),
         ]),
-        el('td', {}, question.asked ? `${question.responses} (${question.responseRate}٪)` : '—'),
-        el('td', {}, question.accuracy === null ? '—' : question.accuracy + '٪'),
+        el('td', {}, question.asked ? t('hResponsesRate', { n: question.responses, rate: question.responseRate }) : '—'),
+        el('td', {}, question.accuracy === null ? '—' : question.accuracy + t('pctSuffix')),
         el('td', {}, question.responses ? fmtMs(question.avgMs) : '—'),
       ]);
       row.addEventListener('click', () => {
@@ -1601,7 +1620,7 @@
             el('td', { colspan: 5, style: { whiteSpace: 'normal' } }, [
               question.results && question.results.total > 0
                 ? resultsView({ scored: question.correct !== null }, question.results, true)
-                : el('p', { class: 'muted center small', style: { margin: 0 }, text: 'لا توجد إجابات بعد' }),
+                : el('p', { class: 'muted center small', style: { margin: 0 }, text: t('hnoAnswersYet') }),
             ]),
           ])
         );
@@ -1610,11 +1629,11 @@
 
     app.append(
       el('div', { class: 'card stack' }, [
-        el('h2', { text: 'أداء الأسئلة', style: { margin: 0 } }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: 'اضغط على أي سؤال لعرض نتائجه الكاملة' }),
+        el('h2', { text: t('hquestionPerformance'), style: { margin: 0 } }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('htapAnyQuestionTo') }),
         el('div', { class: 'table-wrap' }, [
           el('table', {}, [
-            el('thead', {}, el('tr', {}, [el('th', {}, '#'), el('th', {}, 'السؤال'), el('th', {}, 'الإجابات'), el('th', {}, 'الدقة'), el('th', {}, 'الزمن')])),
+            el('thead', {}, el('tr', {}, [el('th', {}, '#'), el('th', {}, t('hquestion')), el('th', {}, t('hanswers')), el('th', {}, t('haccuracy')), el('th', {}, t('htime'))])),
             el('tbody', {}, qRows),
           ]),
         ]),
@@ -1636,7 +1655,7 @@
           el('div', { class: 'row', style: { gap: '8px', flexWrap: 'nowrap' } }, [
             avatarNode(participant.avatar, 'sm'),
             el('span', { text: participant.name }),
-            participant.connected ? null : el('span', { class: 'badge bad', text: 'غير متصل' }),
+            participant.connected ? null : el('span', { class: 'badge bad', text: t('hoffline2') }),
           ]),
         ]),
         el('td', {}, [
@@ -1645,7 +1664,7 @@
             el('span', { class: 'small muted', text: `${participant.answered}/${participant.asked}` }),
           ]),
         ]),
-        data.hasScores ? el('td', {}, participant.accuracy === null ? '—' : participant.accuracy + '٪') : null,
+        data.hasScores ? el('td', {}, participant.accuracy === null ? '—' : participant.accuracy + t('pctSuffix')) : null,
         data.hasScores ? el('td', {}, String(participant.score)) : null,
         el('td', {}, fmtMs(participant.avgMs)),
         el('td', {}, dots),
@@ -1655,12 +1674,12 @@
     app.append(
       el('div', { class: 'card stack' }, [
         el('div', { class: 'row between' }, [
-          el('h2', { text: `تقدّم المشاركين (${data.participants.length})`, style: { margin: 0 } }),
+          el('h2', { text: t('hProgressCount', { count: data.participants.length }), style: { margin: 0 } }),
           el('div', { class: 'row', style: { gap: '6px' } }, [
             el('button', { class: 'btn sm ghost', type: 'button', onclick: exportResults }, '⬇ JSON'),
             el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('excel') }, '📊 Excel'),
             el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('pdf') }, '📄 PDF'),
-            state.premium?.isPremium ? null : el('span', { class: 'badge', text: '⭐ بريميوم' }),
+            state.premium?.isPremium ? null : el('span', { class: 'badge', text: t('hpremium') }),
           ].filter(Boolean)),
         ]),
         data.participants.length
@@ -1671,23 +1690,23 @@
                   {},
                   el('tr', {}, [
                     el('th', {}, '#'),
-                    el('th', {}, 'المشارك'),
-                    el('th', {}, 'التقدّم'),
-                    data.hasScores ? el('th', {}, 'الدقة') : null,
-                    data.hasScores ? el('th', {}, 'النقاط') : null,
-                    el('th', {}, 'متوسط الزمن'),
-                    el('th', {}, 'الإجابات'),
+                    el('th', {}, t('hparticipant')),
+                    el('th', {}, t('hprogress')),
+                    data.hasScores ? el('th', {}, t('haccuracy')) : null,
+                    data.hasScores ? el('th', {}, t('hpoints')) : null,
+                    el('th', {}, t('haverageTime')),
+                    el('th', {}, t('hanswers')),
                   ].filter(Boolean))
                 ),
                 el('tbody', {}, pRows),
               ]),
             ])
-          : el('p', { class: 'muted center', text: 'لا يوجد مشاركون بعد' }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: '🟢 صحيحة · 🔴 خاطئة · 🔵 إجابة بلا تصحيح (استطلاع)' }),
+          : el('p', { class: 'muted center', text: t('hnoParticipantsYet') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hcorrectWrongUngradedAnswer') }),
       ])
     );
 
-    app.append(el('p', { class: 'footer', text: 'كل هذه البيانات مؤقتة في ذاكرة الخادم وتُمحى عند انتهاء الجلسة.' }));
+    app.append(el('p', { class: 'footer', text: t('hallOfThisData') }));
   }
 
   function stat(value, label) {
@@ -1703,24 +1722,24 @@
     const screenUrl = `${location.origin}/screen.html?code=${state.code}&hostToken=${encodeURIComponent(state.hostToken)}`;
     app.append(
       el('div', { class: 'card stack' }, [
-        el('h2', { text: '🖥️ شاشة عرض للبروجكتر', style: { margin: 0 } }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: 'افتحها على شاشة العرض أو التلفاز، وتحكّم أنت من جوالك — بلا أزرار على الشاشة الكبيرة.' }),
+        el('h2', { text: t('hprojectorScreen'), style: { margin: 0 } }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hopenItOnThe') }),
         el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('a', { class: 'btn accent sm', href: screenUrl, target: '_blank', rel: 'noopener' }, '🖥️ افتح شاشة العرض'),
-          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => copy(screenUrl) }, '📋 نسخ الرابط'),
+          el('a', { class: 'btn accent sm', href: screenUrl, target: '_blank', rel: 'noopener' }, t('hopenTheProjectorScreen')),
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => copy(screenUrl) }, t('hcopyLink')),
         ]),
       ])
     );
 
     app.append(
       el('div', { class: 'card stack' }, [
-        el('h2', { text: 'كيف يدخل المتدربون؟' }),
+        el('h2', { text: t('hhowDoParticipantsJoin') }),
         el('ol', { class: 'muted small', style: { margin: 0, paddingInlineStart: '20px', lineHeight: '2' } }, [
-          el('li', {}, 'يمسحون رمز QR بكاميرا الجوال، أو يفتحون الرابط أعلاه.'),
-          el('li', {}, s.settings.requireName ? 'يكتبون اسمهم أو كنيتهم ويحصلون على أفاتار عشوائي.' : 'يدخلون مباشرة بلا اسم (وضع مجهول).'),
-          el('li', {}, 'يجيبون على الأسئلة أولاً بأول، وأنت تتحكم بالانتقال.'),
+          el('li', {}, t('htheyScanTheQr')),
+          el('li', {}, s.settings.requireName ? t('htheyTypeAName') : t('htheyJoinStraightAway')),
+          el('li', {}, t('htheyAnswerQuestionBy')),
         ]),
-        el('button', { class: 'btn danger', type: 'button', onclick: endSession }, 'إنهاء الجلسة وحذف بياناتها'),
+        el('button', { class: 'btn danger', type: 'button', onclick: endSession }, t('hendTheSessionAnd')),
       ])
     );
   }
@@ -1735,14 +1754,14 @@
     if (s.status === 'lobby') {
       actions.push(
         el('button', { class: 'btn primary', type: 'button', disabled: s.participants.length === 0, onclick: () => send('host:start') },
-          s.participants.length ? '▶ بدء النشاط' : 'بانتظار المشاركين')
+          s.participants.length ? t('hstartActivity') : t('hwaitingForParticipants'))
       );
       actions.push(
-        el('button', { class: 'icon-btn', type: 'button', title: 'إلغاء الجلسة وحذفها', onclick: endSession }, '🗑')
+        el('button', { class: 'icon-btn', type: 'button', title: t('hcancelAndDeleteThe'), onclick: endSession }, '🗑')
       );
     } else if (s.status === 'ended') {
-      actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, '⬇ تنزيل النتائج'));
-      actions.push(el('button', { class: 'btn danger', type: 'button', onclick: endSession }, '🗑 حذف الجلسة'));
+      actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, t('hdownloadResults')));
+      actions.push(el('button', { class: 'btn danger', type: 'button', onclick: endSession }, t('hdeleteSession')));
     } else if (s.pace === 'self') {
       // الوضع الحر: لا شرائح ينقلها المدرب — فقط الإنهاء
       actions.push(
@@ -1757,26 +1776,26 @@
               renderLive();
             },
           },
-          '📊 متابعة التقدّم'
+          t('htrackProgress')
         )
       );
       actions.push(
-        el('button', { class: 'btn danger', type: 'button', onclick: () => confirm('إنهاء النشاط للجميع الآن؟') && send('host:end') }, '🏁 إنهاء النشاط')
+        el('button', { class: 'btn danger', type: 'button', onclick: () => confirm(t('hendTheActivityFor')) && send('host:end') }, t('hendActivity'))
       );
     } else {
-      actions.push(el('button', { class: 'icon-btn', type: 'button', title: 'السؤال السابق', disabled: s.index <= 0, onclick: () => send('host:prev') }, '⟩'));
+      actions.push(el('button', { class: 'icon-btn', type: 'button', title: t('hpreviousQuestion'), disabled: s.index <= 0, onclick: () => send('host:prev') }, '⟩'));
       if (s.phase === 'question') {
-        actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: () => send('host:lock') }, '⏸ إغلاق الإجابة'));
-        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:results') }, '👁 عرض النتائج'));
+        actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: () => send('host:lock') }, t('hlockAnswers')));
+        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:results') }, t('hshowResults2')));
       } else if (s.phase === 'results') {
         if (s.settings.showLeaderboard) {
-          actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: () => send('host:leaderboard') }, '🏆 الترتيب'));
+          actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: () => send('host:leaderboard') }, t('pLeaderboard')));
         }
-        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? '🏁 إنهاء' : '⟨ السؤال التالي'));
+        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? t('hfinish') : t('hnextQuestion')));
       } else {
-        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? '🏁 إنهاء' : '⟨ السؤال التالي'));
+        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? t('hfinish') : t('hnextQuestion')));
       }
-      actions.push(el('button', { class: 'icon-btn', type: 'button', title: 'إنهاء النشاط', onclick: () => confirm('إنهاء النشاط الآن؟') && send('host:end') }, '⏹'));
+      actions.push(el('button', { class: 'icon-btn', type: 'button', title: t('hendTheActivity'), onclick: () => confirm(t('hendTheActivityNow')) && send('host:end') }, '⏹'));
     }
 
     bar.append(el('div', { class: 'actionbar' }, actions));
@@ -1787,23 +1806,23 @@
   /** تصدير منسّق (بريميوم): Excel حقيقي أو تقرير PDF عبر نافذة الطباعة */
   async function exportAs(kind) {
     if (!state.premium?.isPremium) {
-      app.prepend(upgradeCard(state.premium?.plan, '⭐ تصدير النتائج ميزة بريميوم'));
+      app.prepend(upgradeCard(state.premium?.plan, t('hexportingResultsIsA')));
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      toast('تصدير Excel و PDF ميزة بريميوم', 'warn');
+      toast(t('hexcelAndPdfExport'), 'warn');
       return;
     }
     try {
       const data = await api(`/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`);
       if (kind === 'excel') {
         window.Exporter.toExcel(data);
-        toast('📊 نزّلنا ملف Excel', 'ok');
+        toast(t('hexcelFileDownloaded'), 'ok');
       } else if (window.Exporter.toPdf(data)) {
-        toast('📄 اختر «حفظ كـ PDF» من نافذة الطباعة', 'ok');
+        toast(t('hchooseSaveAsPdf'), 'ok');
       } else {
-        toast('المتصفح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة', 'bad');
+        toast(t('htheBrowserBlockedThe'), 'bad');
       }
     } catch (err) {
-      toast(err.message || 'تعذّر التصدير', 'bad');
+      toast(err.message || t('hexportFailed'), 'bad');
     }
   }
 
@@ -1816,10 +1835,10 @@
   }
 
   async function endSession() {
-    if (!confirm('إنهاء الجلسة وحذف كل بياناتها من الذاكرة؟')) return;
+    if (!confirm(t('hendTheSessionAnd2'))) return;
     try {
       await api(`/api/sessions/${state.code}?hostToken=${encodeURIComponent(state.hostToken)}`, { method: 'DELETE' });
-      toast('تم حذف الجلسة', 'ok');
+      toast(t('hsessionDeleted'), 'ok');
       const hosts = store.local.get(HOSTS_KEY, {});
       delete hosts[state.code];
       store.local.set(HOSTS_KEY, hosts);
@@ -1833,14 +1852,14 @@
   async function copy(text) {
     try {
       await navigator.clipboard.writeText(text);
-      toast('تم نسخ الرابط', 'ok');
+      toast(t('hlinkCopied'), 'ok');
     } catch {
       toast(text);
     }
   }
 
   function share(url, title) {
-    if (navigator.share) navigator.share({ title: title || 'Tapio', text: 'انضم إلى النشاط', url }).catch(() => {});
+    if (navigator.share) navigator.share({ title: title || 'Tapio', text: t('hjoinTheActivity'), url }).catch(() => {});
     else copy(url);
   }
 
@@ -1870,7 +1889,7 @@
     clearInterval(state.autoTimer);
     const paint = () => {
       const left = Math.max(0, s.autoNextAt - serverTime());
-      label.textContent = Math.ceil(left / 1000) + 'ث';
+      label.textContent = Math.ceil(left / 1000) + t('hs');
       if (left <= 0) clearInterval(state.autoTimer);
     };
     paint();
@@ -1898,7 +1917,7 @@
   if (homeBtn) {
     homeBtn.addEventListener('click', () => {
       const live = state.live && state.live.status === 'live';
-      if (live && !confirm('الجلسة ستبقى مستمرة ويمكنك استئنافها من الصفحة الرئيسية. الخروج الآن؟')) return;
+      if (live && !confirm(t('htheSessionKeepsRunning'))) return;
       state.leavingIntentionally = true;
       teardown();
       location.href = '/';
