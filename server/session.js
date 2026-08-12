@@ -186,6 +186,8 @@ class Session {
     this.participants = new Map();
     /** @type {Set<any>} sockets للمضيف */
     this.hostSockets = new Set();
+    /** @type {Set<any>} سوكِتات شاشة العرض المنفصلة (بروجكتر) — قراءة فقط، بلا أزرار تحكم */
+    this.screenSockets = new Set();
   }
 
   touch() {
@@ -871,7 +873,7 @@ class Session {
   // ------------------------------------------------------------------- البث
 
   allSockets() {
-    const out = [...this.hostSockets];
+    const out = [...this.hostSockets, ...this.screenSockets];
     for (const p of this.participants.values()) out.push(...p.sockets);
     return out;
   }
@@ -1042,11 +1044,14 @@ class Session {
   }
 
   broadcastState() {
+    const state = this.hostState();
     const dashboard = this.hostSockets.size ? { t: 'dashboard', data: this.dashboard() } : null;
     for (const socket of this.hostSockets) {
-      this.send(socket, this.hostState());
+      this.send(socket, state);
       if (dashboard) this.send(socket, dashboard);
     }
+    // شاشة العرض تعرض نفس حالة المضيف، بلا لوحة الإحصاءات التفصيلية
+    for (const socket of this.screenSockets) this.send(socket, state);
     for (const p of this.participants.values()) {
       const payload = this.participantState(p);
       for (const socket of p.sockets) this.send(socket, payload);
@@ -1056,6 +1061,7 @@ class Session {
   broadcastHost() {
     const payload = this.hostState();
     for (const socket of this.hostSockets) this.send(socket, payload);
+    for (const socket of this.screenSockets) this.send(socket, payload);
   }
 }
 

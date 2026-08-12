@@ -3,30 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>تفاعل — المشاركة</title>
+    <title>تفاعل — شاشة العرض</title>
     <meta name="theme-color" content="#0b1020" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
-    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/assets/css/app.css?v=1.11.0" />
   </head>
-  <body>
+  <body class="screen-body">
     <div class="topbar">
       <div class="brand"><span class="dot">⚡</span><span id="quizTitle">تفاعل</span></div>
       <div class="row" style="gap: 6px">
-        <button id="exitBtn" class="icon-btn" type="button" title="الخروج من النشاط" aria-label="الخروج من النشاط">🚪</button>
-        <button id="soundBtn" class="icon-btn" type="button" title="الصوت" aria-label="تشغيل أو كتم الصوت">🔊</button>
+        <button id="fullscreenBtn" class="icon-btn" type="button" title="ملء الشاشة" aria-label="ملء الشاشة">⛶</button>
         <span id="conn" class="badge">…</span>
-        <span id="scoreBadge" class="badge hidden">0</span>
       </div>
     </div>
 
-    <div class="wrap narrow" id="app">
+    <div class="wrap" id="app">
       <div class="card center"><div class="spinner"></div></div>
     </div>
 
     <script src="/assets/js/avatar.js?v=1.11.0"></script>
     <script src="/assets/js/fx.js?v=1.11.0"></script>
     <script src="/assets/js/common.js?v=1.11.0"></script>
-    <script src="/assets/js/play.js?v=1.11.0"></script>
+    <script src="/assets/js/screen.js?v=1.11.0"></script>
   </body>
 </html>

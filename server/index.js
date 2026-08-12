@@ -18,7 +18,7 @@ const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -251,6 +251,8 @@ wss.on('connection', (socket) => {
     const { session, role, participant } = ctx;
     if (role === 'host') {
       session.hostSockets.delete(socket);
+    } else if (role === 'screen') {
+      session.screenSockets.delete(socket);
     } else if (participant) {
       participant.sockets.delete(socket);
       if (participant.sockets.size === 0) {
@@ -286,6 +288,20 @@ function handleMessage(socket, msg) {
     session.touch();
     sendTo(socket, session.hostState());
     sendTo(socket, { t: 'dashboard', data: session.dashboard() });
+    return;
+  }
+
+  // شاشة عرض للبروجكتر: نفس مفتاح المضيف، لكن بلا صلاحية إرسال أوامر تحكم
+  if (type === 'screen:hello') {
+    const session = store.getSession(msg.code);
+    if (!session) return sendTo(socket, { t: 'error', code: 'no_session', message: 'الجلسة غير موجودة أو انتهت' });
+    if (msg.hostToken !== session.hostToken) {
+      return sendTo(socket, { t: 'error', code: 'forbidden', message: 'مفتاح المضيف غير صالح' });
+    }
+    socket.ctx = { session, role: 'screen', participant: null };
+    session.screenSockets.add(socket);
+    session.touch();
+    sendTo(socket, session.hostState());
     return;
   }
 
@@ -371,9 +387,10 @@ function handleMessage(socket, msg) {
       return;
     }
     if (type === 'reaction') {
-      // تفاعل سريع يظهر على شاشة المدرب — لا يُخزَّن ولا يُنسب لأحد
+      // تفاعل سريع يظهر على شاشة المدرب وشاشة العرض — لا يُخزَّن ولا يُنسب لأحد
       if (session.react(participant, msg.emoji)) {
         for (const s of session.hostSockets) sendTo(s, { t: 'reaction', emoji: msg.emoji });
+        for (const s of session.screenSockets) sendTo(s, { t: 'reaction', emoji: msg.emoji });
       }
       return;
     }
@@ -437,14 +454,19 @@ function handleMessage(socket, msg) {
   session.broadcastState();
 }
 
-/** تحديث المضيف بالحالة والإحصاءات معاً (لتبقى لوحة التحكم حيّة) */
+/** تحديث المضيف بالحالة والإحصاءات معاً (لتبقى لوحة التحكم حيّة)، وشاشة العرض بالحالة فقط */
 function pushHost(session) {
-  if (session.hostSockets.size === 0) return;
-  const state = session.hostState();
-  const dashboard = { t: 'dashboard', data: session.dashboard() };
-  for (const socket of session.hostSockets) {
-    sendTo(socket, state);
-    sendTo(socket, dashboard);
+  if (session.hostSockets.size) {
+    const state = session.hostState();
+    const dashboard = { t: 'dashboard', data: session.dashboard() };
+    for (const socket of session.hostSockets) {
+      sendTo(socket, state);
+      sendTo(socket, dashboard);
+    }
+    if (session.screenSockets.size) for (const socket of session.screenSockets) sendTo(socket, state);
+  } else if (session.screenSockets.size) {
+    const state = session.hostState();
+    for (const socket of session.screenSockets) sendTo(socket, state);
   }
 }
 
