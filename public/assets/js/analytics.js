@@ -7,15 +7,22 @@
    * /api/sessions/:code/export — فالشاشة والتقرير المطبوع يقولان الشيء نفسه.
    */
 
-  const TYPE_AR = {
-    mc: 'اختيار من متعدد',
-    truefalse: 'صح / خطأ',
-    poll: 'استطلاع',
-    word: 'سحابة كلمات',
-    scale: 'مقياس',
-    open: 'سؤال مفتوح',
-    blank: 'أكمل الفراغ',
+  const T = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
+  const t = T;
+
+  const TYPE_KEYS = {
+    mc: 'typeMc',
+    truefalse: 'typeTruefalse',
+    poll: 'typePoll',
+    word: 'typeWord',
+    scale: 'typeScale',
+    open: 'typeOpen',
+    blank: 'typeBlank',
   };
+  const TYPE_AR = {};
+  for (const type of Object.keys(TYPE_KEYS)) {
+    Object.defineProperty(TYPE_AR, type, { enumerable: true, get: () => T(TYPE_KEYS[type]) });
+  }
 
   const pct = (part, whole) => (whole ? Math.round((part / whole) * 100) : 0);
 
@@ -38,11 +45,11 @@
 
     // توزيع الدرجات على شرائح — يكشف هل الصف متجانس أم منقسم
     const bands = [
-      { label: '٠–٤٩٪', min: 0, max: 49, count: 0, tone: 'bad' },
-      { label: '٥٠–٦٤٪', min: 50, max: 64, count: 0, tone: 'warn' },
-      { label: '٦٥–٧٩٪', min: 65, max: 79, count: 0, tone: 'brand' },
-      { label: '٨٠–٨٩٪', min: 80, max: 89, count: 0, tone: 'ok' },
-      { label: '٩٠–١٠٠٪', min: 90, max: 100, count: 0, tone: 'ok' },
+      { label: '0–49' + T('pctSuffix'), min: 0, max: 49, count: 0, tone: 'bad' },
+      { label: '50–64' + T('pctSuffix'), min: 50, max: 64, count: 0, tone: 'warn' },
+      { label: '65–79' + T('pctSuffix'), min: 65, max: 79, count: 0, tone: 'brand' },
+      { label: '80–89' + T('pctSuffix'), min: 80, max: 89, count: 0, tone: 'ok' },
+      { label: '90–100' + T('pctSuffix'), min: 90, max: 100, count: 0, tone: 'ok' },
     ];
     percents.forEach((value) => {
       // مضاعف السلسلة قد يرفع النسبة فوق ١٠٠٪، فنضعها في الشريحة العليا لا نُسقطها
@@ -124,7 +131,7 @@
     if (!ctx.scoredCount) {
       out.push({
         tone: 'info',
-        text: 'هذا النشاط بلا أسئلة مصحَّحة (استطلاع/آراء) — استخدم نتائجه لقياس الاتجاه العام لا لتقييم المستوى.',
+        text: t('aRecNoScored'),
       });
     }
 
@@ -132,87 +139,87 @@
       if (ctx.avgPercent >= 85) {
         out.push({
           tone: 'ok',
-          text: `متوسط الصف ${ctx.avgPercent}٪ — المستوى ممتاز. ارفع سقف التحدي في النشاط القادم: أسئلة تطبيقية أعلى من مستوى التذكّر، أو قلّل الوقت قليلاً.`,
+          text: t('aRecExcellent', { pct: ctx.avgPercent }),
         });
       } else if (ctx.avgPercent >= 65) {
         out.push({
           tone: 'ok',
-          text: `متوسط الصف ${ctx.avgPercent}٪ — مستوى جيد. ركّز مراجعتك على الأسئلة الأقل دقة أدناه بدل إعادة الدرس كاملاً.`,
+          text: t('aRecGood', { pct: ctx.avgPercent }),
         });
       } else if (ctx.avgPercent >= 50) {
         out.push({
           tone: 'warn',
-          text: `متوسط الصف ${ctx.avgPercent}٪ — الفهم متوسط. أعد شرح المفاهيم التي ظهرت في الأسئلة الصعبة، ثم أعد اختباراً قصيراً بعد يومين.`,
+          text: t('aRecMid', { pct: ctx.avgPercent }),
         });
       } else {
         out.push({
           tone: 'bad',
-          text: `متوسط الصف ${ctx.avgPercent}٪ — أقل من النصف. غالباً المشكلة في الشرح لا في الطلاب: أعد المفهوم بمثال محسوس ثم اختبر مفهوماً واحداً في كل سؤال.`,
+          text: t('aRecLow', { pct: ctx.avgPercent }),
         });
       }
     }
 
     if (ctx.needsReview.length) {
-      const list = ctx.needsReview.slice(0, 3).map((q) => `«${q.text}» (${q.accuracy}٪)`).join('، ');
+      const list = ctx.needsReview.slice(0, 3).map((q) => `«${q.text}» (${q.accuracy}${t('pctSuffix')})`).join(T('listSep'));
       out.push({
         tone: 'bad',
         text:
           ctx.needsReview.length === 1
-            ? `سؤال واحد يحتاج إعادة شرح — ${list}.`
-            : `${ctx.needsReview.length} أسئلة تحتاج إعادة شرح — أقلّها دقة: ${list}.`,
+            ? t('aRecReviewOne', { list })
+            : t('aRecReviewMany', { n: ctx.needsReview.length, list }),
       });
     }
 
     if (ctx.hardest && ctx.hardest.accuracy !== null && ctx.hardest.accuracy < 40 && ctx.hardest.type === 'mc') {
       out.push({
         tone: 'info',
-        text: `في «${ctx.hardest.text}» راجع الخيارات نفسها: حين تهبط الدقة تحت ٤٠٪ يكون أحد الخيارات المضلِّلة قريباً جداً من الصحيح أو الصياغة ملتبسة.`,
+        text: t('aRecDistractors', { text: ctx.hardest.text }),
       });
     }
 
     if (ctx.easiest && ctx.easiest.accuracy !== null && ctx.easiest.accuracy >= 95 && ctx.scoredCount > 2) {
       out.push({
         tone: 'info',
-        text: `«${ctx.easiest.text}» أجاب عنه الجميع تقريباً (${ctx.easiest.accuracy}٪) — مناسب كسؤال تهيئة، لكن لا يقيس فرقاً بين الطلاب.`,
+        text: t('aRecTooEasy', { text: ctx.easiest.text, pct: ctx.easiest.accuracy }),
       });
     }
 
     if (ctx.participation < 80 && total > 1) {
       out.push({
         tone: 'warn',
-        text: `نسبة المشاركة ${ctx.participation}٪ فقط — أعطِ وقتاً أطول للأسئلة الطويلة، أو فعّل الوضع الحر ليجيب كل طالب بسرعته.`,
+        text: t('aRecParticipation', { pct: ctx.participation }),
       });
     }
 
     if (ctx.mostSkipped && ctx.mostSkipped.responses < total) {
       out.push({
         tone: 'warn',
-        text: `«${ctx.mostSkipped.text}» تركه ${total - ctx.mostSkipped.responses} من ${total} بلا إجابة — راجع وضوح صياغته أو الوقت المخصّص له.`,
+        text: t('aRecSkipped', { text: ctx.mostSkipped.text, n: total - ctx.mostSkipped.responses, total }),
       });
     }
 
     if (ctx.strugglers.length) {
-      const names = ctx.strugglers.slice(0, 5).map((p) => p.name).join('، ');
+      const names = ctx.strugglers.slice(0, 5).map((p) => p.name).join(T('listSep'));
       out.push({
         tone: 'warn',
         text:
           ctx.strugglers.length === 1
-            ? `طالب واحد تحت ٥٠٪ (${names}) — يحتاج متابعة فردية قصيرة قبل الدرس القادم.`
-            : `${ctx.strugglers.length} طلاب تحت ٥٠٪ (${names}) — يحتاجون متابعة فردية قصيرة قبل الدرس القادم.`,
+            ? t('aRecOneStruggler', { names })
+            : t('aRecStrugglers', { n: ctx.strugglers.length, names }),
       });
     }
 
     if (ctx.pendingTotal) {
       out.push({
         tone: 'bad',
-        text: `${ctx.pendingTotal} إجابة نصّية لم تُصحَّح بعد — نتائج أصحابها ناقصة حتى تكمل التصحيح من لوحة التحكم.`,
+        text: t('aRecPending', { n: ctx.pendingTotal }),
       });
     }
 
     if (ctx.slowest && ctx.slowest.avgSeconds > 45) {
       out.push({
         tone: 'info',
-        text: `«${ctx.slowest.text}» استغرق ${ctx.slowest.avgSeconds} ثانية وسطياً — إن لم يكن سؤال تفكير عميق فاختصر صياغته.`,
+        text: t('aRecSlow', { text: ctx.slowest.text, sec: ctx.slowest.avgSeconds }),
       });
     }
 
@@ -236,11 +243,11 @@
     const r = 52;
     const c = 2 * Math.PI * r;
     const color = TONE[tone] || TONE.brand;
-    return `<svg viewBox="0 0 140 140" class="chart-donut" role="img" aria-label="${esc(label)}: ${value}٪">
+    return `<svg viewBox="0 0 140 140" class="chart-donut" role="img" aria-label="${esc(label)}: ${value}${T('pctSuffix')}">
       <circle cx="70" cy="70" r="${r}" fill="none" stroke="currentColor" stroke-opacity="0.14" stroke-width="14"/>
       <circle cx="70" cy="70" r="${r}" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round"
         stroke-dasharray="${(c * value) / 100} ${c}" transform="rotate(-90 70 70)"/>
-      <text x="70" y="66" text-anchor="middle" font-size="30" font-weight="800" fill="currentColor">${value}٪</text>
+      <text x="70" y="66" text-anchor="middle" font-size="30" font-weight="800" fill="currentColor">${value}${T('pctSuffix')}</text>
       <text x="70" y="90" text-anchor="middle" font-size="13" fill="currentColor" opacity="0.7">${esc(label)}</text>
     </svg>`;
   }
@@ -276,18 +283,18 @@
       .map((q) => ({
         label: `${q.index}. ${q.text}`,
         value: q.accuracy,
-        display: q.accuracy + '٪',
+        display: q.accuracy + T('pctSuffix'),
         tone: q.accuracy >= 80 ? 'ok' : q.accuracy >= 50 ? 'warn' : 'bad',
       }));
 
     const timeRows = a.questions
       .filter((q) => q.responses > 0)
-      .map((q) => ({ label: `${q.index}. ${q.text}`, value: q.avgSeconds, display: q.avgSeconds + 'ث', tone: 'brand2' }));
+      .map((q) => ({ label: `${q.index}. ${q.text}`, value: q.avgSeconds, display: q.avgSeconds + T('aSecShort'), tone: 'brand2' }));
 
     const bandRows = a.bands.map((b) => ({
       label: b.label,
       value: b.count,
-      display: `${b.count} ${b.count === 1 ? 'طالب' : 'طلاب'}`,
+      display: t('aStudentsCount', { n: b.count }),
       tone: b.tone,
     }));
 
@@ -300,56 +307,56 @@
 
     return `
     <div class="chart-stats">
-      ${statHtml(a.participantCount, 'مشارك', 'brand')}
-      ${statHtml(a.questionCount, 'سؤال', 'brand')}
-      ${statHtml(a.durationMinutes + ' د', 'مدة النشاط', 'brand')}
-      ${a.avgPercent !== null ? statHtml(a.avgPercent + '٪', 'متوسط الصف', a.avgPercent >= 65 ? 'ok' : a.avgPercent >= 50 ? 'warn' : 'bad') : ''}
-      ${a.median !== null ? statHtml(a.median + '٪', 'الوسيط', 'brand2') : ''}
-      ${statHtml(a.participation + '٪', 'نسبة المشاركة', a.participation >= 80 ? 'ok' : 'warn')}
+      ${statHtml(a.participantCount, t('aParticipants'), 'brand')}
+      ${statHtml(a.questionCount, t('aQuestions'), 'brand')}
+      ${statHtml(t('aMinutesShort', { n: a.durationMinutes }), t('aDuration'), 'brand')}
+      ${a.avgPercent !== null ? statHtml(a.avgPercent + t('pctSuffix'), t('aClassAverage'), a.avgPercent >= 65 ? 'ok' : a.avgPercent >= 50 ? 'warn' : 'bad') : ''}
+      ${a.median !== null ? statHtml(a.median + t('pctSuffix'), t('aMedian'), 'brand2') : ''}
+      ${statHtml(a.participation + t('pctSuffix'), t('aParticipation'), a.participation >= 80 ? 'ok' : 'warn')}
     </div>
 
     <div class="chart-row">
-      ${a.avgPercent !== null ? `<div class="chart-card">${donutSvg(a.avgPercent, 'متوسط الدرجات', a.avgPercent >= 65 ? 'ok' : a.avgPercent >= 50 ? 'warn' : 'bad')}</div>` : ''}
+      ${a.avgPercent !== null ? `<div class="chart-card">${donutSvg(a.avgPercent, t('aAvgScore'), a.avgPercent >= 65 ? 'ok' : a.avgPercent >= 50 ? 'warn' : 'bad')}</div>` : ''}
       <div class="chart-card grow">
-        <h3>توزيع الدرجات على الصف</h3>
-        ${bandRows.some((r) => r.value) ? barsHtml(bandRows) : '<p class="muted small">لا توجد درجات بعد</p>'}
+        <h3>${t('aDistribution')}</h3>
+        ${bandRows.some((r) => r.value) ? barsHtml(bandRows) : `<p class="muted small">${t('aNoScores')}</p>`}
       </div>
     </div>
 
     <div class="chart-highlights">
-      ${highlight(a.hardest, '🔴 أصعب سؤال', 'bad', a.hardest ? `دقة ${a.hardest.accuracy}٪ · ${a.hardest.avgSeconds}ث وسطياً` : '')}
-      ${highlight(a.easiest, '🟢 أسهل سؤال', 'ok', a.easiest ? `دقة ${a.easiest.accuracy}٪` : '')}
-      ${highlight(a.fastest, '⚡ الأسرع إجابةً', 'brand', a.fastest ? `${a.fastest.avgSeconds}ث وسطياً` : '')}
-      ${highlight(a.slowest, '🐢 الأبطأ إجابةً', 'warn', a.slowest ? `${a.slowest.avgSeconds}ث وسطياً` : '')}
-      ${highlight(a.mostSkipped, '⏭ الأكثر تخطّياً', 'warn', a.mostSkipped ? `أجاب عنه ${a.mostSkipped.responses} من ${a.participantCount}` : '')}
+      ${highlight(a.hardest, t('aHardest'), 'bad', a.hardest ? t('aAccuracyTime', { pct: a.hardest.accuracy, sec: a.hardest.avgSeconds }) : '')}
+      ${highlight(a.easiest, t('aEasiest'), 'ok', a.easiest ? t('aAccuracyOnly', { pct: a.easiest.accuracy }) : '')}
+      ${highlight(a.fastest, t('aFastest'), 'brand', a.fastest ? t('aAvgSeconds', { sec: a.fastest.avgSeconds }) : '')}
+      ${highlight(a.slowest, t('aSlowest'), 'warn', a.slowest ? t('aAvgSeconds', { sec: a.slowest.avgSeconds }) : '')}
+      ${highlight(a.mostSkipped, t('aMostSkipped'), 'warn', a.mostSkipped ? t('aAnsweredBy', { n: a.mostSkipped.responses, total: a.participantCount }) : '')}
     </div>
 
-    ${accuracyRows.length ? `<div class="chart-card"><h3>دقة الإجابة لكل سؤال</h3>${barsHtml(accuracyRows)}</div>` : ''}
-    ${timeRows.length ? `<div class="chart-card"><h3>متوسط زمن الإجابة</h3>${barsHtml(timeRows)}</div>` : ''}
+    ${accuracyRows.length ? `<div class="chart-card"><h3>${t('aAccuracyPerQuestion')}</h3>${barsHtml(accuracyRows)}</div>` : ''}
+    ${timeRows.length ? `<div class="chart-card"><h3>${t('aAvgAnswerTime')}</h3>${barsHtml(timeRows)}</div>` : ''}
 
     <div class="chart-card">
-      <h3>الطلاب</h3>
-      <table class="chart-table"><thead><tr><th>#</th><th>الطالب</th><th>الدرجة</th><th>النسبة</th><th>صحيحة</th><th>متوسط الزمن</th></tr></thead><tbody>
+      <h3>${t('aStudents')}</h3>
+      <table class="chart-table"><thead><tr><th>#</th><th>${t('aStudent')}</th><th>${t('aScore')}</th><th>${t('aPercent')}</th><th>${t('aCorrect')}</th><th>${t('aAvgTime')}</th></tr></thead><tbody>
       ${a.participants
         .map(
           (p) => `<tr><td>${p.rank ?? ''}</td><td>${esc(p.name)}</td><td>${p.score}${
-            a.maxScore ? ' من ' + a.maxScore : ''
-          }</td><td>${p.percent === null ? '—' : p.percent + '٪'}</td><td>${p.correctCount}${
-            p.partialCount ? ` (+${p.partialCount} جزئي)` : ''
-          }</td><td>${p.avgSeconds}ث</td></tr>`
+            a.maxScore ? ' ' + t('aOutOf') + ' ' + a.maxScore : ''
+          }</td><td>${p.percent === null ? '—' : p.percent + t('pctSuffix')}</td><td>${p.correctCount}${
+            p.partialCount ? ` (+${p.partialCount} ${t('aPartial')})` : ''
+          }</td><td>${p.avgSeconds}${t('aSecShort')}</td></tr>`
         )
         .join('')}
       </tbody></table>
     </div>
 
     <div class="chart-card">
-      <h3>📌 التوصيات</h3>
+      <h3>📌 ${t('aRecommendations')}</h3>
       ${
         a.recommendations.length
           ? `<ul class="rec-list">${a.recommendations
               .map((r) => `<li class="rec ${r.tone}">${esc(r.text)}</li>`)
               .join('')}</ul>`
-          : '<p class="muted small">لا توجد ملاحظات — النتائج متوازنة.</p>'
+          : `<p class="muted small">${t('aNoNotes')}</p>`
       }
     </div>
     ${forPrint ? '' : ''}`;

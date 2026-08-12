@@ -4,6 +4,8 @@
 
   const { $, el, avatarNode, toast, connect, TYPE_LABELS, TYPE_EMOJI, fmtMs, countdownTo } = window.T;
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
+  /** لغة التنسيق للتواريخ والأرقام */
+  const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
 
   // نصوص الشريط العلوي ومبدّل اللغة
   const fsBtn = document.getElementById('fullscreenBtn');
@@ -55,6 +57,8 @@
       onMessage: (msg) => {
         if (msg.t === 'state') {
           if (msg.serverNow) state.clockOffset = Date.now() - msg.serverNow;
+          // شاشة البروجكتر تتبع لغة النشاط لا لغة الجهاز الموصول بالشاشة
+          applyActivityLang(msg.lang);
           state.live = msg;
           render();
         } else if (msg.t === 'dashboard') {
@@ -72,6 +76,18 @@
         }
       },
     });
+  }
+
+  /** يفرض لغة النشاط على هذه الشاشة (بلا حفظها كتفضيل) */
+  function applyActivityLang(lang) {
+    if (!window.I18n || (lang !== 'ar' && lang !== 'en')) return;
+    if (window.I18n.getLang() === lang) return;
+    window.I18n.setLang(lang, { remember: false });
+    const row = document.getElementById('langRow');
+    if (row) {
+      row.innerHTML = '';
+      window.I18n.mountToggle(row);
+    }
   }
 
   function render() {
@@ -101,7 +117,7 @@
       value,
       el('span', {
         class: 'muted',
-        text: new Date(opensAt).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' }),
+        text: new Date(opensAt).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }),
       }),
     ]);
   }

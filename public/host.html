@@ -3,22 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Tapio — لوحة المدرب</title>
+    <title>Tapio</title>
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.26.0" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.27.0" />
+    <script src="/assets/js/i18n.js?v=1.27.0"></script>
   </head>
   <body>
     <div class="topbar">
       <a class="brand" href="/" style="text-decoration: none; color: inherit">
-        <img class="logo light-only" src="/assets/logo.svg?v=1.26.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.26.0" alt="Tapio" width="249" height="159" />
+        <img class="logo light-only" src="/assets/logo.svg?v=1.27.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.27.0" alt="Tapio" width="249" height="159" />
       </a>
       <div class="row" style="gap: 6px">
-        <a class="btn ghost sm" href="/help.html" title="دليل المعلّم">📖 الدليل</a>
+        <a class="btn ghost sm" href="/help.html" id="guideLink">📖</a>
+        <span id="langRow"></span>
         <span id="account"></span>
-        <button id="homeBtn" class="icon-btn" type="button" title="الصفحة الرئيسية" aria-label="الصفحة الرئيسية">🏠</button>
-        <button id="soundBtn" class="icon-btn" type="button" title="الصوت" aria-label="تشغيل أو كتم الصوت">🔊</button>
+        <button id="homeBtn" class="icon-btn" type="button">🏠</button>
+        <button id="soundBtn" class="icon-btn" type="button">🔊</button>
         <span id="conn" class="badge hidden">…</span>
         <span id="codeBadge" class="badge hidden"></span>
       </div>
@@ -30,14 +32,14 @@
 
     <div id="bar"></div>
 
-    <script src="/assets/js/avatar.js?v=1.26.0"></script>
-    <script src="/assets/js/fx.js?v=1.26.0"></script>
-    <script src="/assets/js/templates.js?v=1.26.0"></script>
-    <script src="/assets/js/common.js?v=1.26.0"></script>
-    <script src="/assets/js/builder.js?v=1.26.0"></script>
-    <script src="/assets/js/ai-chat.js?v=1.26.0"></script>
-    <script src="/assets/js/analytics.js?v=1.26.0"></script>
-    <script src="/assets/js/export.js?v=1.26.0"></script>
-    <script src="/assets/js/host.js?v=1.26.0"></script>
+    <script src="/assets/js/avatar.js?v=1.27.0"></script>
+    <script src="/assets/js/fx.js?v=1.27.0"></script>
+    <script src="/assets/js/templates.js?v=1.27.0"></script>
+    <script src="/assets/js/common.js?v=1.27.0"></script>
+    <script src="/assets/js/builder.js?v=1.27.0"></script>
+    <script src="/assets/js/ai-chat.js?v=1.27.0"></script>
+    <script src="/assets/js/analytics.js?v=1.27.0"></script>
+    <script src="/assets/js/export.js?v=1.27.0"></script>
+    <script src="/assets/js/host.js?v=1.27.0"></script>
   </body>
 </html>
