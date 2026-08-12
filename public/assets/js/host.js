@@ -1278,7 +1278,7 @@
 
   function exportResults() {
     const url = `/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`;
-    const link = el('a', { href: url, download: `tafa3l-${state.code}.json` });
+    const link = el('a', { href: url, download: `tapio-${state.code}.json` });
     document.body.append(link);
     link.click();
     link.remove();
@@ -1309,7 +1309,7 @@
   }
 
   function share(url, title) {
-    if (navigator.share) navigator.share({ title: title || 'تفاعل', text: 'انضم إلى النشاط', url }).catch(() => {});
+    if (navigator.share) navigator.share({ title: title || 'Tapio', text: 'انضم إلى النشاط', url }).catch(() => {});
     else copy(url);
   }
 

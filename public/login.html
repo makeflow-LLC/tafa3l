@@ -3,25 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>تفاعل — دخول المدرب</title>
+    <title>Tapio</title>
     <meta name="theme-color" content="#0b1020" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.13.0" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.14.0" />
+    <script src="/assets/js/i18n.js?v=1.14.0"></script>
   </head>
   <body>
     <div class="topbar">
       <a class="brand" href="/" style="text-decoration: none; color: inherit">
-        <span class="dot">⚡</span><span>تفاعل</span>
+        <span class="dot">⚡</span><span>Tapio</span>
       </a>
-      <a class="btn ghost sm" href="/">🏠 الرئيسية</a>
+      <div class="row" style="gap: 6px">
+        <span id="langRow"></span>
+        <a class="btn ghost sm" href="/" id="homeLink"></a>
+      </div>
     </div>
 
     <div class="wrap narrow" id="app">
       <div class="card center"><div class="spinner"></div></div>
     </div>
 
-    <script src="/assets/js/common.js?v=1.13.0"></script>
-    <script src="/assets/js/login.js?v=1.13.0"></script>
+    <script src="/assets/js/common.js?v=1.14.0"></script>
+    <script src="/assets/js/login.js?v=1.14.0"></script>
   </body>
 </html>
