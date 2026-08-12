@@ -181,6 +181,7 @@
     word: 'سحابة كلمات',
     scale: 'مقياس',
     open: 'سؤال مفتوح',
+    blank: 'أكمل الفراغ',
   };
 
   /** يحوّل مخرجات /api/sessions/:code/export إلى أوراق جاهزة */
@@ -211,7 +212,7 @@
         TYPE_AR[q.type] || q.type,
         q.text,
         (q.options || []).join(' | '),
-        (q.correct || []).join(' | '),
+        (q.correct || []).join(' | ') || (q.blanks || []).filter(Boolean).join(' | '),
         q.results?.total || 0,
       ]);
     });

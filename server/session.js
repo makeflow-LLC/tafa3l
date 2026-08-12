@@ -2,7 +2,10 @@
 
 const crypto = require('crypto');
 
-const QUESTION_TYPES = ['mc', 'truefalse', 'poll', 'word', 'scale', 'open'];
+const QUESTION_TYPES = ['mc', 'truefalse', 'poll', 'word', 'scale', 'open', 'blank'];
+/** علامة الفراغ في نص سؤال «أكمل الفراغ»: ثلاث شرطات سفلية فأكثر */
+const BLANK_RE = /_{3,}/g;
+const MAX_BLANKS = 8;
 /** مهلة «استعد… ٣ ٢ ١» قبل فتح السؤال المؤقّت — تبقي الجميع على نفس الخط */
 const READY_MS = 3200;
 /** تفاعلات سريعة يرسلها المشاركون أثناء العرض */
@@ -39,6 +42,7 @@ const LIMITS = {
   name: 24,
   wordAnswer: 40,
   openAnswer: 300,
+  blankAnswer: 60,
   participants: 300,
   // صورة السؤال تُخزَّن كـ data URL داخل السؤال — نحدّها حتى لا تُثقل البث والحفظ
   imageChars: 900000,
@@ -94,6 +98,8 @@ function normalizeQuestion(raw, index) {
     options: [],
     correct: [],
     scale: null,
+    // الإجابات المتوقعة لفراغات سؤال «أكمل الفراغ»
+    blanks: [],
     // صورة توضيحية اختيارية تظهر فوق نص السؤال
     image: cleanImage(raw?.image),
   };
@@ -133,6 +139,13 @@ function normalizeQuestion(raw, index) {
     const correct = Array.isArray(raw?.correct) ? raw.correct : raw?.correct != null ? [raw.correct] : [];
     q.correct = [...new Set(correct.map((c) => clean(c, 40)).filter((c) => ids.has(c)))];
     // سؤال بلا إجابة صحيحة يتحول عملياً إلى استطلاع (بلا نقاط)
+  } else if (type === 'blank') {
+    // عدد الفراغات من النص نفسه، والإجابات المتوقعة تساعد المدرب أثناء التصحيح
+    const count = Math.min(MAX_BLANKS, (q.text.match(BLANK_RE) || []).length);
+    const expected = Array.isArray(raw?.blanks) ? raw.blanks : [];
+    q.blanks = Array.from({ length: count }, (_, i) => clean(expected[i], LIMITS.blankAnswer));
+    // العلامة الافتراضية = علامة لكل فراغ، والمدرب يعدّلها كما يشاء
+    q.points = raw?.points == null ? Math.max(1, count) : clamp(raw.points, 0, 1000, Math.max(1, count));
   } else if (type === 'open') {
     // السؤال المفتوح: علامة صفر = رأي حرّ، وعلامة أكبر من صفر = يصحّحه المدرب يدوياً
     q.points = raw?.points == null ? 0 : clamp(raw.points, 0, 1000, 0);
@@ -141,7 +154,7 @@ function normalizeQuestion(raw, index) {
   }
 
   // تصحيح يدوي: المدرب يمنح علامة كاملة أو جزئية بعد قراءة النص
-  q.manual = type === 'open' && q.points > 0;
+  q.manual = (type === 'open' || type === 'blank') && q.points > 0;
 
   return q;
 }
@@ -616,7 +629,8 @@ class Session {
           participantId: p.id,
           name: this.settings.requireName ? p.name : 'مشارك',
           avatar: p.avatar,
-          text: String(a.value),
+          text: Array.isArray(a.value) ? a.value.map((v) => v || '—').join(' · ') : String(a.value),
+          parts: Array.isArray(a.value) ? a.value : null,
           at: a.at,
           points: a.points || 0,
           pending: !!a.pending,
@@ -628,6 +642,8 @@ class Session {
         index,
         id: q.id,
         text: q.text,
+        type: q.type,
+        expected: q.type === 'blank' ? q.blanks : null,
         maxPoints: q.points,
         answers,
         pending: answers.filter((a) => a.pending).length,
@@ -687,6 +703,13 @@ class Session {
       case 'open': {
         const v = clean(raw, LIMITS.openAnswer);
         return v.length ? v : null;
+      }
+      case 'blank': {
+        const count = q.blanks.length || 1;
+        const arr = (Array.isArray(raw) ? raw : [raw]).slice(0, count).map((v) => clean(v, LIMITS.blankAnswer));
+        while (arr.length < count) arr.push('');
+        // فراغ واحد على الأقل مملوء وإلا فهي ليست إجابة
+        return arr.some((v) => v.length) ? arr : null;
       }
       default:
         return null;
@@ -755,14 +778,15 @@ class Session {
       return { ...base, words };
     }
 
-    // open
+    // open + blank
     return {
       ...base,
+      expected: q.type === 'blank' ? q.blanks : undefined,
       responses: answers
         .sort((a, b) => a.a.at - b.a.at)
         .slice(-60)
         .map(({ p, a }) => ({
-          text: a.value,
+          text: Array.isArray(a.value) ? a.value.map((v) => v || '—').join(' · ') : a.value,
           name: this.settings.requireName ? p.name : null,
           avatar: this.settings.requireName ? p.avatar : null,
         })),
@@ -1000,6 +1024,9 @@ class Session {
         type: q.type,
         options: q.options.map((o) => o.text),
         correct: q.correct.map((c) => q.options.find((o) => o.id === c)?.text).filter(Boolean),
+        // «أكمل الفراغ»: الإجابات المتوقعة تُصدَّر مكان الإجابة الصحيحة
+        blanks: q.type === 'blank' ? q.blanks : undefined,
+        maxPoints: q.manual ? q.points : undefined,
         results: this.aggregate(i),
       })),
       participants: [...this.participants.values()].map((p) => ({
@@ -1249,6 +1276,9 @@ function publicQuestion(q, revealCorrect, code) {
       ...(revealCorrect ? { correct: q.correct.includes(o.id) } : {}),
     })),
     scale: q.scale,
+    // الطالب يحتاج عدد الفراغات ليكتب فيها؛ والإجابات المتوقعة لا تُكشف إلا مع الإجابة
+    blankCount: q.blanks.length,
+    blanks: revealCorrect ? q.blanks : [],
     // «مصحَّح» يعني: لا نكشف النتائج للقاعة أثناء الإجابة
     scored: (SCORED_TYPES.has(q.type) && q.correct.length > 0) || !!q.manual,
     manual: !!q.manual,

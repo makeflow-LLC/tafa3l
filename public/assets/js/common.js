@@ -232,6 +232,7 @@
     word: 'سحابة كلمات',
     scale: 'مقياس',
     open: 'إجابة مفتوحة',
+    blank: 'أكمل الفراغ',
   };
 
   const TYPE_EMOJI = {
@@ -241,6 +242,7 @@
     word: '☁️',
     scale: '📈',
     open: '💬',
+    blank: '✏️',
   };
 
   function fmtMs(ms) {

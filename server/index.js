@@ -16,11 +16,12 @@ const googleAuth = require('./google-auth');
 const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 const { aiRoutes } = require('./routes-ai');
 const ai = require('./ai');
+const premium = require('./premium');
 
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'manualGrading', 'questionImages'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:home+login', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'manualGrading', 'questionImages:premium', 'fillBlank'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -87,6 +88,8 @@ app.get('/api/templates', (_req, res) => {
 /** إنشاء جلسة جديدة — يعيد رمز الدخول ومفتاح المضيف */
 app.post('/api/sessions', async (req, res) => {
   try {
+    // صور الأسئلة للمشتركين فقط
+    premium.assertImagesAllowed(req.user, req.body?.questions);
     const session = store.createSession(req.body || {});
     let activityId = null;
     // المدرب المسجّل: تُحفظ أسئلته تلقائياً في نشاطاته مع كل إطلاق —

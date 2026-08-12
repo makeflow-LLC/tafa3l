@@ -5,23 +5,37 @@
   const { el, toast, store, api, TYPE_LABELS, TYPE_EMOJI } = global.T;
 
   const DRAFT_KEY = 'tafa3l:draft';
-  const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open'];
+  const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open', 'blank'];
+  /** علامة الفراغ في نص السؤال */
+  const BLANK_MARK = '___';
+
+  // حالة اشتراك المدرب — يضبطها host.js بعد جلب الحساب (الصور ميزة بريميوم)
+  let premiumState = null;
+  function setPremium(value) {
+    premiumState = value || null;
+  }
 
   function uid() {
     return 'q_' + Math.random().toString(36).slice(2, 10);
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, blanks: [] };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
         { id: 'o1', text: '' },
       ];
     }
-    if (type === 'poll' || type === 'word' || type === 'open' || type === 'scale') q.timeLimit = 0;
+    if (['poll', 'word', 'open', 'scale', 'blank'].includes(type)) q.timeLimit = 0;
     // السؤال المفتوح: صفر يعني رأياً حرّاً، وأي علامة أكبر تعني تصحيحاً يدوياً من المدرب
-    if (type === 'poll' || type === 'word' || type === 'open' || type === 'scale') q.points = 0;
+    if (['poll', 'word', 'open', 'scale'].includes(type)) q.points = 0;
+    if (type === 'blank') {
+      // أكمل الفراغ: يبدأ بفراغ واحد وعلامة واحدة، والتصحيح يدوي دائماً
+      q.text = `أكمل الفراغ: عاصمة الأردن هي ${BLANK_MARK}.`;
+      q.blanks = [''];
+      q.points = 1;
+    }
     if (type === 'scale') q.scale = { min: 1, max: 5, minLabel: 'غير موافق', maxLabel: 'موافق تماماً' };
     return q;
   }
@@ -78,6 +92,7 @@
     question.explanation = typeof raw.explanation === 'string' ? raw.explanation : '';
     question.timeLimit = Number.isFinite(Number(raw.timeLimit)) ? Number(raw.timeLimit) : fresh.timeLimit;
     question.points = Number.isFinite(Number(raw.points)) ? Number(raw.points) : fresh.points;
+    question.pointsSet = raw.pointsSet === true;
 
     if (question.type === 'mc' || question.type === 'poll') {
       const options = (Array.isArray(raw.options) ? raw.options : [])
@@ -90,12 +105,24 @@
 
     question.correct = Array.isArray(raw.correct) ? raw.correct.map(String) : [];
     question.image = typeof raw.image === 'string' && raw.image.startsWith('data:image/') ? raw.image : null;
+    if (question.type === 'blank') {
+      const count = countBlanks(question.text);
+      const saved = Array.isArray(raw.blanks) ? raw.blanks.map((b) => String(b ?? '')) : [];
+      question.blanks = Array.from({ length: count }, (_, i) => saved[i] || '');
+    } else {
+      question.blanks = [];
+    }
     if (question.type === 'scale') question.scale = { ...fresh.scale, ...(raw.scale && typeof raw.scale === 'object' ? raw.scale : {}) };
 
     return question;
   }
 
   let quotaWarned = false;
+
+  /** كم فراغاً في نص السؤال */
+  function countBlanks(text) {
+    return (String(text || '').match(/_{3,}/g) || []).length;
+  }
 
   function saveDraft(draft) {
     try {
@@ -160,6 +187,7 @@
     word: 'word', wordcloud: 'word', word_cloud: 'word', cloud: 'word', oneword: 'word',
     scale: 'scale', rating: 'scale', likert: 'scale', range: 'scale',
     open: 'open', text: 'open', essay: 'open', open_ended: 'open', openended: 'open', free: 'open',
+    blank: 'blank', fill: 'blank', fillblank: 'blank', fill_blank: 'blank', fill_in_the_blank: 'blank', cloze: 'blank', gap: 'blank',
   };
 
   /**
@@ -231,6 +259,12 @@
     }
     out.explanation = String(q.explanation ?? q.reason ?? q.why ?? '').trim();
     if (typeof q.image === 'string' && q.image.startsWith('data:image/')) out.image = q.image;
+    if (type === 'blank') {
+      const count = countBlanks(out.text);
+      const given = Array.isArray(q.blanks) ? q.blanks.map((b) => String(b ?? '')) : [];
+      out.blanks = Array.from({ length: count }, (_, i) => given[i] || '');
+      if (!count) warnings.push(`سؤال ${index + 1}: لا يوجد ___ في الجملة — أضف مكان الفراغ يدوياً`);
+    }
     if (q.timeLimit != null || q.time != null || q.seconds != null) {
       const t = Number(q.timeLimit ?? q.time ?? q.seconds);
       out.timeLimit = Number.isFinite(t) ? Math.max(0, Math.round(t)) : out.timeLimit;
@@ -665,13 +699,73 @@
         head.querySelector('.t').textContent = text.value || TYPE_LABELS[question.type];
         saveDraft(draft);
       });
-      body.append(el('div', {}, [el('label', { text: 'نص السؤال' }), text]));
+      body.append(
+        el('div', {}, [
+          el('label', { text: question.type === 'blank' ? 'نص الجملة (ضع ___ مكان كل فراغ)' : 'نص السؤال' }),
+          text,
+        ])
+      );
 
-      // ---- صورة السؤال (اختيارية): تُصغَّر في المتصفح قبل الحفظ
+      // ---- أكمل الفراغ: الإجابات المتوقعة تساعدك أثناء التصحيح اليدوي
+      const blanksBox = el('div', { class: 'stack tight' });
+      // العلامة تتبع عدد الفراغات تلقائياً ما لم يضبطها المدرب بنفسه
+      let syncMarks = null;
+      const drawBlanks = () => {
+        if (question.type !== 'blank') return;
+        blanksBox.innerHTML = '';
+        const count = countBlanks(question.text);
+        question.blanks = Array.from({ length: count }, (_, i) => question.blanks[i] || '');
+        if (!question.pointsSet) {
+          question.points = Math.max(1, count);
+          if (syncMarks) syncMarks();
+        }
+        blanksBox.append(el('label', { text: `الإجابات المتوقعة (${count} ${count === 1 ? 'فراغ' : 'فراغات'})` }));
+        if (!count) {
+          blanksBox.append(
+            el('div', { class: 'note warn small', text: 'لا يوجد فراغ في الجملة — اكتب ___ (ثلاث شرطات سفلية) في المكان الذي يملؤه الطالب.' })
+          );
+          return;
+        }
+        question.blanks.forEach((value, i) => {
+          const input = el('input', { maxlength: 60, placeholder: `الإجابة المتوقعة للفراغ ${i + 1} (اختيارية)`, value });
+          input.addEventListener('input', () => {
+            question.blanks[i] = input.value;
+            saveDraft(draft);
+          });
+          blanksBox.append(input);
+        });
+        blanksBox.append(
+          el('div', { class: 'muted small', text: 'تظهر لك وحدك أثناء التصحيح لتقارن بها إجابة الطالب — التصحيح يبقى بيدك.' })
+        );
+      };
+      text.addEventListener('input', drawBlanks);
+      drawBlanks();
+      if (question.type === 'blank') body.append(blanksBox);
+
+      // ---- صورة السؤال: ميزة بريميوم، وزر واحد صغير لا يزحم كل سؤال
       const imageBox = el('div', { class: 'stack tight' });
       const drawImage = () => {
         imageBox.innerHTML = '';
-        imageBox.append(el('label', { text: 'صورة السؤال (اختيارية)' }));
+        if (!premiumState?.isPremium && !question.image) {
+          imageBox.append(
+            el('div', { class: 'row' }, [
+              el(
+                'button',
+                {
+                  class: 'btn ghost sm',
+                  type: 'button',
+                  onclick: () =>
+                    toast(
+                      `🖼 إضافة صورة للسؤال ميزة بريميوم — للاشتراك واتساب ${premiumState?.plan?.whatsapp || '970597034066'} (${premiumState?.plan?.priceUsd || 3}$ شهرياً)`,
+                      'warn'
+                    ),
+                },
+                '🖼 إضافة صورة ⭐'
+              ),
+            ])
+          );
+          return;
+        }
         if (question.image) {
           imageBox.append(
             el('div', { class: 'img-edit' }, [
@@ -844,7 +938,7 @@
 
       const timeAndPoints = el('div', { class: 'grid two' }, [el('div', {}, [el('label', { text: 'مدة الإجابة' }), timeSelect])]);
 
-      if (question.type === 'open') {
+      if (question.type === 'open' || question.type === 'blank') {
         // علامة السؤال النصّي: صفر = رأي حرّ بلا تصحيح، وأكبر من صفر = يصحّحه المدرب بنفسه
         const marks = el('input', {
           type: 'number',
@@ -857,15 +951,21 @@
         const hint = el('div', { class: 'muted small', style: { marginTop: '4px' } });
         const paintHint = () => {
           hint.textContent = question.points > 0
-            ? `يصحّحه المدرب يدوياً: يمنح من 0 إلى ${question.points} علامة لكل إجابة، ولا يرى الطالب نتيجته قبل التصحيح.`
+            ? `يصحّحه المدرب يدوياً: صح (${question.points}) أو خطأ (0) أو علامة جزئية بينهما، ولا يرى الطالب نتيجته قبل التصحيح.`
             : 'صفر = سؤال رأي حرّ بلا علامة ولا تصحيح.';
         };
         marks.addEventListener('input', () => {
           const value = Number(marks.value);
           question.points = Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0;
+          question.pointsSet = true;
           paintHint();
           saveDraft(draft);
         });
+        // يستدعيها محرّر الفراغات حين يتغيّر عددها
+        syncMarks = () => {
+          marks.value = String(question.points);
+          paintHint();
+        };
         paintHint();
         timeAndPoints.append(
           el('div', {}, [
@@ -880,6 +980,7 @@
                     type: 'button',
                     onclick: () => {
                       question.points = value;
+                      question.pointsSet = true;
                       marks.value = String(value);
                       paintHint();
                       saveDraft(draft);
@@ -1147,6 +1248,9 @@
       if (question.type === 'truefalse' && question.points > 0 && question.correct.length === 0) {
         return `السؤال ${i + 1}: حدّد الإجابة الصحيحة`;
       }
+      if (question.type === 'blank' && countBlanks(question.text) === 0) {
+        return `السؤال ${i + 1}: اكتب ___ مكان الفراغ الذي يملؤه الطالب`;
+      }
     }
     return null;
   }
@@ -1217,5 +1321,5 @@
     JSON.stringify(IMPORT_EXAMPLE, null, 2),
   ].join('\n');
 
-  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, parseImport, AI_PROMPT, DRAFT_KEY };
+  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, parseImport, setPremium, countBlanks, AI_PROMPT, DRAFT_KEY };
 })(window);

@@ -56,6 +56,20 @@ function requirePremium(req, res, next) {
   next();
 }
 
+/**
+ * صور الأسئلة ميزة بريميوم: نرفض الإنشاء بدل حذف الصورة صامتاً كي يعرف
+ * المدرب سبب اختفائها. تُستدعى قبل إنشاء الجلسة أو حفظ النشاط.
+ */
+function assertImagesAllowed(user, questions) {
+  const hasImage = (Array.isArray(questions) ? questions : []).some((q) => typeof q?.image === 'string' && q.image.trim());
+  if (!hasImage || isPremium(user)) return;
+  const err = new Error(
+    `إضافة صورة إلى السؤال ميزة بريميوم — للاشتراك تواصل عبر واتساب ${PLAN.whatsapp} (${PLAN.priceUsd}$ شهرياً)`
+  );
+  err.status = 402;
+  throw err;
+}
+
 function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'يجب تسجيل الدخول أولاً' });
   // 404 لا 403: لا نكشف وجود لوحة مالك أصلاً لغير المالك
@@ -63,4 +77,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { PLAN, isAdmin, isPremium, summary, requirePremium, requireAdmin, adminEmails };
+module.exports = { PLAN, isAdmin, isPremium, summary, requirePremium, requireAdmin, adminEmails, assertImagesAllowed };
