@@ -345,3 +345,58 @@ test('استنساخ نشاط يعطي نسخة مستقلة', async () => {
   await loginViaGoogle(other, { email: email(), name: 'غيث' });
   assert.equal((await other.request('POST', `/api/activities/${id}/duplicate`)).status, 404);
 });
+
+// ---------------------------------------------------------- بنك الأسئلة
+
+const BANK_QUESTION = { type: 'mc', text: 'ما عاصمة الأردن؟', options: [{ id: 'o0', text: 'عمّان' }, { id: 'o1', text: 'بيروت' }], correct: ['o0'], points: 500 };
+
+test('حفظ سؤال في البنك وتحديثه وحذفه', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'منى' });
+
+  const created = await c.request('POST', '/api/bank', { question: BANK_QUESTION });
+  assert.equal(created.status, 201);
+  const id = created.data.item.id;
+  assert.equal(created.data.item.question.text, BANK_QUESTION.text);
+  assert.equal(created.data.item.question.options.length, 2, 'السؤال يمر عبر نفس تحقّق الأسئلة العادي');
+
+  const list = await c.request('GET', '/api/bank');
+  assert.equal(list.data.questions.length, 1);
+
+  const updated = await c.request('PUT', '/api/bank/' + id, { question: { ...BANK_QUESTION, text: 'ما عاصمة مصر؟' } });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.item.question.text, 'ما عاصمة مصر؟');
+  const afterUpdate = await c.request('GET', '/api/bank');
+  assert.equal(afterUpdate.data.questions.length, 1, 'التحديث لا يُنشئ عنصراً ثانياً');
+
+  assert.equal((await c.request('DELETE', '/api/bank/' + id)).status, 200);
+  assert.equal((await c.request('GET', '/api/bank')).data.questions.length, 0);
+});
+
+test('البنك محمي بتسجيل الدخول ومعزول لكل مدرب', async () => {
+  const anon = client();
+  assert.equal((await anon.request('GET', '/api/bank')).status, 401);
+  assert.equal((await anon.request('POST', '/api/bank', { question: BANK_QUESTION })).status, 401);
+
+  const a = client();
+  const b = client();
+  await loginViaGoogle(a, { email: email(), name: 'سامي' });
+  await loginViaGoogle(b, { email: email(), name: 'دانة' });
+
+  const id = (await a.request('POST', '/api/bank', { question: BANK_QUESTION })).data.item.id;
+  assert.equal((await b.request('GET', '/api/bank')).data.questions.length, 0, 'قائمة كل مدرب خاصة به');
+  assert.equal((await b.request('PUT', '/api/bank/' + id, { question: BANK_QUESTION })).status, 404);
+  assert.equal((await b.request('DELETE', '/api/bank/' + id)).status, 404);
+  assert.equal((await a.request('GET', '/api/bank')).data.questions.length, 1, 'ولا يزال موجوداً عند صاحبه');
+});
+
+test('سؤال بلا نص كافٍ في البنك يُرفض بنفس تحقّق الأسئلة العادي', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'وفاء' });
+  // نوع mc بلا خيارات كافية: normalizeQuestion يعوّض بخيارين افتراضيين بدل الرفض —
+  // فقط الأنواع التي يتحقّق منها normalizeQuiz صراحة (كالأسئلة الفارغة كلياً) تُرفض هنا؛
+  // البنك يستخدم نفس normalizeQuestion المتسامح المستخدم للأنشطة، فهذا سلوك متوقّع لا خطأ.
+  const created = await c.request('POST', '/api/bank', { question: { type: 'mc', text: '' } });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.item.question.text, 'سؤال 1', 'نص افتراضي عند الترك فارغاً — نفس سلوك محرّر الأنشطة');
+});

@@ -9,9 +9,10 @@ const express = require('express');
 const storage = require('./storage');
 const auth = require('./auth');
 const google = require('./google-auth');
-const { normalizeQuiz } = require('./session');
+const { normalizeQuiz, normalizeQuestion } = require('./session');
 
 const MAX_ACTIVITIES = 200;
+const MAX_BANK_QUESTIONS = 500;
 
 /** يقبل فقط مساراً داخلياً نسبياً — يمنع التحويل إلى موقع خارجي عبر next= */
 function safeNext(value) {
@@ -208,6 +209,59 @@ function accountRoutes(store) {
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر إطلاق الجلسة' });
     }
+  });
+
+  // ------------------------------------------------------------ بنك الأسئلة
+
+  /**
+   * أسئلة مستقلة عن أي نشاط — يجمعها المدرب مع الوقت ويعيد استخدامها
+   * في أي نشاط جديد بدل إعادة كتابتها. لا صلة لها بنتائج المشاركين.
+   */
+
+  router.get('/bank', auth.requireUser, async (req, res) => {
+    try {
+      const list = await storage.get().listBankQuestions(req.user.id);
+      res.json({ questions: list.map((item) => ({ id: item.id, question: item.question, createdAt: item.createdAt, updatedAt: item.updatedAt })) });
+    } catch (err) {
+      console.error('list bank:', err);
+      res.status(500).json({ error: 'تعذّر جلب بنك الأسئلة' });
+    }
+  });
+
+  router.post('/bank', auth.requireUser, async (req, res) => {
+    try {
+      const list = await storage.get().listBankQuestions(req.user.id);
+      if (list.length >= MAX_BANK_QUESTIONS) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_BANK_QUESTIONS} سؤالاً) — احذف أسئلة قديمة` });
+      }
+      const question = normalizeQuestion(req.body?.question || req.body, 0);
+      const now = Date.now();
+      const item = { id: storage.newId('bq_'), ownerId: req.user.id, question, createdAt: now, updatedAt: now };
+      await storage.get().saveBankQuestion(item);
+      res.status(201).json({ item: { id: item.id, question: item.question, createdAt: item.createdAt, updatedAt: item.updatedAt } });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر حفظ السؤال في البنك' });
+    }
+  });
+
+  router.put('/bank/:id', auth.requireUser, async (req, res) => {
+    try {
+      const existing = await storage.get().getBankQuestion(req.params.id);
+      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'السؤال غير موجود' });
+      const question = normalizeQuestion(req.body?.question || req.body, 0);
+      const updated = { ...existing, question, updatedAt: Date.now() };
+      await storage.get().saveBankQuestion(updated);
+      res.json({ item: { id: updated.id, question: updated.question, updatedAt: updated.updatedAt } });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر تحديث السؤال' });
+    }
+  });
+
+  router.delete('/bank/:id', auth.requireUser, async (req, res) => {
+    const existing = await storage.get().getBankQuestion(req.params.id);
+    if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'السؤال غير موجود' });
+    await storage.get().deleteBankQuestion(existing.id);
+    res.json({ ok: true });
   });
 
   return router;

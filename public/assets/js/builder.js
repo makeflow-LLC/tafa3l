@@ -2,7 +2,7 @@
 (function (global) {
   'use strict';
 
-  const { el, toast, store, TYPE_LABELS, TYPE_EMOJI } = global.T;
+  const { el, toast, store, api, TYPE_LABELS, TYPE_EMOJI } = global.T;
 
   const DRAFT_KEY = 'tafa3l:draft';
   const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open'];
@@ -395,8 +395,11 @@
               [el('span', { class: 'em', text: TYPE_EMOJI[type] }), el('span', { text: '+ ' + TYPE_LABELS[type] })]
             )
           )),
+          el('label', { text: '📚 أو أضف من بنك أسئلتك', style: { marginTop: '10px' } }),
+          el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: 'جارٍ التحميل…' })),
         ])
       );
+      loadBank(root.querySelector('#bankRow'));
 
       // ---- الإطلاق
       const launch = el('button', { class: 'btn accent block' }, '🚀 ابدأ الجلسة واعرض رمز QR');
@@ -849,6 +852,7 @@
             },
             '⧉'
           ),
+          bankSaveButton(question),
           el('span', { class: 'grow' }),
           el(
             'button',
@@ -869,6 +873,73 @@
 
       card.append(body);
       return card;
+    }
+
+    /** زر «احفظ في البنك» على كل سؤال — يحتاج تسجيل دخول، والرسالة من الخادم كافية بلا صياغة إضافية */
+    function bankSaveButton(question) {
+      const btn = el('button', { class: 'icon-btn', type: 'button', title: 'احفظ السؤال في بنك أسئلتك' }, '📚');
+      btn.addEventListener('click', async () => {
+        if (!question.text.trim()) return toast('اكتب نص السؤال أولاً', 'bad');
+        btn.disabled = true;
+        try {
+          await api('/api/bank', { method: 'POST', body: { question } });
+          toast('حُفظ في بنك الأسئلة 📚', 'ok');
+          update();
+        } catch (err) {
+          toast(err.message, 'bad');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+      return btn;
+    }
+
+    /** يحمّل بنك أسئلة المدرب في حاوية موجودة — يحتاج تسجيل دخول */
+    async function loadBank(row) {
+      let data;
+      try {
+        data = await api('/api/bank');
+      } catch {
+        row.innerHTML = '';
+        row.append(
+          el('a', { class: 'btn ghost sm', href: '/login.html?next=' + encodeURIComponent('/host.html#/') }, '🔐 سجّل الدخول لاستخدام بنك الأسئلة')
+        );
+        return;
+      }
+      row.innerHTML = '';
+      if (!data.questions.length) {
+        row.append(el('span', { class: 'muted small', text: 'لا توجد أسئلة محفوظة بعد — احفظ سؤالاً بزر 📚 على أي بطاقة أعلاه.' }));
+        return;
+      }
+      data.questions.forEach((item) => {
+        const q = item.question;
+        const addBtn = el('button', { class: 'btn sm ghost', type: 'button', title: 'أضف إلى هذا النشاط' }, '➕ أضف');
+        addBtn.addEventListener('click', () => {
+          const copy = JSON.parse(JSON.stringify(q));
+          copy.id = uid();
+          draft.questions.push(copy);
+          openIndex = draft.questions.length - 1;
+          update();
+        });
+        const delBtn = el('button', { class: 'icon-btn', type: 'button', title: 'حذف من البنك' }, '🗑');
+        delBtn.addEventListener('click', async () => {
+          if (!confirm('حذف هذا السؤال من البنك نهائياً؟')) return;
+          try {
+            await api('/api/bank/' + item.id, { method: 'DELETE' });
+            loadBank(row);
+          } catch (err) {
+            toast(err.message, 'bad');
+          }
+        });
+        row.append(
+          el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)' } }, [
+            el('span', { text: TYPE_EMOJI[q.type] }),
+            el('span', { class: 'grow', style: { margin: '0 8px' }, text: q.text || TYPE_LABELS[q.type] }),
+            addBtn,
+            delBtn,
+          ])
+        );
+      });
     }
 
     /** القوالب محمّلة مع الصفحة (window.TEMPLATES) — لا تعتمد على الشبكة إطلاقاً */
