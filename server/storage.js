@@ -26,8 +26,8 @@ function newId(prefix) {
 // ------------------------------------------------------------- سائق الملف
 
 function fileDriver() {
-  /** @type {{users:Object, activities:Object, authSessions:Object}} */
-  let db = { users: {}, activities: {}, authSessions: {} };
+  /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object}} */
+  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -76,6 +76,7 @@ function fileDriver() {
           users: parsed.users || {},
           activities: parsed.activities || {},
           authSessions: parsed.authSessions || {},
+          bankQuestions: parsed.bankQuestions || {},
         };
       } catch (err) {
         if (err.code !== 'ENOENT') console.error('ملف البيانات غير قابل للقراءة، سنبدأ فارغاً:', err.message);
@@ -118,6 +119,24 @@ function fileDriver() {
     },
     async deleteActivity(id) {
       delete db.activities[id];
+      schedule();
+    },
+
+    async listBankQuestions(ownerId) {
+      return Object.values(db.bankQuestions)
+        .filter((q) => q.ownerId === ownerId)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    async getBankQuestion(id) {
+      return db.bankQuestions[id] || null;
+    },
+    async saveBankQuestion(item) {
+      db.bankQuestions[item.id] = item;
+      schedule();
+      return item;
+    },
+    async deleteBankQuestion(id) {
+      delete db.bankQuestions[id];
       schedule();
     },
 
@@ -181,6 +200,15 @@ function postgresDriver(connectionString) {
       updatedAt: Number(r.updated_at),
     };
 
+  const rowToBankQuestion = (r) =>
+    r && {
+      id: r.id,
+      ownerId: r.owner_id,
+      question: r.question,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+    };
+
   return {
     kind: 'postgres',
     location: connectionString.replace(/:[^:@/]+@/, ':***@'),
@@ -209,6 +237,14 @@ function postgresDriver(connectionString) {
           updated_at BIGINT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS activities_owner_idx ON activities(owner_id);
+        CREATE TABLE IF NOT EXISTS bank_questions (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          question JSONB NOT NULL,
+          created_at BIGINT NOT NULL,
+          updated_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS bank_questions_owner_idx ON bank_questions(owner_id);
         CREATE TABLE IF NOT EXISTS auth_sessions (
           token TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -259,6 +295,27 @@ function postgresDriver(connectionString) {
     },
     async deleteActivity(id) {
       await pool.query('DELETE FROM activities WHERE id = $1', [id]);
+    },
+
+    async listBankQuestions(ownerId) {
+      const { rows } = await pool.query('SELECT * FROM bank_questions WHERE owner_id = $1 ORDER BY updated_at DESC', [ownerId]);
+      return rows.map(rowToBankQuestion);
+    },
+    async getBankQuestion(id) {
+      const { rows } = await pool.query('SELECT * FROM bank_questions WHERE id = $1', [id]);
+      return rowToBankQuestion(rows[0]);
+    },
+    async saveBankQuestion(item) {
+      await pool.query(
+        `INSERT INTO bank_questions (id, owner_id, question, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (id) DO UPDATE SET question = $3, updated_at = $5`,
+        [item.id, item.ownerId, JSON.stringify(item.question), item.createdAt, item.updatedAt]
+      );
+      return item;
+    },
+    async deleteBankQuestion(id) {
+      await pool.query('DELETE FROM bank_questions WHERE id = $1', [id]);
     },
 
     async createAuthSession(s) {

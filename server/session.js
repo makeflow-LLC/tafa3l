@@ -1161,4 +1161,4 @@ function normalizeAvatar(avatar) {
   };
 }
 
-module.exports = { Session, normalizeQuiz, QUESTION_TYPES, LIMITS, REACTIONS, READY_MS, publicQuestion };
+module.exports = { Session, normalizeQuiz, normalizeQuestion, QUESTION_TYPES, LIMITS, REACTIONS, READY_MS, publicQuestion };
