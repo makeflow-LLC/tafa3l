@@ -48,9 +48,19 @@
 
   // -------------------------------------------------------------- التوجيه
 
+  /**
+   * السِمة الداكنة للجلسة المباشرة فقط؛ الإعداد والتصفّح يبقيان على الأبيض.
+   * نضبطها في التوجيه لأنها الموضع الوحيد الذي يعرف الشاشة الحالية.
+   */
+  function paintTheme(isLive) {
+    document.documentElement.classList.toggle('stage', isLive);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isLive ? '#12102e' : '#ffffff');
+  }
+
   function route() {
     const hash = location.hash.slice(1) || '/';
     const match = hash.match(/^\/live\/(\d{6})$/);
+    paintTheme(!!match);
     if (match) return openLive(match[1]);
     if (hash === '/demo') return startDemo();
     if (hash === '/mine') return openMyActivities();

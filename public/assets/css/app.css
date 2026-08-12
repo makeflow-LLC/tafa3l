@@ -1,23 +1,65 @@
 /* Tapio — نظام تصميم خفيف، جوال أولاً، بدون أي مكتبات خارجية */
 
+/**
+ * سِمَتان اثنتان فقط:
+ *  - الافتراضية (فاتحة): خلفية بيضاء نقية — الإعداد والتصفّح والإحصاءات.
+ *  - .stage (داكنة #12102E): الجلسة المباشرة — يُضاف الصنف على <html> فتنقلب
+ *    كل الألوان دفعة واحدة. كل لون هنا رمز (token) فلا يُكتب لون مباشرة في
+ *    القواعد أدناه، وإلا انكسرت إحدى السِمَتين.
+ */
 :root {
-  color-scheme: dark;
-  --bg: #0b1020;
-  --bg-2: #121a33;
-  --surface: rgba(255, 255, 255, 0.06);
-  --surface-2: rgba(255, 255, 255, 0.1);
-  --border: rgba(255, 255, 255, 0.12);
-  --text: #eef2ff;
-  --muted: #a3aed0;
-  --brand: #7c5cff;
-  --brand-2: #22d3ee;
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --bad: #ef4444;
-  --radius: 16px;
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-2: #f6f7fb;
+  --surface: #ffffff;
+  --surface-2: #f1f3f9;
+  --border: #e3e6ef;
+  --text: #16162a;
+  --muted: #61657d;
+  /* اللونان مختاران ليمرّا معيار التباين AA مع نص أبيض عريض (٦.٢:١ و ٤.٧:١) */
+  --brand: #5b45e0;
+  --brand-2: #0b7f96;
+  --on-brand: #ffffff;
+  --ok: #128a4d;
+  --warn: #a45c00;
+  --bad: #cc2f2f;
+  --ok-soft: rgba(18, 138, 77, 0.1);
+  --bad-soft: rgba(204, 47, 47, 0.09);
+  --warn-soft: rgba(164, 92, 0, 0.1);
+  --brand-soft: rgba(91, 69, 224, 0.09);
+  --scrim: rgba(255, 255, 255, 0.86);
+  /* مقبض المفاتيح والمقاييس + مسار المفتاح المطفأ — يحتاجان تبايناً في السِمَتين */
+  --knob: #ffffff;
+  --track: #c6cbdc;
+  --radius: 14px;
   --radius-sm: 10px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow: 0 1px 2px rgba(20, 22, 45, 0.06), 0 6px 18px rgba(20, 22, 45, 0.06);
   --tap: 48px;
+}
+
+html.stage {
+  color-scheme: dark;
+  --bg: #12102e;
+  --bg-2: #1b1840;
+  --surface: #1a1740;
+  --surface-2: #241f52;
+  --border: rgba(255, 255, 255, 0.14);
+  --text: #f5f4ff;
+  --muted: #a9a5cc;
+  --brand: #8b73ff;
+  --brand-2: #35d6ef;
+  --on-brand: #12102e;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #fb7185;
+  --ok-soft: rgba(52, 211, 153, 0.16);
+  --bad-soft: rgba(251, 113, 133, 0.16);
+  --warn-soft: rgba(251, 191, 36, 0.16);
+  --brand-soft: rgba(139, 115, 255, 0.18);
+  --scrim: rgba(18, 16, 46, 0.86);
+  --knob: #ffffff;
+  --track: rgba(255, 255, 255, 0.2);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -37,8 +79,8 @@ html {
 
 body {
   min-height: 100dvh;
-  background: radial-gradient(1200px 700px at 80% -10%, #241b5e 0%, transparent 60%),
-    radial-gradient(900px 600px at -10% 10%, #0c3b53 0%, transparent 55%), var(--bg);
+  /* مسطّح تماماً في السِمَتين — لا تدرّجات ولا زخارف */
+  background: var(--bg);
   color: var(--text);
   font-family: 'Segoe UI', Tahoma, 'Noto Naskh Arabic', system-ui, -apple-system, sans-serif;
   font-size: 16px;
@@ -73,15 +115,14 @@ svg {
   letter-spacing: -0.3px;
 }
 
+/* علامة الشعار — ملف /assets/icon.svg، فاستبداله يحدّث كل الصفحات دفعةً واحدة */
 .brand .dot {
   width: 34px;
   height: 34px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  display: grid;
-  place-items: center;
-  font-size: 1rem;
-  box-shadow: var(--shadow);
+  border-radius: 10px;
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .topbar {
@@ -93,7 +134,7 @@ svg {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(11, 16, 32, 0.72);
+  background: var(--scrim);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
@@ -103,7 +144,6 @@ svg {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
-  box-shadow: var(--shadow);
 }
 
 .card + .card {
@@ -176,6 +216,8 @@ p {
   color: var(--text);
   font: inherit;
   font-weight: 700;
+  /* كثير من الأزرار وسوم <a> — بلا هذا يظهر خط سفلي من المتصفح */
+  text-decoration: none;
   min-height: var(--tap);
   padding: 10px 18px;
   border-radius: 999px;
@@ -196,25 +238,28 @@ p {
   cursor: not-allowed;
 }
 
+/* مسطّحة تماماً: لون واحد صريح لكل زر، بلا تدرّجات ولا ظلال */
 .btn.primary {
-  background: linear-gradient(135deg, var(--brand), #5b8cff);
-  border-color: transparent;
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
 }
 
 .btn.accent {
-  background: linear-gradient(135deg, var(--brand-2), #4ade80);
-  border-color: transparent;
-  color: #06121f;
+  background: var(--brand-2);
+  border-color: var(--brand-2);
+  color: var(--on-brand);
 }
 
 .btn.ghost {
   background: transparent;
+  color: var(--text);
 }
 
 .btn.danger {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fecaca;
+  background: transparent;
+  border-color: var(--bad);
+  color: var(--bad);
 }
 
 .btn.block {
@@ -238,6 +283,9 @@ p {
   color: var(--text);
   font: inherit;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-grid;
+  place-items: center;
 }
 
 /* ------------------------------------------------------------------ حقول */
@@ -255,7 +303,7 @@ select {
   width: 100%;
   font: inherit;
   color: var(--text);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
@@ -272,12 +320,13 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.25);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #6f7ba3;
+  color: var(--muted);
+  opacity: 0.75;
 }
 
 .code-input {
@@ -297,7 +346,7 @@ textarea::placeholder {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--bg-2);
   margin-bottom: 0;
   cursor: pointer;
 }
@@ -308,7 +357,7 @@ textarea::placeholder {
   min-height: 0;
   flex: 0 0 auto;
   appearance: none;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--track);
   border-radius: 999px;
   position: relative;
   cursor: pointer;
@@ -323,7 +372,7 @@ textarea::placeholder {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--knob);
   transition: inset-inline-start 0.15s ease;
 }
 
@@ -351,15 +400,15 @@ textarea::placeholder {
 }
 
 .badge.ok {
-  background: rgba(34, 197, 94, 0.15);
-  border-color: rgba(34, 197, 94, 0.35);
-  color: #bbf7d0;
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .badge.bad {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #fecaca;
+  background: var(--bad-soft);
+  border-color: var(--bad);
+  color: var(--bad);
 }
 
 .badge.live::before {
@@ -478,7 +527,7 @@ textarea::placeholder {
   place-items: center;
   font-weight: 800;
   flex: 0 0 auto;
-  color: #06121f;
+  color: #0b1020;
 }
 
 .opt.c0 .tag {
@@ -508,17 +557,17 @@ textarea::placeholder {
 
 .opt.selected {
   border-color: var(--brand);
-  background: rgba(124, 92, 255, 0.22);
+  background: var(--brand-soft);
 }
 
 .opt.correct {
   border-color: var(--ok);
-  background: rgba(34, 197, 94, 0.18);
+  background: var(--ok-soft);
 }
 
 .opt.wrong {
   border-color: var(--bad);
-  background: rgba(239, 68, 68, 0.15);
+  background: var(--bad-soft);
 }
 
 .opt.dim {
@@ -565,7 +614,7 @@ textarea::placeholder {
 .progress {
   height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-2);
   overflow: hidden;
   flex: 1 1 auto;
 }
@@ -609,11 +658,11 @@ th {
   font-weight: 700;
   position: sticky;
   top: 0;
-  background: #131a30;
+  background: var(--bg-2);
 }
 
 tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
 }
 
 .dots {
@@ -625,7 +674,7 @@ tbody tr:hover {
   width: 9px;
   height: 9px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--surface-2);
   display: inline-block;
 }
 
@@ -777,9 +826,9 @@ input[type='range'].slider::-webkit-slider-thumb {
   height: 30px;
   margin-top: -10px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--knob);
   border: 4px solid var(--brand);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow);
 }
 
 input[type='range'].slider::-moz-range-track {
@@ -792,9 +841,9 @@ input[type='range'].slider::-moz-range-thumb {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--knob);
   border: 4px solid var(--brand);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow);
 }
 
 .slider-ticks {
@@ -953,7 +1002,7 @@ input[type='range'].slider::-moz-range-thumb {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-2);
   cursor: pointer;
 }
 
@@ -996,16 +1045,16 @@ input[type='range'].slider::-moz-range-thumb {
   min-width: 44px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--bg-2);
   color: var(--muted);
   font-size: 1.05rem;
   cursor: pointer;
 }
 
 .opt-edit .mark.on {
-  background: rgba(34, 197, 94, 0.2);
+  background: var(--ok-soft);
   border-color: var(--ok);
-  color: #bbf7d0;
+  color: var(--ok);
 }
 
 .types {
@@ -1067,7 +1116,7 @@ input[type='range'].slider::-moz-range-thumb {
 
 .tabs button.on {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 
 /* ------------------------------------------------------------ شريط سفلي */
@@ -1079,7 +1128,7 @@ input[type='range'].slider::-moz-range-thumb {
   display: flex;
   gap: 8px;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(11, 16, 32, 0.9);
+  background: var(--scrim);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
 }
@@ -1160,8 +1209,8 @@ input[type='range'].slider::-moz-range-thumb {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.18);
-  border-top-color: var(--brand-2);
+  border: 3px solid var(--border);
+  border-top-color: var(--brand);
   animation: spin 0.9s linear infinite;
   margin: 12px auto;
 }
@@ -1227,7 +1276,7 @@ input[type='range'].slider::-moz-range-thumb {
   place-content: center;
   gap: 8px;
   justify-items: center;
-  background: rgba(11, 16, 32, 0.82);
+  background: var(--scrim);
   backdrop-filter: blur(6px);
 }
 
@@ -1377,8 +1426,8 @@ input[type='range'].slider::-moz-range-thumb {
 /* ------------------------------------- كشف الإجابة الصحيحة وشرحها */
 
 .card.reveal {
-  border-color: rgba(34, 197, 94, 0.4);
-  background: linear-gradient(160deg, rgba(34, 197, 94, 0.12), rgba(255, 255, 255, 0.05));
+  border-color: var(--ok);
+  background: var(--ok-soft);
   animation: pop 0.3s ease;
 }
 
