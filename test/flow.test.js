@@ -245,6 +245,59 @@ test('المسار الكامل: دخول، إجابة، تصحيح، نتائج
   b.close();
 });
 
+test('شاشة العرض المنفصلة: تتطلب مفتاح المضيف، تستقبل الحالة، ولا يمكنها إصدار أوامر تحكم', async () => {
+  const { data: created } = await post('/api/sessions', QUIZ);
+  const code = created.code;
+
+  // مفتاح خاطئ يُرفض
+  const bad = ws();
+  await bad.ready;
+  bad.send({ t: 'screen:hello', code, hostToken: 'رمز-خاطئ' });
+  const rejected = await bad.next('error');
+  assert.equal(rejected.code, 'forbidden');
+  bad.close();
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code, hostToken: created.hostToken });
+  await host.next('state');
+
+  const screen = ws();
+  await screen.ready;
+  screen.send({ t: 'screen:hello', code, hostToken: created.hostToken });
+  const initial = await screen.next('state');
+  assert.equal(initial.phase, 'lobby');
+  assert.equal(initial.participants.length, 0);
+
+  // شاشة العرض لا تملك زر تحكم — لكن حتى لو أُرسل أمر مضيف مباشرة عبر السوكِت يُتجاهل بصمت
+  screen.send({ t: 'host:end' });
+  await new Promise((r) => setTimeout(r, 150));
+  const stillLobby = await fetch(`${base}/api/sessions/${code}`).then((r) => r.json());
+  assert.equal(stillLobby.status, 'lobby', 'أمر مزيّف من شاشة العرض لم يُنفَّذ');
+
+  // بدء النشاط من المضيف الحقيقي يصل لشاشة العرض أيضاً
+  const p = ws();
+  await p.ready;
+  p.send({ t: 'join', code, name: 'سلمى', avatar: { seed: 's' } });
+  await p.next('joined');
+
+  host.send({ t: 'host:start' });
+  const screenQuestion = await screen.next((m) => m.t === 'state' && m.phase === 'question');
+  assert.equal(screenQuestion.question.text, QUIZ.questions[0].text);
+
+  // تفاعل سريع من المشارك يصل شاشة العرض أيضاً لا المضيف فقط
+  const qId = screenQuestion.question.id;
+  p.send({ t: 'answer', questionId: qId, value: 'o0' });
+  await p.next('answer:accepted');
+  p.send({ t: 'reaction', emoji: '🔥' });
+  const reaction = await screen.next('reaction');
+  assert.equal(reaction.emoji, '🔥');
+
+  host.close();
+  screen.close();
+  p.close();
+});
+
 test('الاستطلاع المجهول لا يطلب اسماً ولا يكشف هوية المجيبين', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'استطلاع',

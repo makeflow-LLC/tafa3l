@@ -1168,6 +1168,20 @@
 
   function renderShare(s) {
     app.append(el('div', { class: 'card' }, [el('div', { class: 'joinbox' }, [qrBox(), joinInfo(s)])]));
+
+    // شاشة عرض منفصلة للبروجكتر: تعرض السؤال والنتائج بلا أي زر تحكم — أنت تتحكم من جوالك
+    const screenUrl = `${location.origin}/screen.html?code=${state.code}&hostToken=${encodeURIComponent(state.hostToken)}`;
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('h2', { text: '🖥️ شاشة عرض للبروجكتر', style: { margin: 0 } }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: 'افتحها على شاشة العرض أو التلفاز، وتحكّم أنت من جوالك — بلا أزرار على الشاشة الكبيرة.' }),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn accent sm', href: screenUrl, target: '_blank', rel: 'noopener' }, '🖥️ افتح شاشة العرض'),
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => copy(screenUrl) }, '📋 نسخ الرابط'),
+        ]),
+      ])
+    );
+
     app.append(
       el('div', { class: 'card stack' }, [
         el('h2', { text: 'كيف يدخل المتدربون؟' }),

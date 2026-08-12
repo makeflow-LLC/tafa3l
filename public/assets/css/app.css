@@ -678,6 +678,39 @@ tbody tr:hover {
 
 /* -------------------------------------------------------- سحابة الكلمات */
 
+/* شاشة العرض المنفصلة (بروجكتر) — نص أكبر يُرى من بعيد */
+body.screen-body {
+  font-size: 20px;
+}
+
+body.screen-body .wrap {
+  width: min(1400px, 96%);
+}
+
+body.screen-body .qr {
+  width: 340px;
+  height: 340px;
+}
+
+body.screen-body .bigcode {
+  font-size: clamp(3rem, 14vw, 6rem);
+}
+
+body.screen-body .big-q {
+  font-size: clamp(1.8rem, 5vw, 3.2rem);
+  text-align: center;
+}
+
+body.screen-body .people {
+  justify-content: center;
+}
+
+@media (min-width: 900px) {
+  body.screen-body .card {
+    padding: 24px;
+  }
+}
+
 /* زر «متابعة عبر جوجل» */
 .google-btn {
   display: flex;
