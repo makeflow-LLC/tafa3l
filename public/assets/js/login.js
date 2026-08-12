@@ -1,4 +1,4 @@
-/* تسجيل دخول المدرب وإنشاء الحساب */
+/* تسجيل دخول المدرب — عبر جوجل فقط */
 (function () {
   'use strict';
 
@@ -9,19 +9,30 @@
   const params = new URLSearchParams(location.search);
   const requested = params.get('next') || '/host.html#/mine';
   const next = /^\/[^/]/.test(requested) ? requested : '/host.html#/mine';
+  const errorMsg = params.get('error');
 
-  let mode = params.get('mode') === 'signup' ? 'signup' : 'login';
+  // أيقونة جوجل الملوّنة المعتادة لأزرار الدخول
+  const GOOGLE_ICON =
+    '<svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">' +
+    '<path fill="#EA4335" d="M24 9.5c3.4 0 6.4 1.2 8.8 3.5l6.6-6.6C35.2 2.6 30 0.5 24 0.5 14.8 0.5 6.9 5.8 3 13.5l7.7 6C12.5 13.6 17.7 9.5 24 9.5z"/>' +
+    '<path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.6c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7C43.6 37.6 46.5 31.6 46.5 24.5z"/>' +
+    '<path fill="#FBBC05" d="M10.7 19.5A14.5 14.5 0 0 0 9.9 24c0 1.6.3 3.1.8 4.5l-7.7 6A24 24 0 0 1 0 24c0-3.9.9-7.6 2.6-10.8l8.1 6.3z"/>' +
+    '<path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2 1.4-4.7 2.3-8.6 2.3-6.3 0-11.5-4.1-13.3-9.8l-8.1 6.3C6.9 42.2 14.8 48 24 48z"/>' +
+    '</svg>';
 
   boot();
 
   async function boot() {
+    let googleConfigured = true;
     try {
-      const { user } = await api('/api/auth/me');
+      const { user, googleConfigured: configured } = await api('/api/auth/me');
+      googleConfigured = configured !== false;
       if (user) return renderAlready(user);
     } catch {
-      /* الخادم قد يكون متوقفاً — نعرض النموذج على أي حال */
+      /* الخادم قد يكون متوقفاً — نعرض الزر على أي حال */
     }
-    render();
+    render(googleConfigured);
+    if (errorMsg) toast(errorMsg, 'bad');
   }
 
   function renderAlready(user) {
@@ -49,88 +60,34 @@
     );
   }
 
-  function render() {
-    const signup = mode === 'signup';
+  function render(googleConfigured) {
     app.innerHTML = '';
 
-    const nameInput = el('input', { id: 'name', maxlength: 60, placeholder: 'مثال: أ. محمد', autocomplete: 'name' });
-    const emailInput = el('input', {
-      id: 'email',
-      type: 'email',
-      placeholder: 'teacher@example.com',
-      autocomplete: 'email',
-      style: { direction: 'ltr', textAlign: 'left' },
-    });
-    const passwordInput = el('input', {
-      id: 'password',
-      type: 'password',
-      placeholder: '••••••••',
-      autocomplete: signup ? 'new-password' : 'current-password',
-      style: { direction: 'ltr', textAlign: 'left' },
-    });
-
-    const submit = el('button', { class: 'btn primary block', type: 'submit' }, signup ? 'إنشاء الحساب' : 'دخول');
-
-    const card = el('div', { class: 'card stack' }, [
-      el('h1', { text: signup ? 'حساب مدرب جديد' : 'دخول المدرب' }),
-      el('p', {
-        class: 'muted small',
-        text: signup
-          ? 'الحساب يحفظ أنشطتك لتعيد فتحها وإطلاقها متى شئت. نتائج الطلاب تبقى مؤقتة ولا تُحفظ.'
-          : 'ادخل لتصل إلى أنشطتك المحفوظة.',
-      }),
-      signup ? el('div', {}, [el('label', { for: 'name', text: 'الاسم' }), nameInput]) : null,
-      el('div', {}, [el('label', { for: 'email', text: 'البريد الإلكتروني' }), emailInput]),
-      el('div', {}, [
-        el('label', { for: 'password', text: 'كلمة المرور' }),
-        passwordInput,
-        signup ? el('div', { class: 'muted small', style: { marginTop: '4px' }, text: '٨ أحرف على الأقل' }) : null,
-      ]),
-      submit,
-    ]);
-
-    const form = el('form', { class: 'stack' }, [card]);
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const body = {
-        email: emailInput.value.trim(),
-        password: passwordInput.value,
-        ...(signup ? { name: nameInput.value.trim() } : {}),
-      };
-      submit.disabled = true;
-      submit.textContent = 'لحظة…';
-      try {
-        await api(signup ? '/api/auth/signup' : '/api/auth/login', { method: 'POST', body });
-        location.href = next;
-      } catch (err) {
-        toast(err.message, 'bad');
-        submit.disabled = false;
-        submit.textContent = signup ? 'إنشاء الحساب' : 'دخول';
-      }
-    });
-
-    app.append(form);
+    const googleBtn = el(
+      'a',
+      {
+        class: 'btn primary block google-btn',
+        href: '/api/auth/google?next=' + encodeURIComponent(next),
+      },
+      [el('span', { html: GOOGLE_ICON }), el('span', { text: 'متابعة عبر جوجل' })]
+    );
 
     app.append(
-      el('div', { class: 'card center stack' }, [
-        el('p', { class: 'muted small', style: { margin: 0 }, text: signup ? 'لديك حساب بالفعل؟' : 'ليس لديك حساب؟' }),
-        el(
-          'button',
-          {
-            class: 'btn ghost',
-            type: 'button',
-            onclick: () => {
-              mode = signup ? 'login' : 'signup';
-              render();
-            },
-          },
-          signup ? 'تسجيل الدخول' : 'إنشاء حساب جديد'
-        ),
+      el('div', { class: 'card stack center' }, [
+        el('h1', { text: 'دخول المدرب' }),
+        el('p', {
+          class: 'muted small',
+          text: 'الحساب يحفظ أنشطتك لتعيد فتحها وإطلاقها متى شئت. نتائج الطلاب تبقى مؤقتة ولا تُحفظ.',
+        }),
+        googleConfigured
+          ? googleBtn
+          : el('div', { class: 'banner' }, [
+              el('strong', { text: '⚠️ تسجيل الدخول عبر جوجل غير مُفعّل بعد' }),
+              el('div', { class: 'small', text: 'اضبط GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET على الخادم.' }),
+            ]),
       ])
     );
 
-    app.append(
-      el('p', { class: 'footer' }, 'يمكنك أيضاً استخدام تفاعل بلا حساب — لكن أنشطتك لن تُحفظ لإعادة استخدامها.')
-    );
+    app.append(el('p', { class: 'footer' }, 'يمكنك أيضاً استخدام تفاعل بلا حساب — لكن أنشطتك لن تُحفظ لإعادة استخدامها.'));
   }
 })();

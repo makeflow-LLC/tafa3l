@@ -35,14 +35,7 @@ test('يبلّغ عن نوع التخزين وديمومته', () => {
 
 test('البيانات تبقى بعد إعادة تشغيل الخادم', async () => {
   const email = mail('restart');
-  const user = await storage.get().createUser({
-    id: storage.newId('u_'),
-    email,
-    name: 'باقٍ بعد التشغيل',
-    passwordHash: 'h'.repeat(128),
-    salt: 's'.repeat(32),
-    createdAt: Date.now(),
-  });
+  const user = await storage.get().upsertUser({ email, name: 'باقٍ بعد التشغيل', googleId: 'g-restart' });
 
   const now = Date.now();
   await storage.get().saveActivity({
@@ -73,8 +66,8 @@ test('البيانات تبقى بعد إعادة تشغيل الخادم', asyn
 
 test('قائمة كل مدرب تخصّه وحده', async () => {
   const now = Date.now();
-  const a = await storage.get().createUser({ id: storage.newId('u_'), email: mail('a'), name: 'أ', passwordHash: 'x', salt: 'y', createdAt: now });
-  const b = await storage.get().createUser({ id: storage.newId('u_'), email: mail('b'), name: 'ب', passwordHash: 'x', salt: 'y', createdAt: now });
+  const a = await storage.get().upsertUser({ email: mail('a'), name: 'أ', googleId: 'g-a' });
+  const b = await storage.get().upsertUser({ email: mail('b'), name: 'ب', googleId: 'g-b' });
 
   await storage.get().saveActivity({ id: storage.newId('a_'), ownerId: a.id, title: 'لأحمد', settings: {}, questions: [], createdAt: now, updatedAt: now });
 
@@ -84,7 +77,7 @@ test('قائمة كل مدرب تخصّه وحده', async () => {
 
 test('تحديث النشاط لا يُنشئ نسخة ثانية', async () => {
   const now = Date.now();
-  const user = await storage.get().createUser({ id: storage.newId('u_'), email: mail('upd'), name: 'م', passwordHash: 'x', salt: 'y', createdAt: now });
+  const user = await storage.get().upsertUser({ email: mail('upd'), name: 'م', googleId: 'g-upd' });
   const id = storage.newId('a_');
   const base = { id, ownerId: user.id, title: 'قبل', settings: {}, questions: [], createdAt: now, updatedAt: now };
 
@@ -99,9 +92,19 @@ test('تحديث النشاط لا يُنشئ نسخة ثانية', async () => 
   assert.equal((await storage.get().listActivities(user.id)).length, 0);
 });
 
+test('upsertUser بنفس البريد يحدّث الحساب لا يكرّره', async () => {
+  const email = mail('upsert');
+  const first = await storage.get().upsertUser({ email, name: 'الاسم الأول', googleId: 'g-1' });
+  const second = await storage.get().upsertUser({ email, name: 'الاسم بعد التحديث', googleId: 'g-1' });
+
+  assert.equal(second.id, first.id, 'نفس الحساب — لا حساب ثانٍ لنفس بريد جوجل');
+  const found = await storage.get().findUserByEmail(email);
+  assert.equal(found.name, 'الاسم بعد التحديث');
+});
+
 test('جلسات الدخول: تُقرأ، وتنتهي بالمدة، وتُحذف', async () => {
   const now = Date.now();
-  const user = await storage.get().createUser({ id: storage.newId('u_'), email: mail('sess'), name: 'ج', passwordHash: 'x', salt: 'y', createdAt: now });
+  const user = await storage.get().upsertUser({ email: mail('sess'), name: 'ج', googleId: 'g-sess' });
 
   await storage.get().createAuthSession({ token: 'tok-live-' + suffix, userId: user.id, expiresAt: now + 60000 });
   const live = await storage.get().getAuthSession('tok-live-' + suffix);

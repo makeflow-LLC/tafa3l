@@ -88,7 +88,16 @@ function fileDriver() {
     async findUserById(id) {
       return db.users[id] || null;
     },
-    async createUser(user) {
+    /** إنشاء أو تحديث بحسب البريد — بريد جوجل مُتحقَّق منه فهو المفتاح الطبيعي للحساب */
+    async upsertUser({ email, name, googleId }) {
+      const existing = Object.values(db.users).find((u) => u.email === email);
+      if (existing) {
+        existing.name = name;
+        existing.googleId = googleId;
+        schedule();
+        return existing;
+      }
+      const user = { id: newId('u_'), email, name, googleId, createdAt: Date.now() };
       db.users[user.id] = user;
       schedule();
       return user;
@@ -182,10 +191,14 @@ function postgresDriver(connectionString) {
           id TEXT PRIMARY KEY,
           email TEXT UNIQUE NOT NULL,
           name TEXT NOT NULL,
-          password_hash TEXT NOT NULL,
-          salt TEXT NOT NULL,
+          google_id TEXT,
           created_at BIGINT NOT NULL
         );
+        -- ترقية جدول قديم كان يعتمد بريد+كلمة مرور: نضيف عمود جوجل ونُسقط عمودي كلمة المرور.
+        -- إسقاطهما لا يفقد أنشطة أحد — هوية الحساب تبقى نفس البريد، وإعادة الدخول عبر جوجل بنفس البريد يطابق الحساب القديم.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT;
+        ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
+        ALTER TABLE users DROP COLUMN IF EXISTS salt;
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -207,19 +220,24 @@ function postgresDriver(connectionString) {
     async findUserByEmail(email) {
       const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
       const r = rows[0];
-      return r ? { id: r.id, email: r.email, name: r.name, passwordHash: r.password_hash, salt: r.salt, createdAt: Number(r.created_at) } : null;
+      return r ? { id: r.id, email: r.email, name: r.name, googleId: r.google_id, createdAt: Number(r.created_at) } : null;
     },
     async findUserById(id) {
       const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
       const r = rows[0];
-      return r ? { id: r.id, email: r.email, name: r.name, passwordHash: r.password_hash, salt: r.salt, createdAt: Number(r.created_at) } : null;
+      return r ? { id: r.id, email: r.email, name: r.name, googleId: r.google_id, createdAt: Number(r.created_at) } : null;
     },
-    async createUser(user) {
-      await pool.query(
-        'INSERT INTO users (id, email, name, password_hash, salt, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-        [user.id, user.email, user.name, user.passwordHash, user.salt, user.createdAt]
+    /** إنشاء أو تحديث بحسب البريد — بريد جوجل مُتحقَّق منه فهو المفتاح الطبيعي للحساب */
+    async upsertUser({ email, name, googleId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO users (id, email, name, google_id, created_at)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (email) DO UPDATE SET name = $3, google_id = $4
+         RETURNING *`,
+        [newId('u_'), email, name, googleId, Date.now()]
       );
-      return user;
+      const r = rows[0];
+      return { id: r.id, email: r.email, name: r.name, googleId: r.google_id, createdAt: Number(r.created_at) };
     },
 
     async listActivities(ownerId) {

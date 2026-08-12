@@ -30,3 +30,11 @@ services:
       # أنشئ قاعدة Postgres (Render أو Supabase أو Neon) وضع رابطها هنا:
       # - key: DATABASE_URL
       #   value: postgres://user:pass@host:5432/dbname
+
+      # تسجيل دخول المدرب عبر جوجل فقط — بلا كلمات مرور. بدون هذين المتغيّرين
+      # يبقى التطبيق يعمل، لكن صفحة الدخول تعرض تنبيهاً بدل زر فعّال.
+      # أنشئهما من Google Cloud Console (راجع قسم «تفعيل الدخول عبر جوجل» في README):
+      # - key: GOOGLE_CLIENT_ID
+      #   value: xxxxxxxx.apps.googleusercontent.com
+      # - key: GOOGLE_CLIENT_SECRET
+      #   value: xxxxxxxx

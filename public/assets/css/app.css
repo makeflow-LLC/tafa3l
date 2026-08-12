@@ -678,6 +678,21 @@ tbody tr:hover {
 
 /* -------------------------------------------------------- سحابة الكلمات */
 
+/* زر «متابعة عبر جوجل» */
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.google-btn svg {
+  flex: 0 0 auto;
+  background: #fff;
+  border-radius: 4px;
+  padding: 2px;
+}
+
 /* بطاقة النتيجة القابلة للمشاركة */
 .share-card-img {
   width: 100%;
