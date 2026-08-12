@@ -836,6 +836,32 @@
     return w;
   }
 
+  /**
+   * يحمّل ملف SVG كصورة صالحة للرسم على Canvas.
+   * نمرّ عبر blob (لا عبر الرابط مباشرة) لأنه المسار المضمون ألا يلوّث الـ canvas
+   * فيمنع toBlob لاحقاً — نفس أسلوب الأفاتار في هذا الملف.
+   */
+  async function loadSvg(url) {
+    let objectUrl = null;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      objectUrl = URL.createObjectURL(new Blob([await res.text()], { type: 'image/svg+xml' }));
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = objectUrl;
+      });
+      return img;
+    } catch {
+      return null;
+    } finally {
+      // الصورة محمّلة في الذاكرة، فلا حاجة لإبقاء الرابط
+      if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    }
+  }
+
   /** يرسم بطاقة النتيجة على Canvas ويعيدها (1080×1350 — مناسبة للمنصات والواتس) */
   async function drawShareCard(s) {
     const W = 1080;
@@ -872,10 +898,19 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // العلامة والعنوان
-    ctx.fillStyle = '#f5f4ff';
-    ctx.font = `800 56px ${FONT}`;
-    ctx.fillText('⚡ Tapio', W / 2, 130);
+    // العلامة: الشعار الحقيقي (النسخة البيضاء — خلفية البطاقة داكنة)
+    const logo = await loadSvg('/assets/logo-white.svg');
+    if (logo) {
+      // الشعار مركّب رأسياً؛ عرض 175 يعطي ارتفاع ~112 فينتهي فوق عنوان النشاط (y=195) بفسحة
+      const lw = 175;
+      const lh = (logo.naturalHeight / logo.naturalWidth) * lw;
+      ctx.drawImage(logo, W / 2 - lw / 2, 46, lw, lh);
+    } else {
+      // تعذّر تحميل الشعار: الاسم نصاً بدل بطاقة بلا علامة
+      ctx.fillStyle = '#f5f4ff';
+      ctx.font = `800 56px ${FONT}`;
+      ctx.fillText('Tapio', W / 2, 130);
+    }
     ctx.fillStyle = '#a9a5cc';
     ctx.font = `600 38px ${FONT}`;
     const title = s.title || state.info?.title || 'نشاط تفاعلي';
@@ -1007,7 +1042,7 @@
     ctx.fillText(when, W / 2, H - 115);
     ctx.fillStyle = '#8f8ab5';
     ctx.font = `600 28px ${FONT}`;
-    ctx.fillText('⚡ صُنعت على منصة Tapio — أسئلة واستطلاعات حية', W / 2, H - 68);
+    ctx.fillText('صُنعت على منصة Tapio — أسئلة واستطلاعات حية', W / 2, H - 68);
 
     return canvas;
   }
