@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 40" width="150" height="40" role="img" aria-label="Tapio">
+  <!-- شعار كامل مؤقّت (يحوي الكلمة) — النسخة الملوّنة للخلفية البيضاء.
+       استبدله بشعارك مع إبقاء الاسم والمسار كما هما.
+       الأفضل أن يكون viewBox بنسبة عرض إلى ارتفاع قريبة من 150×40. -->
+  <rect x="0" y="4" width="32" height="32" rx="9" fill="#5B45E0" />
+  <path d="M8 12h16v4.6h-5.7V28h-4.6V16.6H8z" fill="#FFFFFF" />
+  <text x="42" y="27" font-family="Segoe UI, system-ui, sans-serif" font-size="21" font-weight="800" fill="#16162A">Tapio</text>
+</svg>

@@ -115,7 +115,32 @@ svg {
   letter-spacing: -0.3px;
 }
 
-/* علامة الشعار — ملف /assets/icon.svg، فاستبداله يحدّث كل الصفحات دفعةً واحدة */
+/**
+ * الشعار الكامل (يحوي الكلمة) — ملفان: ملوّن للخلفية البيضاء وأبيض للجلسة
+ * الداكنة. التبديل بالـ CSS لا بالـ JS فيقع فوراً مع تغيّر السِمة بلا وميض.
+ * استبدال الملفين وحدهما يحدّث كل الصفحات.
+ */
+.brand .logo {
+  height: 34px;
+  width: auto;
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.brand .dark-only {
+  display: none;
+}
+
+html.stage .brand .light-only {
+  display: none;
+}
+
+html.stage .brand .dark-only {
+  display: block;
+}
+
+/* الأيقونة المصغّرة — في شاشتَي الطالب والعرض حيث يظهر عنوان النشاط بجانبها */
 .brand .dot {
   width: 34px;
   height: 34px;
