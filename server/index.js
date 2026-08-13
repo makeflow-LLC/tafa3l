@@ -50,8 +50,18 @@ app.use((_req, res, next) => {
   next();
 });
 
-// الحدّ يتّسع لصور الأسئلة (data URL مضغوطة) لا للملفات الكبيرة
-app.use(express.json({ limit: '12mb' }));
+/**
+ * حدّان للجسم لا واحد. الصور (data URL) تحتاج ١٢ ميغابايت، لكن ثلاثة مسارات
+ * فقط تحملها. لو طبّقنا السقف الواسع على الجميع لصار كل مسار — بما فيها
+ * تسجيل الخروج — بابَ إغراقٍ بأجسام ضخمة تُحلَّل قبل أن تُرفض.
+ */
+const jsonLarge = express.json({ limit: '12mb' });
+const jsonSmall = express.json({ limit: '256kb' });
+const CARRIES_IMAGES = [/^\/api\/sessions(\/[^/]+)?$/, /^\/api\/activities(\/[^/]+)?$/, /^\/api\/bank(\/[^/]+)?$/];
+app.use((req, res, next) => {
+  const large = (req.method === 'POST' || req.method === 'PUT') && CARRIES_IMAGES.some((re) => re.test(req.path));
+  return (large ? jsonLarge : jsonSmall)(req, res, next);
+});
 
 /**
  * مكتبات الطرف الثالث (jsPDF وخط Amiri ‏≈1.5MB) ثابتة لا تتغيّر أبداً تحت
