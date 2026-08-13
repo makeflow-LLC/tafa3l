@@ -50,17 +50,24 @@ function deleteSession(code) {
   return sessions.delete(code);
 }
 
-/** حذف الجلسات الخاملة. `aggressive` يحذف أيضاً الجلسات المنتهية فوراً. */
+/**
+ * حذف الجلسات الخاملة. `aggressive` يحذف أيضاً الجلسات المنتهية فوراً،
+ * ويسقط حصانة الجلسات المجدولة: بدون ذلك كان يكفي إنشاء ٥٠٠ جلسة بموعد
+ * بعيد ليعجز كل معلّم على الخادم عن بدء حصته، بلا أي وسيلة استرداد.
+ */
 function sweep(aggressive = false) {
   const now = Date.now();
   for (const [code, session] of sessions) {
-    // اختبار مجدول لموعد قادم يبقى محفوظاً ولو لم يلمسه أحد
+    // اختبار مجدول لموعد قادم يبقى محفوظاً ولو لم يلمسه أحد — ما لم يمتلئ الخادم
     const scheduled = session.status === 'lobby' && session.settings?.opensAt;
-    if (scheduled && now < session.settings.opensAt + 60 * 60 * 1000) continue;
+    if (!aggressive && scheduled && now < session.settings.opensAt + 60 * 60 * 1000) continue;
     const idle = now - session.lastActivity;
     const endedTooLong =
       session.status === 'ended' && now - (session.endedAt || session.lastActivity) > (aggressive ? 0 : ENDED_TTL_MS);
-    if (idle > IDLE_TTL_MS || endedTooLong) {
+    // ملجأ أخير عند امتلاء الخادم: جلسة مجدولة لم ينضم إليها أحد ولم تُلمس منذ
+    // ساعة. المعلّم الحقيقي يشارك الرمز ويتابع، أما جلسات الإغراق فتُترك وحدها.
+    const reclaimable = aggressive && scheduled && session.participants.size === 0 && idle > 60 * 60 * 1000;
+    if (idle > IDLE_TTL_MS || endedTooLong || reclaimable) {
       session.broadcast({ t: 'session:closed', reason: 'expired' });
       session.dispose();
       sessions.delete(code);

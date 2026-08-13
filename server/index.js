@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const express = require('express');
@@ -36,11 +37,50 @@ const app = express();
 const server = http.createServer(app);
 
 app.disable('x-powered-by');
+// خلف وسيط المنصة (Render): يجعل req.ip عنوان الزائر الحقيقي لا عنوان الوسيط —
+// وهذا شرط لصحّة حدّ الإنشاء أدناه — ويجعل req.secure يعكس HTTPS الفعلي.
+app.set('trust proxy', 1);
+
+// ترويسات أمان أساسية على كل ردّ
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // لوحة المدرب فيها أزرار مصيرية (إنهاء الجلسة) فلا يجوز تأطيرها
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 // الحدّ يتّسع لصور الأسئلة (data URL مضغوطة) لا للملفات الكبيرة
 app.use(express.json({ limit: '12mb' }));
+
+/**
+ * مكتبات الطرف الثالث (jsPDF وخط Amiri ‏≈1.5MB) ثابتة لا تتغيّر أبداً تحت
+ * مسارها، ولها نسخة .gz مُولَّدة مسبقاً: نقدّمها مضغوطة وبتخزين سنة كاملة،
+ * فلا يدفع المعلّم ثمنها إلا مرة واحدة، ولا يدفع الخادم ثمن ضغطها في كل طلب.
+ */
+const VENDOR_DIR = path.join(__dirname, '..', 'public', 'assets', 'vendor');
+const VENDOR_TYPES = { '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+app.get('/assets/vendor/:file', (req, res, next) => {
+  const name = path.basename(req.params.file);
+  const type = VENDOR_TYPES[path.extname(name)];
+  if (!type) return next();
+  const plain = path.join(VENDOR_DIR, name);
+  if (!plain.startsWith(VENDOR_DIR + path.sep)) return next();
+  const gz = plain + '.gz';
+  const accepts = String(req.headers['accept-encoding'] || '').includes('gzip');
+  const useGz = accepts && fs.existsSync(gz);
+  res.setHeader('Content-Type', type);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.setHeader('Vary', 'Accept-Encoding');
+  if (useGz) res.setHeader('Content-Encoding', 'gzip');
+  res.sendFile(useGz ? gz : plain, (err) => {
+    if (err) next();
+  });
+});
+
 app.use(
   express.static(path.join(__dirname, '..', 'public'), {
-    // لا نخزّن الملفات في المتصفح: بعد كل نشر يجب أن يرى المدرب النسخة الجديدة فوراً.
+    // لا نخزّن صفحات التطبيق: بعد كل نشر يجب أن يرى المدرب النسخة الجديدة فوراً.
     // الملفات صغيرة، و etag يجعل إعادة التحقق ترد 304 بلا تحميل فعلي.
     maxAge: 0,
     etag: true,
@@ -85,9 +125,39 @@ app.get('/api/templates', (_req, res) => {
   res.json({ templates });
 });
 
+/**
+ * حدّ إنشاء الجلسات. الإنشاء متاح بلا حساب عمداً (تجربة المنصة بلا تسجيل)،
+ * لكن ذلك يعني أن أي أحد يستطيع ملء ذاكرة الخادم بجلسات ضخمة. فنحدّ الضيوف
+ * بحسب عنوانهم، والمسجّلين بحسب حسابهم وبسقف أعلى.
+ */
+const CREATE_WINDOW_MS = 60 * 60 * 1000;
+const CREATE_MAX_GUEST = 60;
+const CREATE_MAX_USER = 300;
+const createUsage = new Map(); // key -> { count, resetAt }
+
+function createLimited(key, max) {
+  const now = Date.now();
+  // تنظيف كسول: المفاتيح المنتهية لا تتراكم مع الوقت
+  if (createUsage.size > 5000) {
+    for (const [k, v] of createUsage) if (now >= v.resetAt) createUsage.delete(k);
+  }
+  const entry = createUsage.get(key);
+  if (!entry || now >= entry.resetAt) {
+    createUsage.set(key, { count: 1, resetAt: now + CREATE_WINDOW_MS });
+    return false;
+  }
+  if (entry.count >= max) return true;
+  entry.count += 1;
+  return false;
+}
+
 /** إنشاء جلسة جديدة — يعيد رمز الدخول ومفتاح المضيف */
 app.post('/api/sessions', async (req, res) => {
   try {
+    const key = req.user ? 'u:' + req.user.id : 'ip:' + (req.ip || req.socket.remoteAddress || 'unknown');
+    if (createLimited(key, req.user ? CREATE_MAX_USER : CREATE_MAX_GUEST)) {
+      return res.status(429).json({ error: 'أنشأت جلسات كثيرة خلال ساعة — انتظر قليلاً ثم أعد المحاولة' });
+    }
     // صور الأسئلة للمشتركين فقط
     premium.assertImagesAllowed(req.user, req.body?.questions);
     const session = store.createSession(req.body || {});
@@ -165,6 +235,8 @@ app.put('/api/sessions/:code', (req, res) => {
     return res.status(409).json({ error: 'لا يمكن تعديل الأسئلة بعد بدء الجلسة' });
   }
   try {
+    // نفس بوابة POST: بلا هذه كان يكفي إنشاء جلسة نظيفة ثم تعديلها بالصور
+    premium.assertImagesAllowed(req.user, req.body?.questions);
     const quiz = normalizeQuiz(req.body || {});
     session.title = quiz.title;
     session.questions = quiz.questions;
@@ -342,6 +414,11 @@ function handleMessage(socket, msg) {
   }
 
   if (type === 'join') {
+    // مقبس واحد = مشارك واحد. بدون هذا كان يكفي مقبسٌ واحد يرسل «join» ٣٠٠ مرة
+    // ليملأ سقف المشاركين بأشباح ويمنع الصف الحقيقي من الدخول.
+    if (socket.ctx) {
+      return sendTo(socket, { t: 'error', code: 'already_joined', message: 'هذا الاتصال منضمّ بالفعل' });
+    }
     const session = store.getSession(msg.code);
     if (!session) return sendTo(socket, { t: 'error', code: 'no_session', message: 'الجلسة غير موجودة أو انتهت' });
     if (session.status === 'ended') {
@@ -497,7 +574,16 @@ function handleMessage(socket, msg) {
 }
 
 /** تحديث المضيف وشاشة العرض بالحالة والإحصاءات معاً (كلاهما يرسم منهما) */
-function pushHost(session) {
+/**
+ * بناء لوحة المدرب مكلف: يعيد حساب نتائج كل سؤال وطابور التصحيح، ويبلغ
+ * عشرات الميغابايتات من JSON في صفّ كبير. وأحداثه تأتي دفعات — ثلاثون طالباً
+ * يضغطون الإجابة في ثانية واحدة — فنجمع الدفعة في إرسالة واحدة بدل ثلاثين.
+ * التأخير غير محسوس للمدرب، ويحمي حلقة الأحداث من التوقف.
+ */
+const HOST_PUSH_MS = 120;
+const pendingPush = new Map(); // session -> timer
+
+function pushHostNow(session) {
   if (!session.hostSockets.size && !session.screenSockets.size) return;
   const state = session.hostState();
   const dashboard = { t: 'dashboard', data: session.dashboard() };
@@ -509,6 +595,17 @@ function pushHost(session) {
     sendTo(socket, state);
     sendTo(socket, dashboard);
   }
+}
+
+function pushHost(session) {
+  if (!session.hostSockets.size && !session.screenSockets.size) return;
+  if (pendingPush.has(session)) return;
+  const timer = setTimeout(() => {
+    pendingPush.delete(session);
+    pushHostNow(session);
+  }, HOST_PUSH_MS);
+  timer.unref?.();
+  pendingPush.set(session, timer);
 }
 
 function attachParticipant(socket, session, participant) {
@@ -560,7 +657,41 @@ const ready = storage
       })
   );
 
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
-process.on('SIGINT', () => server.close(() => process.exit(0)));
+/**
+ * إغلاق مرتّب. المهم هنا إغلاق مقابس الويب أولاً: فهي طويلة العمر عمداً،
+ * و server.close() وحده ينتظرها إلى الأبد فتقتل المنصةُ العمليةَ قسراً
+ * ويرى الطلاب انقطاعاً غامضاً. نرسل لهم 1001 (الخادم يُغلق) كي يعيد
+ * عميلهم الاتصال بعد النشر، ثم نُخرج بعد مهلة قصيرة مهما حدث.
+ */
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  for (const socket of wss.clients) {
+    try {
+      socket.close(1001, 'server restarting');
+    } catch {
+      /* المقبس ميت أصلاً */
+    }
+  }
+  server.close(() => process.exit(0));
+  // شبكة أمان: لو تعثّر إغلاق اتصال ما، لا نترك المنصة تقتلنا بـ SIGKILL
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+
+/**
+ * شبكة أمان أخيرة. كل جلسات المنصة في ذاكرة هذه العملية، فموتها يمحو
+ * محاضرات جارية عند معلّمين لا علاقة لهم بالخطأ. أي رفض وعد غير ملتقَط
+ * (خطأ قاعدة بيانات عابر مثلاً) كان كافياً لإسقاطها — نسجّله ونكمل.
+ */
+process.on('unhandledRejection', (reason) => {
+  console.error('رفض وعد غير ملتقَط:', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('استثناء غير ملتقَط:', err && err.stack ? err.stack : err);
+});
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 module.exports = { app, server, ready };

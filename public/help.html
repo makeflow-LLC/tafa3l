@@ -8,227 +8,28 @@
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.28.1" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.29.0" />
+    <!-- قبل أي رسم: اللغة والاتجاه، فلا تظهر ومضة اتجاه خاطئ -->
+    <script src="/assets/js/i18n.js?v=1.29.0"></script>
   </head>
   <body>
     <div class="topbar">
       <a class="brand" href="/" style="text-decoration: none; color: inherit">
-        <img class="logo light-only" src="/assets/logo.svg?v=1.28.1" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.28.1" alt="Tapio" width="249" height="159" />
+        <img class="logo light-only" src="/assets/logo.svg?v=1.29.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.29.0" alt="Tapio" width="249" height="159" />
       </a>
-      <div class="row" style="gap: 6px">
-        <a class="btn ghost sm" href="/host.html">➕ نشاط جديد</a>
-        <a class="btn ghost sm" href="/">🏠 الرئيسية</a>
+      <div class="row" style="gap: 6px" id="langRow">
+        <a class="btn ghost sm" href="/host.html" data-nav="new">➕ نشاط جديد</a>
+        <a class="btn ghost sm" href="/" data-nav="home">🏠 الرئيسية</a>
       </div>
     </div>
 
-    <div class="wrap" id="app">
-      <h1>📖 دليل المعلّم</h1>
-      <p class="muted">كل ما تحتاجه لتصميم نشاط ناجح: الخطوات، أنواع الأسئلة، طريقة احتساب النقاط، وأفضل الممارسات.</p>
+    <div class="wrap" id="app"></div>
 
-      <!-- فهرس سريع: الصفحة طويلة عمداً، فليصل المعلّم لما يريده بنقرة -->
-      <div class="card stack">
-        <h2 style="margin: 0">اختصارات</h2>
-        <div class="row">
-          <a class="btn ghost sm" href="#start">١. البداية في ٣ دقائق</a>
-          <a class="btn ghost sm" href="#types">٢. أنواع الأسئلة</a>
-          <a class="btn ghost sm" href="#scoring">٣. احتساب النقاط</a>
-          <a class="btn ghost sm" href="#grading">٤. التصحيح اليدوي</a>
-          <a class="btn ghost sm" href="#schedule">٥. الجدولة والمدة</a>
-          <a class="btn ghost sm" href="#modes">٦. أنماط العرض</a>
-          <a class="btn ghost sm" href="#results">٧. النتائج والتحليل</a>
-          <a class="btn ghost sm" href="#practices">٨. أفضل الممارسات</a>
-          <a class="btn ghost sm" href="#faq">٩. أسئلة شائعة</a>
-        </div>
-      </div>
-
-      <!-- ١ -->
-      <div class="card stack" id="start">
-        <h2 style="margin: 0">١. أول نشاط في ٣ دقائق</h2>
-        <ol style="line-height: 2.1; padding-inline-start: 22px; margin: 0">
-          <li><strong>افتح «نشاط جديد»</strong> من الصفحة الرئيسية (لا حاجة لحساب للتجربة، لكن الحساب يحفظ أنشطتك).</li>
-          <li><strong>اكتب عنواناً واضحاً</strong> — يراه الطلاب على شاشاتهم، مثل «مراجعة الوحدة الثالثة».</li>
-          <li><strong>أضف أسئلتك</strong>: اختر النوع، اكتب النص، حدّد الإجابة الصحيحة والعلامة والوقت. أو ابدأ من <em>قالب جاهز</em>، أو دع <em>المساعد الذكي</em> يصوغها لك.</li>
-          <li><strong>اضبط الإعدادات</strong>: نمط العرض، احتساب النقاط، لوحة الترتيب، الفرق.</li>
-          <li><strong>اضغط «ابدأ الجلسة»</strong> فيظهر رمز من ٦ أرقام و QR.</li>
-          <li><strong>اعرض الرمز على البروجكتر</strong> من زر «افتح شاشة العرض»، والطلاب يدخلون من <code>tapio.fun</code> بالرمز أو بمسح الـ QR.</li>
-          <li><strong>أدر الجلسة</strong> من تبويب «العرض»: ابدأ، اعرض النتائج، انتقل للسؤال التالي، ثم أنهِ النشاط.</li>
-          <li><strong>حمّل النتائج</strong> (Excel أو تقرير PDF) قبل إغلاق الجلسة.</li>
-        </ol>
-        <div class="note warn small">
-          بيانات الطلاب مؤقتة في ذاكرة الخادم وتُمحى بعد انتهاء الجلسة — الأسئلة وحدها تُحفظ في حسابك. لذا نزّل النتائج قبل الإغلاق.
-        </div>
-      </div>
-
-      <!-- ٢ -->
-      <div class="card stack" id="types">
-        <h2 style="margin: 0">٢. أنواع الأسئلة ومتى تستخدم كلاً منها</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>النوع</th><th>يصلح لـ</th><th>مصحَّح؟</th><th>ملاحظة عملية</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>🎯 اختيار من متعدد</td><td>التقييم السريع والمراجعة</td><td>آلياً</td><td>٤ خيارات كافية؛ اجعل المشتّتات منطقية لا سخيفة.</td></tr>
-              <tr><td>✅ صح / خطأ</td><td>المفاهيم القاطعة</td><td>آلياً</td><td>احتمال التخمين ٥٠٪ — استخدمه للتهيئة لا للتقييم النهائي.</td></tr>
-              <tr><td>📊 استطلاع رأي</td><td>قياس الاتجاه وكسر الجليد</td><td>لا</td><td>بلا إجابة صحيحة، والنتائج تظهر حيّة على الشاشة.</td></tr>
-              <tr><td>☁️ سحابة كلمات</td><td>العصف الذهني</td><td>لا</td><td>اطلب <em>كلمة واحدة</em> صراحةً كي تتجمّع الكلمات المتكررة.</td></tr>
-              <tr><td>📈 مقياس</td><td>التغذية الراجعة (١–٥)</td><td>لا</td><td>سمِّ الطرفين بوضوح: «غير واضح ← واضح جداً».</td></tr>
-              <tr><td>💬 إجابة مفتوحة</td><td>التفسير والتحليل</td><td>يدوياً (اختياري)</td><td>علامة صفر = رأي حرّ، وأي علامة أكبر تعني أنك ستصحّحه بنفسك.</td></tr>
-              <tr><td>✏️ أكمل الفراغ</td><td>المصطلحات والقواعد والأرقام</td><td>يدوياً</td><td>ضع <code>___</code> مكان كل فراغ، واكتب الإجابة المتوقعة لتقارن بها بسرعة.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="muted small" style="margin: 0">
-          يمكن إضافة <strong>صورة</strong> لأي سؤال (ميزة بريميوم) — مفيدة للخرائط والرسوم والمسائل المصوّرة.
-        </p>
-      </div>
-
-      <!-- ٣ -->
-      <div class="card stack" id="scoring">
-        <h2 style="margin: 0">٣. كيف تُحتسب النقاط بالضبط</h2>
-        <p style="margin: 0">لكل سؤال <strong>علامة</strong> تضعها أنت (١٠٠٠ افتراضياً للأسئلة المصحَّحة آلياً). وطريقة الاحتساب تختارها من إعدادات النشاط:</p>
-        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
-          <li><strong>نقاط حسب السرعة</strong> (الافتراضي): الإجابة الصحيحة الفورية تأخذ العلامة كاملة، وتتناقص تدريجياً حتى <em>نصف</em> العلامة عند آخر ثانية. يحتاج مؤقّتاً للسؤال.</li>
-          <li><strong>نقاط ثابتة</strong>: كل إجابة صحيحة تأخذ العلامة كاملة مهما كان الزمن — الأعدل للاختبارات الحقيقية.</li>
-          <li><strong>بلا نقاط</strong>: للمراجعة والاستطلاعات، لا ترتيب ولا منافسة.</li>
-        </ul>
-        <p style="margin: 0"><strong>مضاعف السلسلة 🔥</strong> (اختياري): كل إجابة صحيحة متتالية تزيد النقاط ١٠٪ حتى سقف ٥٠٪ — يرفع الحماس، لكن أطفئه في الاختبارات الرسمية: فهو يوسّع الفارق بين الطلاب وقد يرفع نسبة الطالب فوق ١٠٠٪.</p>
-        <p style="margin: 0"><strong>الإجابة الخاطئة</strong> لا تخصم نقاطاً أبداً، لكنها تصفّر السلسلة. و<strong>السؤال المتروك</strong> صفر بلا خصم.</p>
-        <p style="margin: 0"><strong>الأسئلة اليدوية</strong> (مفتوحة/أكمل الفراغ) لا تتأثر بالسرعة إطلاقاً: تأخذ العلامة التي تمنحها أنت.</p>
-        <div class="note small">
-          <strong>النسبة المئوية في التقرير</strong> = مجموع درجات الطالب ÷ مجموع علامات كل الأسئلة المصحَّحة (آلياً ويدوياً).
-        </div>
-      </div>
-
-      <!-- ٤ -->
-      <div class="card stack" id="grading">
-        <h2 style="margin: 0">٤. التصحيح اليدوي (الإجابات النصّية)</h2>
-        <ol style="line-height: 2.1; padding-inline-start: 22px; margin: 0">
-          <li>اجعل علامة السؤال المفتوح أكبر من صفر (أو استخدم «أكمل الفراغ» فهو يدوي دائماً).</li>
-          <li>يكتب الطالب جوابه ويرى «بانتظار تصحيح المدرب» — <strong>بلا أي نتيجة</strong>.</li>
-          <li>افتح <strong>لوحة التحكم</strong>: تظهر بطاقة تصحيح فيها نص كل إجابة، وأمامها <code>✓ صح</code> و<code>✕ خطأ</code> وأرقام العلامات الجزئية.</li>
-          <li>بمجرد ضغطك تظهر العلامة للطالب فوراً وتدخل في مجموعه وترتيبه. وتعديلها لاحقاً يصحّح المجموع تلقائياً.</li>
-        </ol>
-        <p class="muted small" style="margin: 0">
-          إن أنهيت النشاط وبقيت إجابات بلا تصحيح، يرى أصحابها شاشة انتظار بدل نتيجة ناقصة — أكمل التصحيح لتظهر نتائجهم وبطاقاتهم.
-        </p>
-      </div>
-
-      <!-- ٥ -->
-      <div class="card stack" id="schedule">
-        <h2 style="margin: 0">٥. جدولة الاختبار ومدّته ⏰</h2>
-        <p style="margin: 0">في إعدادات النشاط قسم <strong>«الجدولة والمدة»</strong>:</p>
-        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
-          <li><strong>موعد فتح الاختبار</strong>: اختر التاريخ والساعة (بتوقيت جهازك). أطلق الجلسة مبكراً
-            وشارك الرمز، فيرى الطلاب <em>عدّاداً تنازلياً</em> حتى الموعد، ثم <strong>يفتح الاختبار وحده</strong>
-            بلا أي ضغطة منك — على شاشات الطلاب وعلى البروجكتر معاً.</li>
-          <li><strong>مدة الاختبار بالدقائق</strong>: عند انتهائها <strong>يُقفل الاختبار تلقائياً</strong> للجميع
-            وتظهر النتائج. يظهر للطالب وللمعلّم شريط «⏳ ينتهي الاختبار خلال …».</li>
-        </ul>
-        <p style="margin: 0">الاثنان اختياريان ومستقلان: تقدر تضع موعداً بلا مدة، أو مدة بلا موعد، أو الاثنين معاً.</p>
-        <p class="muted small" style="margin: 0">
-          تستطيع دائماً البدء قبل الموعد من زر «بدء النشاط» — وعندها تُحسب المدة من لحظة بدئك الفعلي.
-          المدة الكلية شيء مختلف عن <em>مؤقّت السؤال</em>: الأول يقفل الاختبار كله، والثاني ينهي سؤالاً واحداً.
-        </p>
-      </div>
-
-      <!-- ٦ -->
-      <div class="card stack" id="modes">
-        <h2 style="margin: 0">٦. أنماط العرض: أيها تختار؟</h2>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>النمط</th><th>كيف يعمل</th><th>الأنسب لـ</th></tr></thead>
-            <tbody>
-              <tr><td>🎛️ المدرب ينقل الأسئلة</td><td>الجميع على نفس السؤال، وأنت تتحكم بالانتقال</td><td>الصف الحضوري مع بروجكتر</td></tr>
-              <tr><td>⏱️ انتقال تلقائي</td><td>ينتقل بعد ثوانٍ محدّدة تلقائياً</td><td>المسابقات السريعة والفعاليات</td></tr>
-              <tr><td>🏃 كل طالب بسرعته</td><td>كل طالب يبدأ ويُنهي وحده</td><td>الواجبات والتعلّم عن بُعد</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p style="margin: 0"><strong>شاشة العرض</strong>: زر «افتح شاشة العرض» يفتح صفحة مخصّصة للبروجكتر — رمز الدخول و QR كبيران، والأسئلة والنتائج والترتيب بخط ضخم، ولا تحوي أي أزرار تحكّم فلا خوف من ضغطة خاطئة أمام الصف.</p>
-        <p style="margin: 0"><strong>وضع الفرق</strong>: يوزّع الطلاب تلقائياً على فرق ملوّنة متوازنة، ونقاط الفريق مجموع أعضائه — ممتاز للصفوف الكبيرة والمشاغبة.</p>
-      </div>
-
-      <!-- ٦ -->
-      <div class="card stack" id="results">
-        <h2 style="margin: 0">٧. النتائج والتحليل</h2>
-        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
-          <li><strong>لوحة التحكم</strong>: تقدّم كل طالب سؤالاً بسؤال، ونتائج كل سؤال، وبطاقات التصحيح. ملفات Excel وPDF هنا هي <strong>سجل علامات الطلاب فقط</strong> — PDF رسمي فيه توقيعا المعلّم والمدير، يصلح تقريراً للإدارة أو مرجعاً للعلامات.</li>
-          <li><strong>تبويب التحليل 📈</strong>: متوسط الصف والوسيط ونسبة المشاركة، توزيع الدرجات، دقة كل سؤال، متوسط زمن الإجابة، و<strong>أصعب سؤال / أسهل سؤال / الأسرع / الأبطأ / الأكثر تخطّياً</strong>، مع <strong>توصيات مكتوبة</strong> مبنية على أرقام نشاطك أنت. ملفات هذا التبويب هي <strong>تقارير التحليل الكاملة</strong>.</li>
-          <li><strong>Excel التحليل</strong>: أربع أوراق — بطاقة النشاط (التاريخ والمدة والإعدادات والتوصيات)، الطلاب (درجة ونسبة وترتيب وزمن)، الأسئلة (دقة وأزمنة)، والإجابات (كل إجابة في سطر).</li>
-          <li><strong>ملفات PDF تُنزَّل مباشرة</strong> إلى جهازك بضغطة واحدة — لا نافذة طباعة.</li>
-        </ul>
-        <p class="muted small" style="margin: 0">التصدير المنسّق (Excel و PDF) ميزة بريميوم. تنزيل JSON الخام يبقى متاحاً للجميع.</p>
-      </div>
-
-      <!-- ٧ -->
-      <div class="card stack" id="practices">
-        <h2 style="margin: 0">٨. أفضل الممارسات</h2>
-        <h3 style="margin: 6px 0 0">في تصميم الأسئلة</h3>
-        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
-          <li><strong>مفهوم واحد لكل سؤال.</strong> إن أخطأ الطالب تعرف تماماً أين الخلل.</li>
-          <li><strong>٨–١٢ سؤالاً</strong> للحصة، و٥ للتهيئة. الأطول من ١٥ يُفقد التركيز.</li>
-          <li><strong>ابدأ بسؤال سهل</strong> ليدخل الجميع بثقة، وتدرّج في الصعوبة.</li>
-          <li><strong>اجعل الخيارات متقاربة الطول</strong> — الخيار الأطول عادةً هو الصحيح، والطلاب يكتشفون ذلك.</li>
-          <li>تجنّب «كل ما سبق» و«لا شيء مما سبق»، وتجنّب النفي المزدوج.</li>
-          <li>اكتب <strong>شرح الإجابة</strong>؛ ظهوره بعد الكشف يحوّل الاختبار إلى درس.</li>
-        </ul>
-        <h3 style="margin: 6px 0 0">في الوقت</h3>
-        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
-          <li>سؤال معرفة قصير: ١٥–٢٠ ثانية. سؤال يحتاج حساباً أو قراءة: ٤٥–٩٠ ثانية.</li>
-          <li>في الاختبارات الرسمية استخدم <strong>نقاطاً ثابتة</strong> وأطفئ مضاعف السلسلة — السرعة ليست فهماً.</li>
-          <li>راقب «متوسط زمن الإجابة» في التحليل: زمن مرتفع مع دقة منخفضة = صياغة غامضة غالباً.</li>
-        </ul>
-        <h3 style="margin: 6px 0 0">في إدارة الصف</h3>
-        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
-          <li>اعرض الرمز على البروجكتر من <strong>شاشة العرض</strong> واترك الطلاب يدخلون قبل البدء بدقيقة.</li>
-          <li>في الأسئلة المصحَّحة لا تظهر الأعداد أثناء الإجابة (عمداً) حتى لا يقلّد المتأخرون الأغلبية — بل تضيء أسماء من أجاب.</li>
-          <li>بعد كل سؤال صعب، توقّف ٣٠ ثانية للشرح قبل الانتقال. النتيجة أمامك مباشرة، فاستثمرها.</li>
-          <li>أطفئ «لوحة الترتيب» مع الصفوف الحسّاسة أو استخدم <strong>الفرق</strong> بدل الأفراد.</li>
-          <li>اطلب أسماءً حقيقية عند التقييم، وأطفئ «طلب الاسم» في الاستطلاعات الصريحة.</li>
-        </ul>
-        <h3 style="margin: 6px 0 0">بعد النشاط</h3>
-        <ul style="line-height: 2; padding-inline-start: 22px; margin: 0">
-          <li>نزّل التقرير فوراً — الجلسة تُمحى تلقائياً.</li>
-          <li>ابدأ حصتك القادمة بأصعب سؤالين من التحليل: أعلى أثر بأقل وقت.</li>
-          <li>كرّر الاختبار نفسه بعد أسبوع (استنسخ النشاط) وقارن المتوسط — هذا هو الدليل الحقيقي على التعلّم.</li>
-        </ul>
-      </div>
-
-      <!-- ٨ -->
-      <div class="card stack" id="faq">
-        <h2 style="margin: 0">٩. أسئلة شائعة</h2>
-        <p style="margin: 0"><strong>هل يحتاج الطالب حساباً؟</strong> لا. يدخل بالرمز أو الـ QR ويكتب اسمه فقط.</p>
-        <p style="margin: 0"><strong>هل تُحفظ إجابات الطلاب؟</strong> لا. كل شيء في ذاكرة الخادم ويُمحى بعد الجلسة — لذا التنزيل مهم.</p>
-        <p style="margin: 0"><strong>انقطع النت عن طالب.</strong> يعيد فتح الرابط فيعود بنفس اسمه ونقاطه ما دامت الجلسة قائمة.</p>
-        <p style="margin: 0"><strong>عندي طلاب لا يقرؤون العربية.</strong> التطبيق كله ثنائي اللغة (عربي/إنجليزي): لوحتك والمحرّر والتحليلات والتقارير وصفحات الطالب. بدّل لغتك من زر «EN/AR» أعلى الصفحة قبل أن تطلق النشاط.</p>
-        <p style="margin: 0"><strong>بأي لغة يرى الطالب النشاط؟</strong> <strong>بلغتك أنت وقت الإطلاق.</strong> إن كانت لوحتك بالإنجليزية فسيرى كل مشارك النشاط بالإنجليزية وباتجاه LTR حتى لو كان متصفحه عربياً، والعكس صحيح — وشاشة البروجكتر تتبع النشاط أيضاً. فإن أردت نشاطاً بالإنجليزية بدّل لغتك <em>قبل</em> الضغط على «إطلاق». (هذا لا يغيّر تفضيل الطالب المحفوظ لبقية الموقع، وأسئلتك تبقى كما كتبتها بالطبع.)</p>
-        <p style="margin: 0"><strong>هل يبقى الاختبار المجدول محفوظاً حتى موعده؟</strong> نعم — الجلسة المجدولة لا تُمسح بالخمول قبل موعدها، فتقدر تُطلقها اليوم لموعد بعد أيام وتوزّع الرمز مسبقاً.</p>
-        <p style="margin: 0"><strong>هل أستطيع تعديل نشاط أطلقته؟</strong> نعم — كل نشاط تطلقه يُحفظ في «نشاطاتي» تلقائياً، وإنهاء الجلسة لا يحذفه. عدّله أو استنسخه وأطلقه من جديد.</p>
-        <p style="margin: 0"><strong>ما الفرق بين المجاني والبريميوم؟</strong> كل الأنشطة والأسئلة والجلسات مجانية بلا حدود. البريميوم يفتح: <strong>تصميم النشاط بالذكاء الاصطناعي</strong>، و<strong>صور الأسئلة</strong>، و<strong>تصدير النتائج Excel و PDF</strong>.</p>
-        <div class="row" style="margin-top: 4px">
-          <a class="btn primary" id="waLink" href="https://wa.me/970597034066" target="_blank" rel="noopener">💬 اشترك في بريميوم عبر واتساب</a>
-          <a class="btn ghost" href="/host.html">ابدأ نشاطاً الآن</a>
-        </div>
-      </div>
-
-      <p class="footer">Tapio — منصة أسئلة واستطلاعات تفاعلية للمعلّمين والمدرّبين.</p>
-    </div>
-
-    <script src="/assets/js/common.js?v=1.28.1"></script>
+    <script src="/assets/js/common.js?v=1.29.0"></script>
+    <script src="/assets/js/help.js?v=1.29.0"></script>
     <script>
-      // رقم الواتساب والسعر يأتيان من الخادم كي يبقى الدليل مطابقاً للإعدادات
-      window.T.api('/api/auth/me')
-        .then((data) => {
-          const plan = data.premium?.plan;
-          if (!plan) return;
-          const link = document.getElementById('waLink');
-          link.href = `https://wa.me/${plan.whatsapp}?text=${encodeURIComponent(
-            `مرحباً، أريد الاشتراك في بريميوم Tapio (${plan.priceUsd}$ شهرياً).`
-          )}`;
-          link.textContent = `💬 اشترك في بريميوم — ${plan.priceUsd}$ شهرياً عبر واتساب`;
-        })
-        .catch(() => {});
+      window.I18n.mountToggle(document.getElementById('langRow'));
+      window.Help.render(document.getElementById('app'));
     </script>
   </body>
 </html>

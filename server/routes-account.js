@@ -15,10 +15,26 @@ const { normalizeQuiz, normalizeQuestion } = require('./session');
 const MAX_ACTIVITIES = 200;
 const MAX_BANK_QUESTIONS = 500;
 
-/** يقبل فقط مساراً داخلياً نسبياً — يمنع التحويل إلى موقع خارجي عبر next= */
+const DEFAULT_NEXT = '/host.html#/mine';
+
+/**
+ * يقبل فقط مساراً داخلياً — يمنع التحويل إلى موقع خارجي عبر next=.
+ * لا يكفي رفض «//evil.com»: المتصفحات تعامل الشرطة العكسية معاملة المائلة
+ * في موضع المضيف، و«/\evil.com» يمرّ من فحص نصّي ساذج ثم يخرج بلا ترميز.
+ * فنحلّل العنوان ونحتفظ بمساره فقط، وهذا يسقط المضيف مهما كانت صياغته.
+ */
 function safeNext(value) {
-  const requested = String(value || '/host.html#/mine');
-  return /^\/[^/]/.test(requested) ? requested : '/host.html#/mine';
+  const requested = String(value || DEFAULT_NEXT);
+  if (!requested.startsWith('/')) return DEFAULT_NEXT;
+  try {
+    const url = new URL(requested, 'http://tapio.invalid');
+    // عنوان يحمل مضيفاً غير الوهمي يعني أنه هرب من كوننا نسبيّين
+    if (url.host !== 'tapio.invalid') return DEFAULT_NEXT;
+    const path = url.pathname + url.search + url.hash;
+    return path.startsWith('//') ? DEFAULT_NEXT : path;
+  } catch {
+    return DEFAULT_NEXT;
+  }
 }
 
 function accountRoutes(store) {
@@ -68,8 +84,12 @@ function accountRoutes(store) {
   });
 
   router.post('/auth/logout', async (req, res) => {
-    await auth.endSession(req, res);
-    res.json({ ok: true });
+    try {
+      await auth.endSession(req, res);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'تعذّر تسجيل الخروج' });
+    }
   });
 
   router.get('/auth/me', (req, res) => {
@@ -215,9 +235,13 @@ function accountRoutes(store) {
 
   /** جلب نشاط كاملاً لإعادة فتحه في المحرّر */
   router.get('/activities/:id', auth.requireUser, async (req, res) => {
-    const activity = await storage.get().getActivity(req.params.id);
-    if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
-    res.json({ activity });
+    try {
+      const activity = await storage.get().getActivity(req.params.id);
+      if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+      res.json({ activity });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر جلب النشاط' });
+    }
   });
 
   router.put('/activities/:id', auth.requireUser, async (req, res) => {
@@ -241,10 +265,14 @@ function accountRoutes(store) {
   });
 
   router.delete('/activities/:id', auth.requireUser, async (req, res) => {
-    const activity = await storage.get().getActivity(req.params.id);
-    if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
-    await storage.get().deleteActivity(activity.id);
-    res.json({ ok: true });
+    try {
+      const activity = await storage.get().getActivity(req.params.id);
+      if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+      await storage.get().deleteActivity(activity.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر حذف النشاط' });
+    }
   });
 
   /** استنساخ نشاط — نسخة مستقلة يمكن تعديلها دون المساس بالأصل */
@@ -276,6 +304,8 @@ function accountRoutes(store) {
     try {
       const activity = await storage.get().getActivity(req.params.id);
       if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+      // الاشتراك يُفحص عند كل إطلاق: نشاط حُفظ أيام البريميوم لا يبقى مفتوحاً بعد انتهائه
+      premium.assertImagesAllowed(req.user, activity.questions);
 
       const session = store.createSession({
         title: activity.title,
@@ -339,10 +369,14 @@ function accountRoutes(store) {
   });
 
   router.delete('/bank/:id', auth.requireUser, async (req, res) => {
-    const existing = await storage.get().getBankQuestion(req.params.id);
-    if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'السؤال غير موجود' });
-    await storage.get().deleteBankQuestion(existing.id);
-    res.json({ ok: true });
+    try {
+      const existing = await storage.get().getBankQuestion(req.params.id);
+      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'السؤال غير موجود' });
+      await storage.get().deleteBankQuestion(existing.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر حذف السؤال' });
+    }
   });
 
   return router;

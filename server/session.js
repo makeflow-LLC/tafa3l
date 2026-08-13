@@ -77,9 +77,13 @@ function clean(value, max) {
   return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
 }
 
-/** أقصى مدة اختبار مسموحة (١٢ ساعة) وأبعد موعد جدولة (٩٠ يوماً) */
+/**
+ * أقصى مدة اختبار مسموحة (١٢ ساعة) وأبعد موعد جدولة.
+ * سقف الجدولة ٢٠ يوماً لا ٩٠: setTimeout يقصّ أي تأخير فوق 2^31-1 ms
+ * (≈٢٤.٨ يوماً) إلى ١ms، فكان الاختبار المجدول بعد شهر يفتح فور إنشائه.
+ */
 const MAX_DURATION_MIN = 720;
-const MAX_SCHEDULE_AHEAD_MS = 90 * 86400000;
+const MAX_SCHEDULE_AHEAD_MS = 20 * 86400000;
 
 /** موعد مستقبلي صالح أو null — نتسامح مع النص ISO كما يرسله المتصفح */
 function futureStamp(value) {
@@ -479,7 +483,8 @@ class Session {
   }
 
   goTo(index) {
-    if (index < 0 || index >= this.questions.length) return;
+    // NaN يمرّ من كل مقارنة، وكان يضبط currentIndex على NaN فتموت الجلسة
+    if (!Number.isInteger(index) || index < 0 || index >= this.questions.length) return;
     this.currentIndex = index;
     this.openQuestion();
   }

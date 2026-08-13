@@ -5,12 +5,20 @@ services:
     name: tafa3l
     runtime: node
     plan: free
+    # حالة الجلسات الحيّة كلها في ذاكرة العملية (store.js) ومقابس الويب معها،
+    # فنسخة واحدة فقط. رفع العدد يجعل الطالب يصل خادماً لا يعرف رمز جلسته.
+    numInstances: 1
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
+
+      # نسخة مثبّتة: الكود يعتمد fetch العام (عقدة ١٨+)، والتثبيت يمنع تغيّر
+      # النسخة الافتراضية للمنصة من أن يصير متغيّراً غير مُختبَر في نشر الإنتاج.
+      - key: NODE_VERSION
+        value: 22
 
       # يمنع نوم الخدمة أثناء المحاضرة: الخادم ينبض لنفسه ما دامت هناك جلسة قائمة.
       # RENDER_EXTERNAL_URL تضبطه Render تلقائياً، لذلك لا تحتاج كتابة العنوان.
