@@ -1561,7 +1561,8 @@
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
         el('button', { class: 'btn ghost sm', type: 'button', onclick: () => loadAnalytics(true) }, t('hrefresh')),
-        el('button', { class: 'btn ok sm', type: 'button', onclick: () => exportAs('pdf') }, t('hpdfReport')),
+        el('button', { class: 'btn ok sm', type: 'button', title: t('hpdfRichHint'), onclick: () => exportAs('pdf') }, t('hpdfReport')),
+        el('button', { class: 'btn ghost sm', type: 'button', title: t('hpdfFileHint'), onclick: () => exportAs('pdffile') }, t('hpdfFile')),
         el('button', { class: 'btn ok sm', type: 'button', onclick: () => exportAs('excel') }, '📊 Excel'),
       ]),
     ]);
@@ -1678,7 +1679,8 @@
           el('div', { class: 'row', style: { gap: '6px' } }, [
             el('button', { class: 'btn sm ghost', type: 'button', onclick: exportResults }, '⬇ JSON'),
             el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('excel', 'results') }, '📊 Excel'),
-            el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('pdf', 'results') }, '📄 PDF'),
+            el('button', { class: 'btn sm ok', type: 'button', title: t('hpdfRichHint'), onclick: () => exportAs('pdf', 'results') }, t('hpdfRich')),
+            el('button', { class: 'btn sm ghost', type: 'button', title: t('hpdfFileHint'), onclick: () => exportAs('pdffile', 'results') }, t('hpdfFile')),
             state.premium?.isPremium ? null : el('span', { class: 'badge', text: t('hpremium') }),
           ].filter(Boolean)),
         ]),
@@ -1822,10 +1824,14 @@
         if (scope === 'results') window.Exporter.toResultsExcel(data);
         else window.Exporter.toExcel(data);
         toast(t('hexcelFileDownloaded'), 'ok');
+      } else if (kind === 'pdf') {
+        // التقرير الملوّن: صفحة كاملة الأنماط بالرسوم، يحفظها المتصفح PDF متجهاً
+        const opened = scope === 'results' ? window.Exporter.toResultsPdf(data) : window.Exporter.toPdf(data);
+        toast(opened ? t('hchooseSaveAsPdf') : t('htheBrowserBlockedThe'), opened ? 'ok' : 'bad');
       } else {
-        // PDF يُبنى في المتصفح ويُنزَّل مباشرة — لا نافذة طباعة
+        // ملف مباشر بلا نافذة — أبسط، لكن بلا رسوم ملوّنة
         toast(t('hpreparingPdf'), 'ok');
-        await (scope === 'results' ? window.Exporter.toResultsPdf(data) : window.Exporter.toPdf(data));
+        await (scope === 'results' ? window.Exporter.toResultsPdfFile(data) : window.Exporter.toPdfFile(data));
         toast(t('hpdfFileDownloaded'), 'ok');
       }
     } catch (err) {
