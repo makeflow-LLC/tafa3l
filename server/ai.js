@@ -97,9 +97,15 @@ async function complete({ system, messages, maxOutputTokens = 2000, temperature 
     throw err;
   }
 
+  // نقاط Foundry تتحقق بصرامة من حقل type لكل عنصر ولكل جزء محتوى
+  const item = (role, text) => ({
+    type: 'message',
+    role,
+    content: [{ type: role === 'assistant' ? 'output_text' : 'input_text', text: String(text ?? '') }],
+  });
   const input = [];
-  if (system) input.push({ role: 'system', content: system });
-  for (const m of messages) input.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
+  if (system) input.push(item('system', system));
+  for (const m of messages) input.push(item(m.role === 'assistant' ? 'assistant' : 'user', m.content));
 
   const url = requestUrl(cfg);
   const body = { model: cfg.model, input, max_output_tokens: maxOutputTokens, temperature };
