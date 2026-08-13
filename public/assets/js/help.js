@@ -1,0 +1,545 @@
+(function (global) {
+  'use strict';
+
+  /**
+   * دليل المعلّم بلغتيه. المحتوى هنا بيانات لا HTML مبعثر في الصفحة، فتُرسم
+   * الصفحة كلها من اللغة الحالية وتُعاد رسمها عند التبديل.
+   *
+   * أنواع الكتل: p | muted | note | h3 | ul | ol | table | actions
+   * يسمح النص بوسوم بسيطة (strong/em/code) لأنه محتوى مؤلَّف عندنا لا مُدخَل مستخدم.
+   */
+
+  const GUIDE = {
+    ar: {
+      docTitle: 'دليل المعلّم — Tapio',
+      metaDescription: 'دليل عملي: كيف تصمّم اختباراً أو استطلاعاً في Tapio، كيف تُحتسب النقاط، وأفضل الممارسات الصفّية.',
+      pageTitle: '📖 دليل المعلّم',
+      intro: 'كل ما تحتاجه لتصميم نشاط ناجح: الخطوات، أنواع الأسئلة، طريقة احتساب النقاط، وأفضل الممارسات.',
+      tocTitle: 'اختصارات',
+      navNew: '➕ نشاط جديد',
+      navHome: '🏠 الرئيسية',
+      footer: 'Tapio — منصة أسئلة واستطلاعات تفاعلية للمعلّمين والمدرّبين.',
+      waButton: '💬 اشترك في بريميوم عبر واتساب',
+      waButtonPriced: '💬 اشترك في بريميوم — {price}$ شهرياً عبر واتساب',
+      waMessage: 'مرحباً، أريد الاشتراك في بريميوم Tapio ({price}$ شهرياً).',
+      startNow: 'ابدأ نشاطاً الآن',
+      sections: [
+        {
+          id: 'start',
+          toc: '١. البداية في ٣ دقائق',
+          title: '١. أول نشاط في ٣ دقائق',
+          blocks: [
+            {
+              ol: [
+                '<strong>افتح «نشاط جديد»</strong> من الصفحة الرئيسية (لا حاجة لحساب للتجربة، لكن الحساب يحفظ أنشطتك).',
+                '<strong>اكتب عنواناً واضحاً</strong> — يراه الطلاب على شاشاتهم، مثل «مراجعة الوحدة الثالثة».',
+                '<strong>أضف أسئلتك</strong>: اختر النوع، اكتب النص، حدّد الإجابة الصحيحة والعلامة والوقت. أو ابدأ من <em>قالب جاهز</em>، أو دع <em>المساعد الذكي</em> يصوغها لك.',
+                '<strong>اضبط الإعدادات</strong>: نمط العرض، احتساب النقاط، لوحة الترتيب، الفرق.',
+                '<strong>اضغط «ابدأ الجلسة»</strong> فيظهر رمز من ٦ أرقام و QR.',
+                '<strong>اعرض الرمز على البروجكتر</strong> من زر «افتح شاشة العرض»، والطلاب يدخلون من <code>tapio.fun</code> بالرمز أو بمسح الـ QR.',
+                '<strong>أدر الجلسة</strong> من تبويب «العرض»: ابدأ، اعرض النتائج، انتقل للسؤال التالي، ثم أنهِ النشاط.',
+                '<strong>حمّل النتائج</strong> (Excel أو تقرير PDF) قبل إغلاق الجلسة.',
+              ],
+            },
+            {
+              note: 'بيانات الطلاب مؤقتة في ذاكرة الخادم وتُمحى بعد انتهاء الجلسة — الأسئلة وحدها تُحفظ في حسابك. لذا نزّل النتائج قبل الإغلاق.',
+              tone: 'warn',
+            },
+          ],
+        },
+        {
+          id: 'types',
+          toc: '٢. أنواع الأسئلة',
+          title: '٢. أنواع الأسئلة ومتى تستخدم كلاً منها',
+          blocks: [
+            {
+              table: {
+                head: ['النوع', 'يصلح لـ', 'مصحَّح؟', 'ملاحظة عملية'],
+                rows: [
+                  ['🎯 اختيار من متعدد', 'التقييم السريع والمراجعة', 'آلياً', '٤ خيارات كافية؛ اجعل المشتّتات منطقية لا سخيفة.'],
+                  ['✅ صح / خطأ', 'المفاهيم القاطعة', 'آلياً', 'احتمال التخمين ٥٠٪ — استخدمه للتهيئة لا للتقييم النهائي.'],
+                  ['📊 استطلاع رأي', 'قياس الاتجاه وكسر الجليد', 'لا', 'بلا إجابة صحيحة، والنتائج تظهر حيّة على الشاشة.'],
+                  ['☁️ سحابة كلمات', 'العصف الذهني', 'لا', 'اطلب <em>كلمة واحدة</em> صراحةً كي تتجمّع الكلمات المتكررة.'],
+                  ['📈 مقياس', 'التغذية الراجعة (١–٥)', 'لا', 'سمِّ الطرفين بوضوح: «غير واضح ← واضح جداً».'],
+                  ['💬 إجابة مفتوحة', 'التفسير والتحليل', 'يدوياً (اختياري)', 'علامة صفر = رأي حرّ، وأي علامة أكبر تعني أنك ستصحّحه بنفسك.'],
+                  ['✏️ أكمل الفراغ', 'المصطلحات والقواعد والأرقام', 'يدوياً', 'ضع <code>___</code> مكان كل فراغ، واكتب الإجابة المتوقعة لتقارن بها بسرعة.'],
+                ],
+              },
+            },
+            { muted: 'يمكن إضافة <strong>صورة</strong> لأي سؤال (ميزة بريميوم) — مفيدة للخرائط والرسوم والمسائل المصوّرة.' },
+          ],
+        },
+        {
+          id: 'scoring',
+          toc: '٣. احتساب النقاط',
+          title: '٣. كيف تُحتسب النقاط بالضبط',
+          blocks: [
+            { p: 'لكل سؤال <strong>علامة</strong> تضعها أنت (١٠٠٠ افتراضياً للأسئلة المصحَّحة آلياً). وطريقة الاحتساب تختارها من إعدادات النشاط:' },
+            {
+              ul: [
+                '<strong>نقاط حسب السرعة</strong> (الافتراضي): الإجابة الصحيحة الفورية تأخذ العلامة كاملة، وتتناقص تدريجياً حتى <em>نصف</em> العلامة عند آخر ثانية. يحتاج مؤقّتاً للسؤال.',
+                '<strong>نقاط ثابتة</strong>: كل إجابة صحيحة تأخذ العلامة كاملة مهما كان الزمن — الأعدل للاختبارات الحقيقية.',
+                '<strong>بلا نقاط</strong>: للمراجعة والاستطلاعات، لا ترتيب ولا منافسة.',
+              ],
+            },
+            { p: '<strong>مضاعف السلسلة 🔥</strong> (اختياري): كل إجابة صحيحة متتالية تزيد النقاط ١٠٪ حتى سقف ٥٠٪ — يرفع الحماس، لكن أطفئه في الاختبارات الرسمية: فهو يوسّع الفارق بين الطلاب وقد يرفع نسبة الطالب فوق ١٠٠٪.' },
+            { p: '<strong>الإجابة الخاطئة</strong> لا تخصم نقاطاً أبداً، لكنها تصفّر السلسلة. و<strong>السؤال المتروك</strong> صفر بلا خصم.' },
+            { p: '<strong>الأسئلة اليدوية</strong> (مفتوحة/أكمل الفراغ) لا تتأثر بالسرعة إطلاقاً: تأخذ العلامة التي تمنحها أنت.' },
+            { note: '<strong>النسبة المئوية في التقرير</strong> = مجموع درجات الطالب ÷ مجموع علامات كل الأسئلة المصحَّحة (آلياً ويدوياً).' },
+          ],
+        },
+        {
+          id: 'grading',
+          toc: '٤. التصحيح اليدوي',
+          title: '٤. التصحيح اليدوي (الإجابات النصّية)',
+          blocks: [
+            {
+              ol: [
+                'اجعل علامة السؤال المفتوح أكبر من صفر (أو استخدم «أكمل الفراغ» فهو يدوي دائماً).',
+                'يكتب الطالب جوابه ويرى «بانتظار تصحيح المدرب» — <strong>بلا أي نتيجة</strong>.',
+                'افتح <strong>لوحة التحكم</strong>: تظهر بطاقة تصحيح فيها نص كل إجابة، وأمامها <code>✓ صح</code> و<code>✕ خطأ</code> وأرقام العلامات الجزئية.',
+                'بمجرد ضغطك تظهر العلامة للطالب فوراً وتدخل في مجموعه وترتيبه. وتعديلها لاحقاً يصحّح المجموع تلقائياً.',
+              ],
+            },
+            { muted: 'إن أنهيت النشاط وبقيت إجابات بلا تصحيح، يرى أصحابها شاشة انتظار بدل نتيجة ناقصة — أكمل التصحيح لتظهر نتائجهم وبطاقاتهم.' },
+          ],
+        },
+        {
+          id: 'schedule',
+          toc: '٥. الجدولة والمدة',
+          title: '٥. جدولة الاختبار ومدّته ⏰',
+          blocks: [
+            { p: 'في إعدادات النشاط قسم <strong>«الجدولة والمدة»</strong>:' },
+            {
+              ul: [
+                '<strong>موعد فتح الاختبار</strong>: اختر التاريخ والساعة (بتوقيت جهازك). أطلق الجلسة مبكراً وشارك الرمز، فيرى الطلاب <em>عدّاداً تنازلياً</em> حتى الموعد، ثم <strong>يفتح الاختبار وحده</strong> بلا أي ضغطة منك — على شاشات الطلاب وعلى البروجكتر معاً.',
+                '<strong>مدة الاختبار بالدقائق</strong>: عند انتهائها <strong>يُقفل الاختبار تلقائياً</strong> للجميع وتظهر النتائج. يظهر للطالب وللمعلّم شريط «⏳ ينتهي الاختبار خلال …».',
+              ],
+            },
+            { p: 'الاثنان اختياريان ومستقلان: تقدر تضع موعداً بلا مدة، أو مدة بلا موعد، أو الاثنين معاً.' },
+            { muted: 'تستطيع دائماً البدء قبل الموعد من زر «بدء النشاط» — وعندها تُحسب المدة من لحظة بدئك الفعلي. المدة الكلية شيء مختلف عن <em>مؤقّت السؤال</em>: الأول يقفل الاختبار كله، والثاني ينهي سؤالاً واحداً.' },
+          ],
+        },
+        {
+          id: 'modes',
+          toc: '٦. أنماط العرض',
+          title: '٦. أنماط العرض: أيها تختار؟',
+          blocks: [
+            {
+              table: {
+                head: ['النمط', 'كيف يعمل', 'الأنسب لـ'],
+                rows: [
+                  ['🎛️ المدرب ينقل الأسئلة', 'الجميع على نفس السؤال، وأنت تتحكم بالانتقال', 'الصف الحضوري مع بروجكتر'],
+                  ['⏱️ انتقال تلقائي', 'ينتقل بعد ثوانٍ محدّدة تلقائياً', 'المسابقات السريعة والفعاليات'],
+                  ['🏃 كل طالب بسرعته', 'كل طالب يبدأ ويُنهي وحده', 'الواجبات والتعلّم عن بُعد'],
+                ],
+              },
+            },
+            { p: '<strong>شاشة العرض</strong>: زر «افتح شاشة العرض» يفتح صفحة مخصّصة للبروجكتر — رمز الدخول و QR كبيران، والأسئلة والنتائج والترتيب بخط ضخم، ولا تحوي أي أزرار تحكّم فلا خوف من ضغطة خاطئة أمام الصف.' },
+            { p: '<strong>وضع الفرق</strong>: يوزّع الطلاب تلقائياً على فرق ملوّنة متوازنة، ونقاط الفريق مجموع أعضائه — ممتاز للصفوف الكبيرة والمشاغبة.' },
+          ],
+        },
+        {
+          id: 'results',
+          toc: '٧. النتائج والتحليل',
+          title: '٧. النتائج والتحليل',
+          blocks: [
+            {
+              ul: [
+                '<strong>لوحة التحكم</strong>: تقدّم كل طالب سؤالاً بسؤال، ونتائج كل سؤال، وبطاقات التصحيح. ملفات Excel وPDF هنا هي <strong>سجل علامات الطلاب فقط</strong> — PDF رسمي فيه توقيعا المعلّم والمدير، يصلح تقريراً للإدارة أو مرجعاً للعلامات.',
+                '<strong>تبويب التحليل 📈</strong>: متوسط الصف والوسيط ونسبة المشاركة، توزيع الدرجات، دقة كل سؤال، متوسط زمن الإجابة، و<strong>أصعب سؤال / أسهل سؤال / الأسرع / الأبطأ / الأكثر تخطّياً</strong>، مع <strong>توصيات مكتوبة</strong> مبنية على أرقام نشاطك أنت. ملفات هذا التبويب هي <strong>تقارير التحليل الكاملة</strong>.',
+                '<strong>Excel التحليل</strong>: أربع أوراق — بطاقة النشاط (التاريخ والمدة والإعدادات والتوصيات)، الطلاب (درجة ونسبة وترتيب وزمن)، الأسئلة (دقة وأزمنة)، والإجابات (كل إجابة في سطر).',
+                '<strong>ملفات PDF تُنزَّل مباشرة</strong> إلى جهازك بضغطة واحدة — لا نافذة طباعة.',
+              ],
+            },
+            { muted: 'التصدير المنسّق (Excel و PDF) ميزة بريميوم. تنزيل JSON الخام يبقى متاحاً للجميع.' },
+          ],
+        },
+        {
+          id: 'practices',
+          toc: '٨. أفضل الممارسات',
+          title: '٨. أفضل الممارسات',
+          blocks: [
+            { h3: 'في تصميم الأسئلة' },
+            {
+              ul: [
+                '<strong>مفهوم واحد لكل سؤال.</strong> إن أخطأ الطالب تعرف تماماً أين الخلل.',
+                '<strong>٨–١٢ سؤالاً</strong> للحصة، و٥ للتهيئة. الأطول من ١٥ يُفقد التركيز.',
+                '<strong>ابدأ بسؤال سهل</strong> ليدخل الجميع بثقة، وتدرّج في الصعوبة.',
+                '<strong>اجعل الخيارات متقاربة الطول</strong> — الخيار الأطول عادةً هو الصحيح، والطلاب يكتشفون ذلك.',
+                'تجنّب «كل ما سبق» و«لا شيء مما سبق»، وتجنّب النفي المزدوج.',
+                'اكتب <strong>شرح الإجابة</strong>؛ ظهوره بعد الكشف يحوّل الاختبار إلى درس.',
+              ],
+            },
+            { h3: 'في الوقت' },
+            {
+              ul: [
+                'سؤال معرفة قصير: ١٥–٢٠ ثانية. سؤال يحتاج حساباً أو قراءة: ٤٥–٩٠ ثانية.',
+                'في الاختبارات الرسمية استخدم <strong>نقاطاً ثابتة</strong> وأطفئ مضاعف السلسلة — السرعة ليست فهماً.',
+                'راقب «متوسط زمن الإجابة» في التحليل: زمن مرتفع مع دقة منخفضة = صياغة غامضة غالباً.',
+              ],
+            },
+            { h3: 'في إدارة الصف' },
+            {
+              ul: [
+                'اعرض الرمز على البروجكتر من <strong>شاشة العرض</strong> واترك الطلاب يدخلون قبل البدء بدقيقة.',
+                'في الأسئلة المصحَّحة لا تظهر الأعداد أثناء الإجابة (عمداً) حتى لا يقلّد المتأخرون الأغلبية — بل تضيء أسماء من أجاب.',
+                'بعد كل سؤال صعب، توقّف ٣٠ ثانية للشرح قبل الانتقال. النتيجة أمامك مباشرة، فاستثمرها.',
+                'أطفئ «لوحة الترتيب» مع الصفوف الحسّاسة أو استخدم <strong>الفرق</strong> بدل الأفراد.',
+                'اطلب أسماءً حقيقية عند التقييم، وأطفئ «طلب الاسم» في الاستطلاعات الصريحة.',
+              ],
+            },
+            { h3: 'بعد النشاط' },
+            {
+              ul: [
+                'نزّل التقرير فوراً — الجلسة تُمحى تلقائياً.',
+                'ابدأ حصتك القادمة بأصعب سؤالين من التحليل: أعلى أثر بأقل وقت.',
+                'كرّر الاختبار نفسه بعد أسبوع (استنسخ النشاط) وقارن المتوسط — هذا هو الدليل الحقيقي على التعلّم.',
+              ],
+            },
+          ],
+        },
+        {
+          id: 'faq',
+          toc: '٩. أسئلة شائعة',
+          title: '٩. أسئلة شائعة',
+          blocks: [
+            { p: '<strong>هل يحتاج الطالب حساباً؟</strong> لا. يدخل بالرمز أو الـ QR ويكتب اسمه فقط.' },
+            { p: '<strong>هل تُحفظ إجابات الطلاب؟</strong> لا. كل شيء في ذاكرة الخادم ويُمحى بعد الجلسة — لذا التنزيل مهم.' },
+            { p: '<strong>انقطع النت عن طالب.</strong> يعيد فتح الرابط فيعود بنفس اسمه ونقاطه ما دامت الجلسة قائمة.' },
+            { p: '<strong>عندي طلاب لا يقرؤون العربية.</strong> التطبيق كله ثنائي اللغة (عربي/إنجليزي): لوحتك والمحرّر والتحليلات والتقارير وصفحات الطالب وهذا الدليل. بدّل لغتك من زر «EN/AR» أعلى الصفحة قبل أن تطلق النشاط.' },
+            { p: '<strong>بأي لغة يرى الطالب النشاط؟</strong> <strong>بلغتك أنت وقت الإطلاق.</strong> إن كانت لوحتك بالإنجليزية فسيرى كل مشارك النشاط بالإنجليزية وباتجاه LTR حتى لو كان متصفحه عربياً، والعكس صحيح — وشاشة البروجكتر تتبع النشاط أيضاً. فإن أردت نشاطاً بالإنجليزية بدّل لغتك <em>قبل</em> الضغط على «إطلاق». (هذا لا يغيّر تفضيل الطالب المحفوظ لبقية الموقع، وأسئلتك تبقى كما كتبتها بالطبع.)' },
+            { p: '<strong>هل يبقى الاختبار المجدول محفوظاً حتى موعده؟</strong> نعم — الجلسة المجدولة لا تُمسح بالخمول قبل موعدها، فتقدر تُطلقها اليوم لموعد بعد أيام وتوزّع الرمز مسبقاً.' },
+            { p: '<strong>هل أستطيع تعديل نشاط أطلقته؟</strong> نعم — كل نشاط تطلقه يُحفظ في «نشاطاتي» تلقائياً، وإنهاء الجلسة لا يحذفه. عدّله أو استنسخه وأطلقه من جديد.' },
+            { p: '<strong>ما الفرق بين المجاني والبريميوم؟</strong> كل الأنشطة والأسئلة والجلسات مجانية بلا حدود. البريميوم يفتح: <strong>تصميم النشاط بالذكاء الاصطناعي</strong>، و<strong>صور الأسئلة</strong>، و<strong>تصدير النتائج Excel و PDF</strong>.' },
+            { actions: true },
+          ],
+        },
+      ],
+    },
+
+    en: {
+      docTitle: 'Teacher guide — Tapio',
+      metaDescription: 'A practical guide: how to design a quiz or poll in Tapio, how scoring works, and classroom best practices.',
+      pageTitle: '📖 Teacher guide',
+      intro: 'Everything you need to design an activity that works: the steps, the question types, how scoring is calculated, and best practices.',
+      tocTitle: 'Jump to',
+      navNew: '➕ New activity',
+      navHome: '🏠 Home',
+      footer: 'Tapio — live questions and polls for teachers and trainers.',
+      waButton: '💬 Get premium on WhatsApp',
+      waButtonPriced: '💬 Get premium — ${price}/month on WhatsApp',
+      waMessage: 'Hello, I would like to subscribe to Tapio premium (${price}/month).',
+      startNow: 'Start an activity now',
+      sections: [
+        {
+          id: 'start',
+          toc: '1. Start in 3 minutes',
+          title: '1. Your first activity in 3 minutes',
+          blocks: [
+            {
+              ol: [
+                '<strong>Open “New activity”</strong> from the home page (no account needed to try it, but an account saves your activities).',
+                '<strong>Write a clear title</strong> — students see it on their screens, e.g. “Unit 3 review”.',
+                '<strong>Add your questions</strong>: pick the type, write the text, set the correct answer, the score and the time. Or start from a <em>ready template</em>, or let the <em>AI assistant</em> write them for you.',
+                '<strong>Adjust the settings</strong>: pace, scoring, leaderboard, teams.',
+                '<strong>Press “Start the session”</strong> and a 6-digit code and a QR appear.',
+                '<strong>Show the code on the projector</strong> via “Open the projector screen”. Students join from <code>tapio.fun</code> with the code or by scanning the QR.',
+                '<strong>Run the session</strong> from the “Stage” tab: start, show results, move to the next question, then end the activity.',
+                '<strong>Download the results</strong> (Excel or a PDF report) before you close the session.',
+              ],
+            },
+            {
+              note: 'Student data lives in the server’s memory only and is erased when the session ends — only your questions are saved to your account. So download the results before closing.',
+              tone: 'warn',
+            },
+          ],
+        },
+        {
+          id: 'types',
+          toc: '2. Question types',
+          title: '2. Question types and when to use each',
+          blocks: [
+            {
+              table: {
+                head: ['Type', 'Good for', 'Graded?', 'Practical note'],
+                rows: [
+                  ['🎯 Multiple choice', 'Quick assessment and review', 'Automatically', 'Four options is plenty; make the distractors plausible, not silly.'],
+                  ['✅ True / false', 'Clear-cut facts', 'Automatically', 'A 50% guess rate — use it to warm up, not to grade finally.'],
+                  ['📊 Poll', 'Reading the room and breaking the ice', 'No', 'No right answer, and results appear live on screen.'],
+                  ['☁️ Word cloud', 'Brainstorming', 'No', 'Ask for <em>one word</em> explicitly so repeated words cluster.'],
+                  ['📈 Scale', 'Feedback (1–5)', 'No', 'Label both ends clearly: “Not clear → Very clear”.'],
+                  ['💬 Open answer', 'Explanation and analysis', 'Manually (optional)', 'A score of zero means a free opinion; any score above zero means you will grade it yourself.'],
+                  ['✏️ Fill in the blank', 'Terms, grammar and numbers', 'Manually', 'Put <code>___</code> where each blank goes, and write the expected answer so you can compare at a glance.'],
+                ],
+              },
+            },
+            { muted: 'You can attach an <strong>image</strong> to any question (a premium feature) — useful for maps, diagrams and picture problems.' },
+          ],
+        },
+        {
+          id: 'scoring',
+          toc: '3. How scoring works',
+          title: '3. Exactly how points are calculated',
+          blocks: [
+            { p: 'Every question carries a <strong>score</strong> that you set (1000 by default for auto-graded questions). You choose how it is awarded in the activity settings:' },
+            {
+              ul: [
+                '<strong>Speed-based points</strong> (default): an instant correct answer earns the full score, decreasing gradually to <em>half</em> the score at the last second. Requires a timer on the question.',
+                '<strong>Flat points</strong>: every correct answer earns the full score regardless of time — the fairest option for real exams.',
+                '<strong>No points</strong>: for review and polls; no ranking, no competition.',
+              ],
+            },
+            { p: '<strong>Streak bonus 🔥</strong> (optional): each consecutive correct answer adds 10% up to a 50% ceiling — it lifts the energy, but turn it off for formal exams: it widens the gap between students and can push a student above 100%.' },
+            { p: 'A <strong>wrong answer</strong> never subtracts points, but it resets the streak. An <strong>unanswered question</strong> scores zero with no penalty.' },
+            { p: '<strong>Manually graded questions</strong> (open answer / fill in the blank) are never affected by speed: they get exactly the score you award.' },
+            { note: 'The <strong>percentage in the report</strong> = the student’s total points ÷ the total score of every graded question (both auto and manual).' },
+          ],
+        },
+        {
+          id: 'grading',
+          toc: '4. Manual grading',
+          title: '4. Manual grading (text answers)',
+          blocks: [
+            {
+              ol: [
+                'Give the open question a score above zero (or use “Fill in the blank”, which is always manual).',
+                'The student writes their answer and sees “Waiting for the teacher to grade” — <strong>with no result at all</strong>.',
+                'Open the <strong>Dashboard</strong>: a grading card shows each answer with <code>✓ correct</code>, <code>✕ wrong</code> and partial-score buttons next to it.',
+                'The moment you press, the score appears to the student and enters their total and rank. Changing it later corrects the total automatically.',
+              ],
+            },
+            { muted: 'If you end the activity while answers are still ungraded, those students see a waiting screen instead of an incomplete result — finish grading and their results and cards appear.' },
+          ],
+        },
+        {
+          id: 'schedule',
+          toc: '5. Scheduling and duration',
+          title: '5. Scheduling the quiz and its duration ⏰',
+          blocks: [
+            { p: 'In the activity settings, under <strong>“Schedule and duration”</strong>:' },
+            {
+              ul: [
+                '<strong>Opening time</strong>: pick the date and time (in your device’s timezone). Launch the session early and share the code — students see a <em>countdown</em> until the moment, then <strong>the quiz opens on its own</strong> without any click from you, on the students’ screens and on the projector alike.',
+                '<strong>Duration in minutes</strong>: when it runs out <strong>the quiz closes automatically</strong> for everyone and the results appear. Both student and teacher see a “⏳ Quiz ends in …” bar.',
+              ],
+            },
+            { p: 'Both are optional and independent: set a time without a duration, a duration without a time, or both together.' },
+            { muted: 'You can always start early with the “Start activity” button — the duration is then counted from your actual start. The overall duration is different from a <em>question timer</em>: the first closes the whole quiz, the second ends a single question.' },
+          ],
+        },
+        {
+          id: 'modes',
+          toc: '6. Pace modes',
+          title: '6. Pace modes: which one to choose?',
+          blocks: [
+            {
+              table: {
+                head: ['Mode', 'How it works', 'Best for'],
+                rows: [
+                  ['🎛️ Teacher-paced', 'Everyone is on the same question and you control the moves', 'An in-person class with a projector'],
+                  ['⏱️ Auto-advance', 'Moves on automatically after a set number of seconds', 'Fast quizzes and events'],
+                  ['🏃 Student-paced', 'Each student starts and finishes on their own', 'Homework and remote learning'],
+                ],
+              },
+            },
+            { p: '<strong>The projector screen</strong>: the “Open the projector screen” button opens a page made for a projector — a huge join code and QR, questions, results and rankings in large type, and no control buttons at all, so there is no fear of a wrong click in front of the class.' },
+            { p: '<strong>Team mode</strong>: distributes students automatically into balanced coloured teams, and a team’s score is the sum of its members — excellent for large and lively classes.' },
+          ],
+        },
+        {
+          id: 'results',
+          toc: '7. Results and analysis',
+          title: '7. Results and analysis',
+          blocks: [
+            {
+              ul: [
+                '<strong>Dashboard</strong>: each student’s progress question by question, the results of every question, and the grading cards. The Excel and PDF files here are the <strong>student score record only</strong> — an official PDF with teacher and principal signature lines, suitable as a report for administration or a marks reference.',
+                '<strong>Analysis tab 📈</strong>: class average, median and participation rate, score distribution, per-question accuracy, average answering time, and the <strong>hardest / easiest / fastest / slowest / most skipped question</strong>, plus <strong>written recommendations</strong> built on your own activity’s numbers. The files in this tab are the <strong>full analysis reports</strong>.',
+                '<strong>Analysis Excel</strong>: four sheets — the activity card (date, duration, settings and recommendations), students (score, percentage, rank and time), questions (accuracy and timings), and answers (one row per answer).',
+                '<strong>PDF files download straight</strong> to your device in one click — no print window.',
+              ],
+            },
+            { muted: 'Formatted export (Excel and PDF) is a premium feature. Downloading the raw JSON stays free for everyone.' },
+          ],
+        },
+        {
+          id: 'practices',
+          toc: '8. Best practices',
+          title: '8. Best practices',
+          blocks: [
+            { h3: 'Designing questions' },
+            {
+              ul: [
+                '<strong>One concept per question.</strong> When a student gets it wrong you know exactly where the gap is.',
+                '<strong>8–12 questions</strong> for a full lesson, 5 for a warm-up. Beyond 15 attention drops.',
+                '<strong>Open with an easy question</strong> so everyone joins in confidently, then build up the difficulty.',
+                '<strong>Keep the options a similar length</strong> — the longest option is usually the correct one, and students work that out.',
+                'Avoid “all of the above” and “none of the above”, and avoid double negatives.',
+                'Write the <strong>answer explanation</strong>; showing it after the reveal turns a quiz into a lesson.',
+              ],
+            },
+            { h3: 'On timing' },
+            {
+              ul: [
+                'A short recall question: 15–20 seconds. A question needing calculation or reading: 45–90 seconds.',
+                'For formal exams use <strong>flat points</strong> and turn off the streak bonus — speed is not understanding.',
+                'Watch “average answering time” in the analysis: a long time with low accuracy usually means unclear wording.',
+              ],
+            },
+            { h3: 'Running the class' },
+            {
+              ul: [
+                'Show the code on the projector from the <strong>projector screen</strong> and let students join a minute before you start.',
+                'On graded questions the counts stay hidden while students answer (deliberately) so latecomers cannot follow the majority — instead the names of those who answered light up.',
+                'After each hard question, pause 30 seconds to explain before moving on. The result is right in front of you, so use it.',
+                'Turn off the <strong>leaderboard</strong> with sensitive classes, or use <strong>teams</strong> instead of individuals.',
+                'Ask for real names when assessing, and turn off “require a name” for candid polls.',
+              ],
+            },
+            { h3: 'After the activity' },
+            {
+              ul: [
+                'Download the report immediately — the session is erased automatically.',
+                'Open your next lesson with the two hardest questions from the analysis: the highest impact for the least time.',
+                'Repeat the same quiz a week later (duplicate the activity) and compare the average — that is the real evidence of learning.',
+              ],
+            },
+          ],
+        },
+        {
+          id: 'faq',
+          toc: '9. FAQ',
+          title: '9. Frequently asked questions',
+          blocks: [
+            { p: '<strong>Does a student need an account?</strong> No. They join with the code or the QR and just type their name.' },
+            { p: '<strong>Are student answers stored?</strong> No. Everything lives in the server’s memory and is erased after the session — which is why downloading matters.' },
+            { p: '<strong>A student lost their connection.</strong> They reopen the link and come back with the same name and points, as long as the session is still running.' },
+            { p: '<strong>Some of my students do not read Arabic.</strong> The whole app is bilingual (Arabic/English): your panel, the editor, the analytics, the reports, the student pages and this guide. Switch your language with the “EN/AR” button at the top of the page before you launch the activity.' },
+            { p: '<strong>Which language do students see the activity in?</strong> <strong>Yours, at the moment you launch.</strong> If your panel is in English every participant sees the activity in English and in LTR even if their browser is Arabic, and the other way round — and the projector screen follows the activity too. So if you want an English activity, switch your language <em>before</em> pressing “Launch”. (This does not change the student’s saved preference for the rest of the site, and your questions stay exactly as you wrote them.)' },
+            { p: '<strong>Does a scheduled quiz survive until its time?</strong> Yes — a scheduled session is not swept away for being idle before its opening time, so you can launch it today for a date days away and hand out the code in advance.' },
+            { p: '<strong>Can I edit an activity I already launched?</strong> Yes — every activity you launch is saved to “My activities” automatically, and ending the session does not delete it. Edit it or duplicate it and launch it again.' },
+            { p: '<strong>What is the difference between free and premium?</strong> All activities, questions and sessions are free and unlimited. Premium unlocks: <strong>designing the activity with AI</strong>, <strong>question images</strong>, and <strong>exporting results to Excel and PDF</strong>.' },
+            { actions: true },
+          ],
+        },
+      ],
+    },
+  };
+
+  function elem(tag, attrs, html) {
+    const node = document.createElement(tag);
+    if (attrs) Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+    if (html !== undefined) node.innerHTML = html;
+    return node;
+  }
+
+  function listNode(tag, items, tight) {
+    const list = elem(tag);
+    list.style.cssText = `line-height: ${tight ? '2' : '2.1'}; padding-inline-start: 22px; margin: 0`;
+    items.forEach((item) => list.append(elem('li', null, item)));
+    return list;
+  }
+
+  function tableNode(spec) {
+    const head = elem('tr');
+    spec.head.forEach((cell) => head.append(elem('th', null, cell)));
+    const body = elem('tbody');
+    spec.rows.forEach((row) => {
+      const tr = elem('tr');
+      row.forEach((cell) => tr.append(elem('td', null, cell)));
+      body.append(tr);
+    });
+    const table = elem('table');
+    table.append(elem('thead'));
+    table.querySelector('thead').append(head);
+    table.append(body);
+    const wrap = elem('div', { class: 'table-wrap' });
+    wrap.append(table);
+    return wrap;
+  }
+
+  /** أزرار الاشتراك أسفل الأسئلة الشائعة — الرقم والسعر يأتيان من الخادم */
+  function actionsNode(copy) {
+    const row = elem('div', { class: 'row', style: 'margin-top: 4px' });
+    const wa = elem('a', {
+      class: 'btn primary',
+      id: 'waLink',
+      href: 'https://wa.me/970597034066',
+      target: '_blank',
+      rel: 'noopener',
+    });
+    wa.textContent = copy.waButton;
+    const start = elem('a', { class: 'btn ghost', href: '/host.html' });
+    start.textContent = copy.startNow;
+    row.append(wa, start);
+    return row;
+  }
+
+  function blockNode(block, copy) {
+    if (block.p) return elem('p', { style: 'margin: 0' }, block.p);
+    if (block.muted) return elem('p', { class: 'muted small', style: 'margin: 0' }, block.muted);
+    if (block.note) return elem('div', { class: 'note small' + (block.tone ? ' ' + block.tone : '') }, block.note);
+    if (block.h3) return elem('h3', { style: 'margin: 6px 0 0' }, block.h3);
+    if (block.ul) return listNode('ul', block.ul, true);
+    if (block.ol) return listNode('ol', block.ol, false);
+    if (block.table) return tableNode(block.table);
+    if (block.actions) return actionsNode(copy);
+    return null;
+  }
+
+  /** يرسم الدليل كاملاً باللغة الحالية */
+  function render(root) {
+    const lang = global.I18n && global.I18n.getLang() === 'en' ? 'en' : 'ar';
+    const copy = GUIDE[lang];
+
+    document.title = copy.docTitle;
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute('content', copy.metaDescription);
+    document.querySelectorAll('[data-nav="new"]').forEach((n) => (n.textContent = copy.navNew));
+    document.querySelectorAll('[data-nav="home"]').forEach((n) => (n.textContent = copy.navHome));
+
+    root.innerHTML = '';
+    root.append(elem('h1', null, copy.pageTitle));
+    root.append(elem('p', { class: 'muted' }, copy.intro));
+
+    // فهرس سريع: الصفحة طويلة عمداً، فليصل المعلّم لما يريده بنقرة
+    const toc = elem('div', { class: 'card stack' });
+    toc.append(elem('h2', { style: 'margin: 0' }, copy.tocTitle));
+    const tocRow = elem('div', { class: 'row' });
+    copy.sections.forEach((section) => {
+      const link = elem('a', { class: 'btn ghost sm', href: '#' + section.id });
+      link.textContent = section.toc;
+      tocRow.append(link);
+    });
+    toc.append(tocRow);
+    root.append(toc);
+
+    copy.sections.forEach((section) => {
+      const card = elem('div', { class: 'card stack', id: section.id });
+      card.append(elem('h2', { style: 'margin: 0' }, section.title));
+      section.blocks.forEach((block) => {
+        const node = blockNode(block, copy);
+        if (node) card.append(node);
+      });
+      root.append(card);
+    });
+
+    root.append(elem('p', { class: 'footer' }, copy.footer));
+
+    // رقم الواتساب والسعر من الخادم كي يبقى الدليل مطابقاً للإعدادات
+    global.T.api('/api/auth/me')
+      .then((data) => {
+        const plan = data.premium?.plan;
+        const link = document.getElementById('waLink');
+        if (!plan || !link) return;
+        link.href = `https://wa.me/${plan.whatsapp}?text=${encodeURIComponent(
+          copy.waMessage.replace('{price}', plan.priceUsd)
+        )}`;
+        link.textContent = copy.waButtonPriced.replace('{price}', plan.priceUsd);
+      })
+      .catch(() => {});
+  }
+
+  global.Help = { render, GUIDE };
+})(window);

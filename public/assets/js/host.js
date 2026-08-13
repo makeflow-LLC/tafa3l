@@ -1516,7 +1516,7 @@
     if (state.analyticsData && !force) return;
     state.analyticsLoading = true;
     try {
-      state.analyticsData = await api(`/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`);
+      state.analyticsData = await api(`/api/sessions/${state.code}/export`, { headers: { 'x-host-token': state.hostToken } });
       state.analyticsAt = Date.now();
     } catch (err) {
       state.analyticsError = err.message || t('hcouldNotLoadThe');
@@ -1817,7 +1817,7 @@
       return;
     }
     try {
-      const data = await api(`/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`);
+      const data = await api(`/api/sessions/${state.code}/export`, { headers: { 'x-host-token': state.hostToken } });
       if (kind === 'excel') {
         if (scope === 'results') window.Exporter.toResultsExcel(data);
         else window.Exporter.toExcel(data);
@@ -1833,18 +1833,26 @@
     }
   }
 
-  function exportResults() {
-    const url = `/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`;
-    const link = el('a', { href: url, download: `tapio-${state.code}.json` });
-    document.body.append(link);
-    link.click();
-    link.remove();
+  /** تنزيل JSON الخام — بترويسة لا بعنوان، فلا يتسرّب مفتاح المضيف إلى السجلات */
+  async function exportResults() {
+    try {
+      const data = await api(`/api/sessions/${state.code}/export`, { headers: { 'x-host-token': state.hostToken } });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = el('a', { href: url, download: `tapio-${state.code}.json` });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) {
+      toast(err.message || t('hexportFailed'), 'bad');
+    }
   }
 
   async function endSession() {
     if (!confirm(t('hendTheSessionAnd2'))) return;
     try {
-      await api(`/api/sessions/${state.code}?hostToken=${encodeURIComponent(state.hostToken)}`, { method: 'DELETE' });
+      await api(`/api/sessions/${state.code}`, { method: 'DELETE', headers: { 'x-host-token': state.hostToken } });
       toast(t('hsessionDeleted'), 'ok');
       const hosts = store.local.get(HOSTS_KEY, {});
       delete hosts[state.code];

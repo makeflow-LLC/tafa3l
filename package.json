@@ -1,6 +1,6 @@
 {
   "name": "tafa3l",
-  "version": "1.28.1",
+  "version": "1.29.0",
   "description": "Tapio — منصة أسئلة واستطلاعات تفاعلية للمدربين والمعلمين (تخزين مؤقت في الذاكرة)",
   "main": "server/index.js",
   "type": "commonjs",
@@ -8,7 +8,8 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node --test test/*.test.js",
-    "test:pg": "node test/storage.test.js && node test/account.test.js"
+    "test:pg": "node test/storage.test.js && node test/account.test.js",
+    "build:vendor": "gzip -9 -k -f public/assets/vendor/*.js"
   },
   "engines": {
     "node": ">=18"
