@@ -491,7 +491,7 @@
    * سجل علامات الطلاب (تنزيل مباشر): تعريف النشاط، جدول العلامات مرتباً،
    * وسطرا توقيع للمعلّم والمدير — بلا تحليل. مرجع رسمي أمام الإدارة.
    */
-  async function toResultsPdf(data) {
+  async function toResultsPdfFile(data) {
     await ensurePdfLibs();
     const doc = makeDoc();
     let y = writeLine(doc, data.title, 52, { size: 17, bold: true });
@@ -525,7 +525,7 @@
    * تقرير المعلّم الكامل (تنزيل مباشر): تعريف النشاط، ملخص التحليل
    * وأبرز الأسئلة والتوصيات، ثم جدول الأسئلة وجدول العلامات.
    */
-  async function toPdf(data) {
+  async function toPdfFile(data) {
     await ensurePdfLibs();
     const doc = makeDoc();
     const analysis = global.Analytics ? global.Analytics.compute(data) : null;
@@ -616,5 +616,234 @@
     doc.save(`tapio-${data.code}-report.pdf`);
   }
 
-  global.Exporter = { toExcel, toResultsExcel, toPdf, toResultsPdf, toXlsx, buildSheets, buildResultsSheets, ensurePdfLibs, crc32 };
+  // ------------------------------------------------- تقرير مطبوع ملوّن
+  //
+  // أجمل مخرَج ممكن: صفحة HTML كاملة الأنماط تُفتح في نافذة طباعة، فيحفظها
+  // المتصفح PDF متجهاً (نصّه قابل للتحديد، ورسومه SVG حادّة عند أي تكبير).
+  // نفس محرّك الرسوم الذي يراه المعلّم في تبويب التحليل — لا نسخة باهتة منه.
+
+  /** أنماط التقرير المطبوع — مستقلة عن صفحة التطبيق لأن النافذة جديدة */
+  const PRINT_CSS = `
+  /*
+   * المتصفحات تحذف ألوان الخلفيات عند الطباعة افتراضاً، فتخرج الأشرطة
+   * وبطاقات التوصيات بيضاء. هذا السطر يفرض طباعتها بألوانها الحقيقية.
+   */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color: #16162a; margin: 24px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { font-size: 18px; margin: 22px 0 10px; }
+  h3 { margin: 0 0 10px; font-size: 15px; }
+  .meta { color: #61657d; margin: 0 0 6px; font-size: 13px; }
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0 18px; }
+  .meta-grid div { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+  .meta-grid strong { display: block; font-size: 15px; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 18px; }
+  th, td { border: 1px solid #d7dae6; padding: 6px 8px; text-align: right; font-size: 13px; }
+  th { background: #f1f3f9; }
+  .q { break-inside: avoid; margin-bottom: 12px; border: 1px solid #e3e6ef; border-radius: 10px; padding: 10px 14px; }
+  .q h3 { margin: 0 0 6px; font-size: 14px; }
+  .ok { color: #128a4d; margin: 0 0 6px; font-size: 13px; }
+  ul { margin: 4px 0; padding-inline-start: 20px; font-size: 13px; }
+  .chart-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .chart-stat { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px; text-align: center; }
+  .chart-stat strong { display: block; font-size: 20px; font-weight: 800; }
+  .chart-stat span { font-size: 11px; color: #61657d; }
+  .chart-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+  .chart-card { flex: 1 1 260px; border: 1px solid #e3e6ef; border-radius: 10px; padding: 12px; margin-bottom: 12px; break-inside: avoid; }
+  .chart-card.grow { flex: 3 1 320px; }
+  .chart-donut { display: block; width: 150px; margin: 0 auto; color: #16162a; }
+  .chart-bars { display: grid; gap: 6px; }
+  .chart-bar { display: grid; grid-template-columns: minmax(90px, 36%) 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
+  .chart-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #61657d; }
+  .chart-track { display: block; height: 12px; border-radius: 999px; background: #f1f3f9; overflow: hidden; }
+  .chart-track i { display: block; height: 100%; border-radius: 999px; }
+  .chart-value { font-weight: 700; }
+  .chart-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .chart-highlight { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px 10px; border-inline-start: 4px solid #5b45e0; display: grid; gap: 2px; break-inside: avoid; }
+  .chart-highlight.bad { border-inline-start-color: #cc2f2f; }
+  .chart-highlight.ok { border-inline-start-color: #128a4d; }
+  .chart-highlight.warn { border-inline-start-color: #a45c00; }
+  .chart-highlight .t, .chart-highlight .v { font-size: 11px; color: #61657d; }
+  .chart-table { width: 100%; }
+  .rec-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .rec { padding: 8px 10px; border-radius: 8px; background: #f6f7fb; border-inline-start: 4px solid #5b45e0; font-size: 13px; line-height: 1.7; break-inside: avoid; }
+  .rec.ok { border-inline-start-color: #128a4d; background: rgba(18,138,77,0.08); }
+  .rec.warn { border-inline-start-color: #a45c00; background: rgba(164,92,0,0.08); }
+  .rec.bad { border-inline-start-color: #cc2f2f; background: rgba(204,47,47,0.08); }
+  .muted { color: #61657d; }
+  .small { font-size: 12px; }
+  .foot { margin-top: 20px; font-size: 11px; color: #8a8ea3; text-align: center; }
+  
+  /* ترويسة ملوّنة تعطي التقرير هوية بصرية فور فتحه */
+  .hero { background: linear-gradient(135deg, #5b45e0, #7c5cff); color: #fff; border-radius: 14px; padding: 18px 22px; margin-bottom: 16px; }
+  .hero h1 { color: #fff; margin: 0 0 6px; }
+  .hero .meta { color: rgba(255, 255, 255, 0.85); margin: 0; }
+  .hero .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .hero .tag { background: rgba(255, 255, 255, 0.18); border-radius: 999px; padding: 4px 12px; font-size: 12px; }
+  .sign-row { display: flex; gap: 60px; margin-top: 56px; break-inside: avoid; }
+  .sign { flex: 1; text-align: center; font-size: 13px; color: #61657d; }
+  .sign i { display: block; border-top: 1px solid #16162a; margin-bottom: 8px; }
+  .rank-1 td { background: rgba(245, 183, 0, 0.16); font-weight: 700; }
+  .rank-2 td { background: rgba(150, 150, 170, 0.14); }
+  .rank-3 td { background: rgba(196, 120, 60, 0.14); }
+  @media print { body { margin: 12mm; } .hero { break-inside: avoid; } }`;
+
+  /** ترويسة التقرير الملوّنة */
+  function heroHtml(data, subtitle) {
+    const started = new Date(data.startedAt || data.exportedAt);
+    const tags = [
+      data.teacher ? `${t('xTeacher')}: ${data.teacher}` : null,
+      `${t('xCode')}: ${data.code}`,
+      started.toLocaleDateString(loc(), { year: 'numeric', month: 'long', day: 'numeric' }),
+      t('hMinutes', { n: data.durationMinutes || 1 }),
+      `${data.participantCount ?? (data.participants || []).length} ${t('xStudentCount')}`,
+    ].filter(Boolean);
+    return `<div class="hero">
+      <h1>${esc(data.title)}</h1>
+      <p class="meta">${esc(subtitle)}</p>
+      <div class="tags">${tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>
+    </div>`;
+  }
+
+  function metaGridHtml(data) {
+    const started = new Date(data.startedAt || data.exportedAt);
+    const ended = new Date(data.endedAt || data.exportedAt);
+    return `<div class="meta-grid">
+      <div><strong>${esc(started.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' }))} — ${esc(
+        ended.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })
+      )}</strong>${t('xStartEnd')}</div>
+      <div><strong>${data.questionCount ?? (data.questions || []).length}</strong>${t('xQuestionCount')}</div>
+      <div><strong>${data.maxScore || 0}</strong>${t('xMaxScore')}</div>
+      <div><strong>${esc(PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—')}</strong>${t('xPaceLabel')}</div>
+      <div><strong>${esc(SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—')}</strong>${t('xScoringLabel')}</div>
+      <div><strong>${esc(new Date(data.exportedAt).toLocaleString(loc()))}</strong>${t('xExportedAt')}</div>
+    </div>`;
+  }
+
+  /** جدول العلامات — الأوائل الثلاثة بخلفية مميّزة */
+  function marksTableHtml(data) {
+    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const hasTeams = participants.some((p) => p.team);
+    const rows = participants
+      .map((p, i) => {
+        const rank = p.rank ?? i + 1;
+        return `<tr class="${rank <= 3 ? 'rank-' + rank : ''}">
+        <td>${rank}</td><td>${esc(p.name)}</td>${hasTeams ? `<td>${esc(p.team || '—')}</td>` : ''}
+        <td>${p.score}</td><td>${p.maxScore ?? data.maxScore ?? 0}</td>
+        <td>${p.percent === null || p.percent === undefined ? '—' : p.percent + t('pctSuffix')}</td>
+        <td>${p.correctCount ?? 0}</td>
+        <td>${p.answered ?? 0} / ${(p.answered ?? 0) + (p.unanswered ?? 0)}</td>
+      </tr>`;
+      })
+      .join('');
+    return `<table><thead><tr>
+      <th>${t('xRank')}</th><th>${t('aStudent')}</th>${hasTeams ? `<th>${t('xTeam')}</th>` : ''}
+      <th>${t('aScore')}</th><th>${t('xMaxScore')}</th><th>${t('xPctCol')}</th>
+      <th>${t('aCorrect')}</th><th>${t('xAnswered')}</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function page(data, title, inner) {
+    return `<!doctype html><html lang="${loc()}" dir="${isRtl() ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
+<title>${esc(title)}</title>
+<style>${PRINT_CSS}</style></head><body>
+${inner}
+<p class="foot">Tapio — tapio.fun · ${t('xFooterNote')}</p>
+<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 500); });<\/script>
+</body></html>`;
+  }
+
+  /**
+   * تقرير التحليل الكامل: ترويسة ملوّنة، بطاقة النشاط، ثم التحليل بالرسوم
+   * والتوصيات من محرّك لوحة التحليل نفسه، ثم تفصيل كل سؤال وجدول العلامات.
+   */
+  function pdfHtml(data) {
+    const questions = data.questions || [];
+    const analysis = global.Analytics ? global.Analytics.compute(data) : null;
+
+    const questionBlocks = questions
+      .map((q) => {
+        const results = q.results || {};
+        let body = '';
+        if (results.options) {
+          body = `<ul>${results.options
+            .map((o) => `<li>${esc(o.text)} — ${o.percent}${t('pctSuffix')} (${o.count})${o.correct ? ' ✔' : ''}</li>`)
+            .join('')}</ul>`;
+        } else if (results.words) {
+          body = `<p>${results.words.map((w) => `${esc(w.text)} (${w.count})`).join(t('listSep'))}</p>`;
+        } else if (results.average !== undefined && results.average !== null) {
+          body = `<p>${t('sAverage')}${results.average}</p>`;
+        } else if (results.responses) {
+          body = `<ul>${results.responses
+            .map((r) => `<li>${esc(r.text)}${r.name ? ` — <strong>${esc(r.name)}</strong>` : ''}</li>`)
+            .join('')}</ul>`;
+        }
+        const stats = [
+          t('xAnsweredN', { n: q.responses }),
+          q.accuracy === null || q.accuracy === undefined ? null : t('aAccuracyOnly', { pct: q.accuracy }),
+          q.avgSeconds ? t('aAvgSeconds', { sec: q.avgSeconds }) : null,
+          q.maxPoints ? t('xScoreN', { n: q.maxPoints }) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return `<div class="q"><h3>${q.index}. ${esc(q.text)} <small>(${esc(TYPE_AR[q.type] ? t(TYPE_AR[q.type]) : q.type)})</small></h3>
+          <p class="meta">${esc(stats)}</p>
+          ${q.correct && q.correct.length ? `<p class="ok">${t('xCorrectAnswer')}: ${esc(q.correct.join(t('listSep')))}</p>` : ''}
+          ${q.blanks && q.blanks.filter(Boolean).length ? `<p class="ok">${t('xExpectedAnswers')}: ${esc(q.blanks.filter(Boolean).join(' · '))}</p>` : ''}
+          ${body}</div>`;
+      })
+      .join('');
+
+    return page(
+      data,
+      `${t('xReportOf')} ${data.title} — Tapio`,
+      `${heroHtml(data, t('xReportOf'))}
+${metaGridHtml(data)}
+${analysis ? `<h2>${t('xAnalysisSection')}</h2>${global.Analytics.reportHtml(analysis, { print: true })}` : ''}
+<h2>${t('xQuestionDetail')}</h2>
+${questionBlocks}
+<h2>${t('xResultsRecord')}</h2>
+${marksTableHtml(data)}`
+    );
+  }
+
+  /** سجل علامات الطلاب: تعريف النشاط، جدول العلامات، ثم سطرا التوقيع */
+  function resultsPdfHtml(data) {
+    return page(
+      data,
+      `${t('xResultsRecord')} — ${data.title} — Tapio`,
+      `${heroHtml(data, t('xResultsRecord'))}
+${metaGridHtml(data)}
+<h2>${t('xResultsRecord')}</h2>
+${marksTableHtml(data)}
+<div class="sign-row">
+  <div class="sign"><i></i>${esc(t('xSigTeacher'))}${data.teacher ? `<br><strong>${esc(data.teacher)}</strong>` : ''}</div>
+  <div class="sign"><i></i>${esc(t('xSigPrincipal'))}</div>
+</div>`
+    );
+  }
+
+  function openPrintWindow(html) {
+    const win = window.open('', '_blank');
+    if (!win) return false; // المتصفح منع النافذة المنبثقة
+    win.document.write(html);
+    win.document.close();
+    return true;
+  }
+
+  function toPdf(data) {
+    return openPrintWindow(pdfHtml(data));
+  }
+
+  function toResultsPdf(data) {
+    return openPrintWindow(resultsPdfHtml(data));
+  }
+
+  global.Exporter = {
+    toExcel, toResultsExcel,
+    toPdf, toResultsPdf,          // تقرير ملوّن عبر نافذة الطباعة (الأجمل)
+    toPdfFile, toResultsPdfFile,  // تنزيل مباشر بلا نافذة (أبسط)
+    toXlsx, buildSheets, buildResultsSheets, pdfHtml, resultsPdfHtml, ensurePdfLibs, crc32,
+  };
 })(window);
