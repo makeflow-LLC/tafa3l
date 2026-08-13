@@ -646,6 +646,8 @@
       socket.send({ t: 'next' });
       setTimeout(() => (nextBtn.disabled = false), 1500);
     });
+    // زر «التالي» في مقدمة الصفحة كي لا يضطر الطالب للتمرير
+    app.append(nextBtn);
     app.append(
       el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: '⌛' }),
@@ -653,13 +655,23 @@
         el('p', { class: 'muted small', text: t('pKeepGoing') }),
       ])
     );
-    app.append(nextBtn);
   }
 
-  /** شاشة ما بعد الإجابة في الوضع الحر — النتيجة ثم زر «التالي» */
+  /** شاشة ما بعد الإجابة في الوضع الحر — زر «التالي» في المقدمة ثم النتيجة */
   function renderSelfFeedback(s) {
     const q = s.question;
     app.append(header(s));
+
+    // زر «التالي» في مقدمة الصفحة: يتقدّم الطالب فوراً دون التمرير عبر النتائج
+    const lastQ = s.index + 1 >= s.total;
+    const topNext = el('button', { class: 'btn primary block' }, lastQ ? t('pFinishBtn') : t('pNextQuestion'));
+    topNext.addEventListener('click', () => {
+      topNext.disabled = true;
+      socket.send({ t: 'next' });
+      setTimeout(() => (topNext.disabled = false), 1500);
+    });
+    app.append(topNext);
+
     app.append(questionCard(q));
     app.append(waitingCard(s, q, true));
     const revealSelf = answerReveal(s, q);
@@ -707,14 +719,6 @@
       );
     }
 
-    const last = s.index + 1 >= s.total;
-    const nextBtn = el('button', { class: 'btn primary block' }, last ? t('pFinishBtn') : t('pNextQuestion'));
-    nextBtn.addEventListener('click', () => {
-      nextBtn.disabled = true;
-      socket.send({ t: 'next' });
-      setTimeout(() => (nextBtn.disabled = false), 1500);
-    });
-    app.append(nextBtn);
   }
 
   function renderResults(s) {

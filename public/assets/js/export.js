@@ -2,10 +2,11 @@
   'use strict';
 
   /**
-   * تصدير نتائج الجلسة (ميزة بريميوم): ملف Excel حقيقي (.xlsx) وتقرير PDF.
+   * تصدير نتائج الجلسة (ميزة بريميوم): ملف Excel حقيقي (.xlsx) وملف PDF
+   * يُبنى في المتصفح ويُنزَّل مباشرة.
    *
-   * بلا أي مكتبة خارجية: نكتب حزمة xlsx بأنفسنا (zip بمدخلات غير مضغوطة)،
-   * وتقرير PDF عبر نافذة طباعة مهيّأة يختار فيها المستخدم «حفظ كـ PDF».
+   * Excel بلا أي مكتبة: نكتب حزمة xlsx بأنفسنا (zip بمدخلات غير مضغوطة).
+   * PDF عبر jsPDF + autoTable وخط Amiri المضمّن (تُحمَّل كسولاً عند الطلب).
    */
 
   const enc = new TextEncoder();
@@ -190,16 +191,11 @@
     blank: 'typeBlank',
   };
 
-  /** يحوّل مخرجات /api/sessions/:code/export إلى أوراق جاهزة */
-  function buildSheets(data) {
-    const questions = data.questions || [];
-    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
-    const analysis = global.Analytics ? global.Analytics.compute(data) : null;
+  /** ورقة التعريف الأساسية: كل ما يسأل عنه المعلّم قبل أن ينظر في الدرجات */
+  function infoRows(data) {
     const started = new Date(data.startedAt || data.exportedAt);
     const ended = new Date(data.endedAt || data.exportedAt);
-
-    // ورقة التعريف: كل ما يسأل عنه المعلّم قبل أن ينظر في الدرجات
-    const info = [
+    return [
       [t('xActivityName'), data.title],
       ...(data.teacher ? [[t('xTeacher'), data.teacher]] : []),
       [t('xCode'), data.code],
@@ -207,28 +203,17 @@
       [t('xStartTime'), started.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })],
       [t('xEndTime'), ended.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })],
       [t('xDurationMin'), data.durationMinutes || 1],
-      [t('xStudentCount'), data.participantCount ?? participants.length],
-      [t('xQuestionCount'), data.questionCount ?? questions.length],
+      [t('xStudentCount'), data.participantCount ?? (data.participants || []).length],
+      [t('xQuestionCount'), data.questionCount ?? (data.questions || []).length],
       [t('xMaxScore'), data.maxScore || 0],
       [t('xPaceLabel'), (PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—')],
       [t('xScoringLabel'), (SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—')],
       [t('xExportedAt'), new Date(data.exportedAt).toLocaleString(loc())],
     ];
-    if (analysis) {
-      info.push([]);
-      info.push([t('xAvgPct'), analysis.avgPercent ?? '—']);
-      info.push([t('xMedianPct'), analysis.median ?? '—']);
-      info.push([t('xParticipationPct'), analysis.participation]);
-      info.push([t('xHardest'), analysis.hardest ? `${analysis.hardest.text} (${analysis.hardest.accuracy}${t('pctSuffix')})` : '—']);
-      info.push([t('xEasiest'), analysis.easiest ? `${analysis.easiest.text} (${analysis.easiest.accuracy}${t('pctSuffix')})` : '—']);
-      info.push([t('xFastest'), analysis.fastest ? `${analysis.fastest.text} (${analysis.fastest.avgSeconds}${t('aSecShort')})` : '—']);
-      info.push([t('xSlowest'), analysis.slowest ? `${analysis.slowest.text} (${analysis.slowest.avgSeconds}${t('aSecShort')})` : '—']);
-      info.push([t('xPending'), analysis.pendingTotal]);
-      info.push([]);
-      info.push([t('aRecommendations'), '']);
-      analysis.recommendations.forEach((rec, i) => info.push([t('xRecN', { n: i + 1 }), rec.text]));
-    }
+  }
 
+  /** جدول علامات الطلاب مرتبين تنازلياً — يُستخدم في الملفين الكامل والمختصر */
+  function peopleRows(participants, data) {
     const people = [
       [t('xRank'), t('aStudent'), t('xTeam'), t('aScore'), t('xMaxScore'), t('xPctCol'), t('xAnswered'), t('xUnanswered'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xPendingCol'), t('xBestStreak'), t('xAvgSecCol')],
     ];
@@ -250,6 +235,32 @@
         p.avgSeconds ?? 0,
       ]);
     });
+    return people;
+  }
+
+  /** يحوّل مخرجات /api/sessions/:code/export إلى أوراق جاهزة */
+  function buildSheets(data) {
+    const questions = data.questions || [];
+    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const analysis = global.Analytics ? global.Analytics.compute(data) : null;
+
+    const info = infoRows(data);
+    if (analysis) {
+      info.push([]);
+      info.push([t('xAvgPct'), analysis.avgPercent ?? '—']);
+      info.push([t('xMedianPct'), analysis.median ?? '—']);
+      info.push([t('xParticipationPct'), analysis.participation]);
+      info.push([t('xHardest'), analysis.hardest ? `${analysis.hardest.text} (${analysis.hardest.accuracy}${t('pctSuffix')})` : '—']);
+      info.push([t('xEasiest'), analysis.easiest ? `${analysis.easiest.text} (${analysis.easiest.accuracy}${t('pctSuffix')})` : '—']);
+      info.push([t('xFastest'), analysis.fastest ? `${analysis.fastest.text} (${analysis.fastest.avgSeconds}${t('aSecShort')})` : '—']);
+      info.push([t('xSlowest'), analysis.slowest ? `${analysis.slowest.text} (${analysis.slowest.avgSeconds}${t('aSecShort')})` : '—']);
+      info.push([t('xPending'), analysis.pendingTotal]);
+      info.push([]);
+      info.push([t('aRecommendations'), '']);
+      analysis.recommendations.forEach((rec, i) => info.push([t('xRecN', { n: i + 1 }), rec.text]));
+    }
+
+    const people = peopleRows(participants, data);
 
     const qRows = [
       ['#', t('xType'), t('xQuestion'), t('xOptions'), t('xCorrectAnswer'), t('xScoreCol'), t('xResponses'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xAccuracyCol'), t('xAvgSecCol')],
@@ -320,138 +331,290 @@
     download(toXlsx(buildSheets(data)), `tapio-${data.code}.xlsx`);
   }
 
+  /**
+   * سجل العلامات فقط (من قسم تقدم المشاركين): ورقة تعريف وورقة علامات،
+   * بلا تحليل ولا توصيات — مرجع رسمي لعلامات الطلاب أمام الإدارة.
+   */
+  function buildResultsSheets(data) {
+    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    return [
+      { name: t('xSheetInfo'), rows: infoRows(data) },
+      { name: t('aStudents'), rows: peopleRows(participants, data) },
+    ];
+  }
+
+  function toResultsExcel(data) {
+    download(toXlsx(buildResultsSheets(data)), `tapio-${data.code}-results.xlsx`);
+  }
+
   // ------------------------------------------------------------------ pdf
+  //
+  // تنزيل مباشر لملف PDF حقيقي (لا نافذة طباعة): jsPDF + جدول autoTable
+  // وخط Amiri المضمّن للعربية. تُحمَّل المكتبات كسولاً عند أول طلب تصدير
+  // كي لا تثقل تحميل الصفحة (نحو ميغابايت للخط العربي).
 
-  /** أنماط التقرير المطبوع — مستقلة عن صفحة التطبيق لأن النافذة جديدة */
-  const PRINT_CSS = `
-  body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color: #16162a; margin: 24px; }
-  h1 { margin: 0 0 4px; font-size: 24px; }
-  h2 { font-size: 18px; margin: 22px 0 10px; }
-  h3 { margin: 0 0 10px; font-size: 15px; }
-  .meta { color: #61657d; margin: 0 0 6px; font-size: 13px; }
-  .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0 18px; }
-  .meta-grid div { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
-  .meta-grid strong { display: block; font-size: 15px; }
-  table { border-collapse: collapse; width: 100%; margin-bottom: 18px; }
-  th, td { border: 1px solid #d7dae6; padding: 6px 8px; text-align: right; font-size: 13px; }
-  th { background: #f1f3f9; }
-  .q { break-inside: avoid; margin-bottom: 12px; border: 1px solid #e3e6ef; border-radius: 10px; padding: 10px 14px; }
-  .q h3 { margin: 0 0 6px; font-size: 14px; }
-  .ok { color: #128a4d; margin: 0 0 6px; font-size: 13px; }
-  ul { margin: 4px 0; padding-inline-start: 20px; font-size: 13px; }
-  .chart-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 14px; }
-  .chart-stat { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px; text-align: center; }
-  .chart-stat strong { display: block; font-size: 20px; font-weight: 800; }
-  .chart-stat span { font-size: 11px; color: #61657d; }
-  .chart-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
-  .chart-card { flex: 1 1 260px; border: 1px solid #e3e6ef; border-radius: 10px; padding: 12px; margin-bottom: 12px; break-inside: avoid; }
-  .chart-card.grow { flex: 3 1 320px; }
-  .chart-donut { display: block; width: 150px; margin: 0 auto; color: #16162a; }
-  .chart-bars { display: grid; gap: 6px; }
-  .chart-bar { display: grid; grid-template-columns: minmax(90px, 36%) 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
-  .chart-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #61657d; }
-  .chart-track { display: block; height: 12px; border-radius: 999px; background: #f1f3f9; overflow: hidden; }
-  .chart-track i { display: block; height: 100%; border-radius: 999px; }
-  .chart-value { font-weight: 700; }
-  .chart-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; margin-bottom: 12px; }
-  .chart-highlight { border: 1px solid #e3e6ef; border-radius: 10px; padding: 8px 10px; border-inline-start: 4px solid #5b45e0; display: grid; gap: 2px; break-inside: avoid; }
-  .chart-highlight.bad { border-inline-start-color: #cc2f2f; }
-  .chart-highlight.ok { border-inline-start-color: #128a4d; }
-  .chart-highlight.warn { border-inline-start-color: #a45c00; }
-  .chart-highlight .t, .chart-highlight .v { font-size: 11px; color: #61657d; }
-  .chart-table { width: 100%; }
-  .rec-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-  .rec { padding: 8px 10px; border-radius: 8px; background: #f6f7fb; border-inline-start: 4px solid #5b45e0; font-size: 13px; line-height: 1.7; break-inside: avoid; }
-  .rec.ok { border-inline-start-color: #128a4d; background: rgba(18,138,77,0.08); }
-  .rec.warn { border-inline-start-color: #a45c00; background: rgba(164,92,0,0.08); }
-  .rec.bad { border-inline-start-color: #cc2f2f; background: rgba(204,47,47,0.08); }
-  .muted { color: #61657d; }
-  .small { font-size: 12px; }
-  .foot { margin-top: 20px; font-size: 11px; color: #8a8ea3; text-align: center; }
-  @media print { body { margin: 12mm; } }`;
+  const PAGE = { w: 595.28, h: 841.89, m: 40 };
+  let pdfLibs = null;
 
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const tag = document.createElement('script');
+      tag.src = src;
+      tag.onload = resolve;
+      tag.onerror = () => reject(new Error(t('hpdfLibsFailed')));
+      document.head.append(tag);
+    });
+  }
+
+  function ensurePdfLibs() {
+    if (global.jspdf?.jsPDF && global.TAPIO_FONTS) return Promise.resolve();
+    if (!pdfLibs) {
+      pdfLibs = (async () => {
+        await loadScript('/assets/vendor/jspdf.umd.min.js');
+        await Promise.all([
+          loadScript('/assets/vendor/jspdf.plugin.autotable.min.js'),
+          loadScript('/assets/vendor/amiri-font.js'),
+        ]);
+      })().catch((err) => {
+        pdfLibs = null; // ليُعاد التحميل في المحاولة التالية
+        throw err;
+      });
+    }
+    return pdfLibs;
+  }
+
+  function makeDoc() {
+    const doc = new global.jspdf.jsPDF({ unit: 'pt', format: 'a4' });
+    doc.addFileToVFS('Amiri.ttf', global.TAPIO_FONTS.regular);
+    doc.addFont('Amiri.ttf', 'Amiri', 'normal');
+    doc.addFileToVFS('Amiri-Bold.ttf', global.TAPIO_FONTS.bold);
+    doc.addFont('Amiri-Bold.ttf', 'Amiri', 'bold');
+    doc.setFont('Amiri');
+    doc.setTextColor(22, 22, 42);
+    return doc;
+  }
 
   /**
-   * تقرير المعلّم الكامل: بطاقة تعريف النشاط، ثم التحليل والرسوم والتوصيات
-   * (من نفس محرّك لوحة التحليل)، ثم تفصيل كل سؤال وكل طالب.
+   * محرك jsPDF يرتّب العربية بذاته لكنه يتخبّط في الأقواس داخل سطر RTL،
+   * فنحوّل «(كذا)» إلى «— كذا» في المستند العربي فقط.
    */
-  function pdfHtml(data) {
-    const questions = data.questions || [];
+  function safeText(value) {
+    // محارف الاتجاه الخفية (يدسّها toLocaleString العربي) تقلب السطر كله في jsPDF
+    const text = String(value ?? '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+    if (!isRtl() || !/[\u0600-\u06FF]/.test(text)) return text;
+    return text
+      .replace(/\s*\(([^)]{1,2})\)/g, ' $1') // «(٪)» → «٪»
+      .replace(/\s*\(([^)]*)\)/g, ' — $1')
+      .replace(/[()]/g, ' ');
+  }
+
+  /** سطر نص يراعي الاتجاه؛ يعيد y التالي */
+  function writeLine(doc, text, y, opts = {}) {
+    const { size = 11, bold = false, color = null, align = null, x = null } = opts;
+    doc.setFontSize(size);
+    doc.setFont('Amiri', bold ? 'bold' : 'normal');
+    if (color) doc.setTextColor(color[0], color[1], color[2]);
+    const rtl = isRtl();
+    const ax = x !== null ? x : rtl ? PAGE.w - PAGE.m : PAGE.m;
+    const aa = align || (rtl ? 'right' : 'left');
+    const wrapped = doc.splitTextToSize(safeText(text), PAGE.w - PAGE.m * 2);
+    doc.text(wrapped, ax, y, { align: aa });
+    doc.setTextColor(22, 22, 42);
+    return y + wrapped.length * (size * 1.6);
+  }
+
+  /** جدول يراعي الاتجاه (يعكس الأعمدة في العربية)؛ يعيد y أسفل الجدول */
+  function table(doc, head, body, startY, opts = {}) {
+    const rtl = isRtl();
+    const clean = (row) => row.map((cell) => (typeof cell === 'number' ? cell : safeText(cell)));
+    const H = rtl ? clean(head).reverse() : clean(head);
+    const B = body.map((row) => (rtl ? clean(row).reverse() : clean(row)));
+    doc.autoTable({
+      startY,
+      head: [H],
+      body: B,
+      styles: { font: 'Amiri', fontSize: 8.5, halign: rtl ? 'right' : 'left', textColor: [22, 22, 42], cellPadding: 4, lineColor: [215, 218, 230], lineWidth: 0.5 },
+      headStyles: { fontStyle: 'bold', fillColor: [241, 243, 249], textColor: [22, 22, 42] },
+      alternateRowStyles: { fillColor: [250, 251, 254] },
+      margin: { left: PAGE.m, right: PAGE.m },
+      theme: 'grid',
+      ...opts,
+    });
+    return doc.lastAutoTable.finalY;
+  }
+
+  /** جدول تعريف النشاط (عمودا: البيان والقيمة) */
+  function metaTable(doc, data, startY) {
+    const rows = infoRows(data).filter((row) => row.length === 2);
+    return table(doc, [t('xField'), t('xValue')], rows, startY, { styles: { font: 'Amiri', fontSize: 8.5, halign: isRtl() ? 'right' : 'left', textColor: [22, 22, 42], cellPadding: 3, lineColor: [215, 218, 230], lineWidth: 0.5 } });
+  }
+
+  /** ترقيم الصفحات وتذييلها — يُستدعى بعد اكتمال المحتوى */
+  function stampFooters(doc) {
+    const total = doc.getNumberOfPages();
+    for (let i = 1; i <= total; i += 1) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont('Amiri', 'normal');
+      doc.setTextColor(138, 142, 163);
+      doc.text(`Tapio — tapio.fun · ${safeText(t('xPageOf', { n: i, total }))}`, PAGE.w / 2, PAGE.h - 18, { align: 'center' });
+      doc.setTextColor(22, 22, 42);
+    }
+  }
+
+  /** رأس الطالبين المشترك لجدول العلامات */
+  function marksHeadBody(data) {
+    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const hasTeams = participants.some((p) => p.team);
+    const head = [t('xRank'), t('aStudent'), ...(hasTeams ? [t('xTeam')] : []), t('aScore'), t('xMaxScore'), t('xPctCol'), t('aCorrect'), t('xAnswered')];
+    const body = participants.map((p, i) => [
+      p.rank ?? i + 1,
+      p.name,
+      ...(hasTeams ? [p.team || '—'] : []),
+      p.score,
+      p.maxScore ?? data.maxScore ?? 0,
+      p.percent === null || p.percent === undefined ? '—' : `${p.percent}${t('pctSuffix')}`,
+      p.correctCount ?? 0,
+      `${p.answered ?? 0} / ${(p.answered ?? 0) + (p.unanswered ?? 0)}`,
+    ]);
+    return { head, body };
+  }
+
+  /** يتأكد أن في الصفحة متسعاً؛ وإلا فيفتح صفحة جديدة ويعيد y البداية */
+  function roomFor(doc, y, needed) {
+    if (y + needed <= PAGE.h - 60) return y;
+    doc.addPage();
+    return 50;
+  }
+
+  /**
+   * سجل علامات الطلاب (تنزيل مباشر): تعريف النشاط، جدول العلامات مرتباً،
+   * وسطرا توقيع للمعلّم والمدير — بلا تحليل. مرجع رسمي أمام الإدارة.
+   */
+  async function toResultsPdf(data) {
+    await ensurePdfLibs();
+    const doc = makeDoc();
+    let y = writeLine(doc, data.title, 52, { size: 17, bold: true });
+    y = writeLine(doc, `${t('xResultsRecord')} · ${new Date(data.exportedAt).toLocaleString(loc())}`, y, { size: 9, color: [97, 101, 125] });
+    y = metaTable(doc, data, y + 6) + 20;
+
+    y = roomFor(doc, y, 120);
+    y = writeLine(doc, t('xResultsRecord'), y, { size: 13, bold: true });
+    const { head, body } = marksHeadBody(data);
+    y = table(doc, head, body, y + 4) + 46;
+
+    // توقيعان: المعلّم والمدير — لكلٍّ خطّ فوقه اسمه تحت
+    y = roomFor(doc, y, 70);
+    const half = (PAGE.w - PAGE.m * 2 - 60) / 2;
+    const teacherX = isRtl() ? PAGE.w - PAGE.m - half : PAGE.m;
+    const principalX = isRtl() ? PAGE.m : PAGE.w - PAGE.m - half;
+    doc.setDrawColor(22, 22, 42);
+    doc.line(teacherX, y, teacherX + half, y);
+    doc.line(principalX, y, principalX + half, y);
+    doc.setFontSize(9);
+    doc.setTextColor(97, 101, 125);
+    doc.text(safeText(t('xSigTeacher') + (data.teacher ? ` — ${data.teacher}` : '')), teacherX + half / 2, y + 14, { align: 'center' });
+    doc.text(safeText(t('xSigPrincipal')), principalX + half / 2, y + 14, { align: 'center' });
+    doc.setTextColor(22, 22, 42);
+
+    stampFooters(doc);
+    doc.save(`tapio-${data.code}-results.pdf`);
+  }
+
+  /**
+   * تقرير المعلّم الكامل (تنزيل مباشر): تعريف النشاط، ملخص التحليل
+   * وأبرز الأسئلة والتوصيات، ثم جدول الأسئلة وجدول العلامات.
+   */
+  async function toPdf(data) {
+    await ensurePdfLibs();
+    const doc = makeDoc();
     const analysis = global.Analytics ? global.Analytics.compute(data) : null;
-    const started = new Date(data.startedAt || data.exportedAt);
-    const ended = new Date(data.endedAt || data.exportedAt);
 
-    const questionBlocks = questions
-      .map((q) => {
-        const results = q.results || {};
-        let body = '';
-        if (results.options) {
-          body = `<ul>${results.options
-            .map((o) => `<li>${esc(o.text)} — ${o.percent}${t('pctSuffix')} (${o.count})${o.correct ? ' ✔' : ''}</li>`)
-            .join('')}</ul>`;
-        } else if (results.words) {
-          body = `<p>${results.words.map((w) => `${esc(w.text)} (${w.count})`).join(t('listSep'))}</p>`;
-        } else if (results.average !== undefined && results.average !== null) {
-          body = `<p>${t('sAverage')}${results.average}</p>`;
-        } else if (results.responses) {
-          body = `<ul>${results.responses
-            .map((r) => `<li>${esc(r.text)}${r.name ? ` — <strong>${esc(r.name)}</strong>` : ''}</li>`)
-            .join('')}</ul>`;
-        }
-        const stats = [
-          t('xAnsweredN', { n: q.responses }),
-          q.accuracy === null || q.accuracy === undefined ? null : t('aAccuracyOnly', { pct: q.accuracy }),
-          q.avgSeconds ? t('aAvgSeconds', { sec: q.avgSeconds }) : null,
-          q.maxPoints ? t('xScoreN', { n: q.maxPoints }) : null,
-        ]
-          .filter(Boolean)
-          .join(' · ');
-        return `<div class="q"><h3>${q.index}. ${esc(q.text)} <small>(${esc((TYPE_AR[q.type] ? t(TYPE_AR[q.type]) : q.type))})</small></h3>
-          <p class="meta">${esc(stats)}</p>
-          ${q.correct && q.correct.length ? `<p class="ok">${t('xCorrectAnswer')}: ${esc(q.correct.join(t('listSep')))}</p>` : ''}
-          ${q.blanks && q.blanks.filter(Boolean).length ? `<p class="ok">${t('xExpectedAnswers')}: ${esc(q.blanks.filter(Boolean).join(' · '))}</p>` : ''}
-          ${body}</div>`;
-      })
-      .join('');
+    let y = writeLine(doc, data.title, 52, { size: 17, bold: true });
+    const sub = [data.teacher ? `${t('xTeacher')}: ${data.teacher}` : null, t('xReportOf'), new Date(data.exportedAt).toLocaleString(loc())].filter(Boolean).join(' · ');
+    y = writeLine(doc, sub, y, { size: 9, color: [97, 101, 125] });
+    y = metaTable(doc, data, y + 6) + 20;
 
-    const metaGrid = `<div class="meta-grid">
-      ${data.teacher ? `<div><strong>${esc(data.teacher)}</strong>${t('xTeacher')}</div>` : ''}
-      <div><strong>${esc(data.code)}</strong>${t('xCode')}</div>
-      <div><strong>${esc(started.toLocaleDateString(loc(), { year: 'numeric', month: 'long', day: 'numeric' }))}</strong>${t('xDate')}</div>
-      <div><strong>${esc(started.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' }))} — ${esc(
-        ended.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })
-      )}</strong>${t('xStartEnd')}</div>
-      <div><strong>${t('hMinutes', { n: data.durationMinutes || 1 })}</strong>${t('aDuration')}</div>
-      <div><strong>${data.participantCount ?? (data.participants || []).length}</strong>${t('xStudentCount')}</div>
-      <div><strong>${data.questionCount ?? questions.length}</strong>${t('xQuestionCount')}</div>
-      <div><strong>${data.maxScore || 0}</strong>${t('xMaxScore')}</div>
-      <div><strong>${esc((PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—'))}</strong>${t('xPaceLabel')}</div>
-      <div><strong>${esc((SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—'))}</strong>${t('xScoringLabel')}</div>
-    </div>`;
+    if (analysis) {
+      y = roomFor(doc, y, 140);
+      y = writeLine(doc, t('xAnalysisSection'), y, { size: 13, bold: true });
+      y = table(
+        doc,
+        [t('xAvgPct'), t('xMedianPct'), t('xParticipationPct'), t('xPending')],
+        [[analysis.avgPercent ?? '—', analysis.median ?? '—', analysis.participation, analysis.pendingTotal]],
+        y + 4
+      ) + 14;
 
-    return `<!doctype html><html lang="${loc()}" dir="${isRtl() ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
-<title>تقرير ${esc(data.title)} — Tapio</title>
-<style>${PRINT_CSS}</style></head><body>
-<h1>${esc(data.title)}</h1>
-<p class="meta">${data.teacher ? `${t('xTeacher')}: <strong>${esc(data.teacher)}</strong> · ` : ''}${t('xReportOf')} · ${esc(
-      new Date(data.exportedAt).toLocaleString(loc())
-    )}</p>
-${metaGrid}
-${analysis ? `<h2>${t('xAnalysisSection')}</h2>${global.Analytics.reportHtml(analysis, { print: true })}` : ''}
-<h2>${t('xQuestionDetail')}</h2>
-${questionBlocks}
-<p class="foot">Tapio — tapio.fun · ${t('xFooterNote')}</p>
-<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 400); });<\/script>
-</body></html>`;
+      const spot = [];
+      if (analysis.hardest) spot.push([t('xHardest'), analysis.hardest.text, `${analysis.hardest.accuracy}${t('pctSuffix')}`]);
+      if (analysis.easiest) spot.push([t('xEasiest'), analysis.easiest.text, `${analysis.easiest.accuracy}${t('pctSuffix')}`]);
+      if (analysis.fastest) spot.push([t('xFastest'), analysis.fastest.text, `${analysis.fastest.avgSeconds}${t('aSecShort')}`]);
+      if (analysis.slowest) spot.push([t('xSlowest'), analysis.slowest.text, `${analysis.slowest.avgSeconds}${t('aSecShort')}`]);
+      if (spot.length) {
+        y = roomFor(doc, y, 100);
+        y = table(doc, ['', t('xQuestion'), ''], spot, y, { columnStyles: isRtl() ? { 2: { fontStyle: 'bold' } } : { 0: { fontStyle: 'bold' } } }) + 14;
+      }
+
+      // توزيع الدرجات: أشرطة مرسومة بالمستطيلات — الرسم البياني داخل الملف
+      const bandMax = Math.max(1, ...analysis.bands.map((b) => b.count));
+      y = roomFor(doc, y, 30 + analysis.bands.length * 16);
+      y = writeLine(doc, t('aDistribution'), y, { size: 11, bold: true });
+      const chartX = isRtl() ? PAGE.m + 60 : PAGE.m + 90;
+      const chartW = PAGE.w - PAGE.m * 2 - 150;
+      analysis.bands.forEach((band) => {
+        doc.setFontSize(8.5);
+        doc.setTextColor(97, 101, 125);
+        const labelX = isRtl() ? PAGE.w - PAGE.m : PAGE.m;
+        doc.text(safeText(band.label), labelX, y + 8, { align: isRtl() ? 'right' : 'left' });
+        const w = Math.max(2, (band.count / bandMax) * chartW);
+        const barX = isRtl() ? PAGE.w - PAGE.m - 80 - w : chartX;
+        doc.setFillColor(91, 69, 224);
+        doc.roundedRect(barX, y, w, 10, 2, 2, 'F');
+        doc.setTextColor(22, 22, 42);
+        doc.text(String(band.count), isRtl() ? barX - 8 : barX + w + 8, y + 8, { align: isRtl() ? 'right' : 'left' });
+        y += 16;
+      });
+      y += 10;
+
+      if (analysis.recommendations?.length) {
+        y = roomFor(doc, y, 60);
+        y = writeLine(doc, t('aRecommendations'), y, { size: 11, bold: true });
+        analysis.recommendations.forEach((rec) => {
+          y = roomFor(doc, y, 30);
+          y = writeLine(doc, `• ${rec.text}`, y, { size: 9 });
+        });
+        y += 6;
+      }
+    }
+
+    // جدول الأسئلة
+    y = roomFor(doc, y, 100);
+    y = writeLine(doc, t('xQuestionDetail'), y, { size: 13, bold: true });
+    const qHead = ['#', t('xType'), t('xQuestion'), t('xCorrectAnswer'), t('xScoreCol'), t('xResponses'), t('xAccuracyCol'), t('xAvgSecCol')];
+    const qBody = (data.questions || []).map((q) => [
+      q.index,
+      TYPE_AR[q.type] ? t(TYPE_AR[q.type]) : q.type,
+      q.text,
+      (q.correct || []).join(t('listSep')) || (q.blanks || []).filter(Boolean).join(t('listSep')) || '—',
+      q.maxPoints || 0,
+      q.responses ?? q.results?.total ?? 0,
+      q.accuracy === null || q.accuracy === undefined ? '—' : `${q.accuracy}${t('pctSuffix')}`,
+      q.avgSeconds ?? 0,
+    ]);
+    const qWidths = isRtl()
+      ? { 5: { cellWidth: 150 }, 4: { cellWidth: 90 } }
+      : { 2: { cellWidth: 150 }, 3: { cellWidth: 90 } };
+    y = table(doc, qHead, qBody, y + 4, { columnStyles: qWidths }) + 20;
+
+    // جدول العلامات
+    y = roomFor(doc, y, 100);
+    y = writeLine(doc, t('xResultsRecord'), y, { size: 13, bold: true });
+    const marks = marksHeadBody(data);
+    table(doc, marks.head, marks.body, y + 4);
+
+    stampFooters(doc);
+    doc.save(`tapio-${data.code}-report.pdf`);
   }
 
-  function toPdf(data) {
-    const win = window.open('', '_blank');
-    if (!win) return false; // المتصفح منع النافذة المنبثقة
-    win.document.write(pdfHtml(data));
-    win.document.close();
-    return true;
-  }
-
-  global.Exporter = { toExcel, toPdf, toXlsx, buildSheets, pdfHtml, crc32 };
+  global.Exporter = { toExcel, toResultsExcel, toPdf, toResultsPdf, toXlsx, buildSheets, buildResultsSheets, ensurePdfLibs, crc32 };
 })(window);

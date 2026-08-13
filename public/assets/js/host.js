@@ -1677,11 +1677,12 @@
           el('h2', { text: t('hProgressCount', { count: data.participants.length }), style: { margin: 0 } }),
           el('div', { class: 'row', style: { gap: '6px' } }, [
             el('button', { class: 'btn sm ghost', type: 'button', onclick: exportResults }, '⬇ JSON'),
-            el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('excel') }, '📊 Excel'),
-            el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('pdf') }, '📄 PDF'),
+            el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('excel', 'results') }, '📊 Excel'),
+            el('button', { class: 'btn sm ok', type: 'button', onclick: () => exportAs('pdf', 'results') }, '📄 PDF'),
             state.premium?.isPremium ? null : el('span', { class: 'badge', text: t('hpremium') }),
           ].filter(Boolean)),
         ]),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hresultsFilesNote') }),
         data.participants.length
           ? el('div', { class: 'table-wrap' }, [
               el('table', {}, [
@@ -1803,8 +1804,12 @@
 
   // ------------------------------------------------------------- أدوات
 
-  /** تصدير منسّق (بريميوم): Excel حقيقي أو تقرير PDF عبر نافذة الطباعة */
-  async function exportAs(kind) {
+  /**
+   * تصدير منسّق (بريميوم): Excel حقيقي أو تقرير PDF عبر نافذة الطباعة.
+   * scope='results' (قسم تقدم المشاركين): سجل علامات الطلاب فقط — تقرير رسمي.
+   * scope='full' (تبويب التحليل): التقرير الكامل بالرسوم والتوصيات.
+   */
+  async function exportAs(kind, scope = 'full') {
     if (!state.premium?.isPremium) {
       app.prepend(upgradeCard(state.premium?.plan, t('hexportingResultsIsA')));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1814,12 +1819,14 @@
     try {
       const data = await api(`/api/sessions/${state.code}/export?hostToken=${encodeURIComponent(state.hostToken)}`);
       if (kind === 'excel') {
-        window.Exporter.toExcel(data);
+        if (scope === 'results') window.Exporter.toResultsExcel(data);
+        else window.Exporter.toExcel(data);
         toast(t('hexcelFileDownloaded'), 'ok');
-      } else if (window.Exporter.toPdf(data)) {
-        toast(t('hchooseSaveAsPdf'), 'ok');
       } else {
-        toast(t('htheBrowserBlockedThe'), 'bad');
+        // PDF يُبنى في المتصفح ويُنزَّل مباشرة — لا نافذة طباعة
+        toast(t('hpreparingPdf'), 'ok');
+        await (scope === 'results' ? window.Exporter.toResultsPdf(data) : window.Exporter.toPdf(data));
+        toast(t('hpdfFileDownloaded'), 'ok');
       }
     } catch (err) {
       toast(err.message || t('hexportFailed'), 'bad');
