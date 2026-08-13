@@ -59,6 +59,8 @@
           if (msg.serverNow) state.clockOffset = Date.now() - msg.serverNow;
           // شاشة البروجكتر تتبع لغة النشاط لا لغة الجهاز الموصول بالشاشة
           applyActivityLang(msg.lang);
+          // عنوان التبويب بلغة النشاط أيضاً — الشاشة تُفتح غالباً في نافذة مستقلة
+          document.title = (msg.title ? msg.title + ' — ' : '') + t('sProjectorTitle');
           state.live = msg;
           render();
         } else if (msg.t === 'dashboard') {
