@@ -345,28 +345,6 @@
     return [...new Set(out)];
   }
 
-  /** مثال جاهز يوضح الصيغة للمدرب وللمساعد الذكي */
-  const IMPORT_EXAMPLE = {
-    title: t('bunit1Review'),
-    settings: { pace: 'host', scoring: 'speed', streakBonus: true, revealAnswer: true },
-    questions: [
-      {
-        type: 'mc',
-        text: t('bwhatIsTheCapital'),
-        options: [t('bamman'), t('bdamascus'), t('bbeirut'), t('bcairo')],
-        correct: [t('bamman')],
-        points: 1000,
-        timeLimit: 20,
-        explanation: t('bammanHasBeenThe'),
-      },
-      { type: 'truefalse', text: t('bwaterBoilsAt100'), correct: true, points: 500, timeLimit: 15 },
-      { type: 'poll', text: t('bwhichTopicWouldYou'), options: [t('bfractions'), t('bgeometry'), t('balgebra')] },
-      { type: 'scale', text: t('bhowClearWasThe'), scale: { min: 1, max: 5, minLabel: t('bnotClear'), maxLabel: t('bveryClear') } },
-      { type: 'word', text: t('bdescribeTheLessonIn') },
-      { type: 'open', text: t('bwhatWouldYouImprove') },
-    ],
-  };
-
   /**
    * يرسم محرر الأسئلة داخل عنصر، ويعيد كائناً فيه المسودة الحالية.
    * @param {HTMLElement} root
@@ -392,9 +370,6 @@
       ]);
       root.append(templatesBox);
       loadTemplates(templatesBox.querySelector('#tmplRow'));
-
-      // ---- الاستيراد من JSON (مخرجات مساعد ذكي أو ملف جاهز)
-      root.append(importCard());
 
       // ---- العنوان والإعدادات
       const titleInput = el('input', { maxlength: 120, placeholder: t('beGUnit3'), value: draft.title });
@@ -537,73 +512,6 @@
           ),
         ])
       );
-    }
-
-    /** بطاقة لصق JSON وتحويله إلى نشاط كامل */
-    function importCard() {
-      const textarea = el('textarea', {
-        placeholder: '{ "title": "…", "questions": [ … ] }\n\n' + t('bPastePlaceholder'),
-        style: {
-          minHeight: '110px',
-          direction: 'ltr',
-          textAlign: 'left',
-          fontFamily: 'ui-monospace, monospace',
-          fontSize: '0.78rem',
-        },
-      });
-      const result = el('div', { class: 'small', style: { minHeight: '1em' } });
-
-      const convert = el('button', { class: 'btn accent', type: 'button' }, t('bturnIntoAnActivity'));
-      convert.addEventListener('click', () => {
-        const parsed = parseImport(textarea.value);
-        if (parsed.error) {
-          result.textContent = '❌ ' + parsed.error;
-          result.style.color = '#fca5a5';
-          toast(parsed.error, 'bad');
-          return;
-        }
-        const count = parsed.draft.questions.length;
-        if (!confirm(t('bReplaceJson', { count }))) return;
-        Object.assign(draft, parsed.draft);
-        openIndex = 0;
-        update();
-        const note = parsed.warnings.length ? t('bWarnCount', { n: parsed.warnings.length }) : '';
-        toast(t('bImportedOk', { count, note }), 'ok');
-        if (parsed.warnings.length) console.warn(t('bimportWarnings'), parsed.warnings);
-      });
-
-      const example = el('button', { class: 'btn sm ghost', type: 'button' }, t('bexample'));
-      example.addEventListener('click', () => {
-        textarea.value = JSON.stringify(IMPORT_EXAMPLE, null, 2);
-        result.textContent = t('bthisExampleShowsThe');
-        result.style.color = '';
-      });
-
-      const copyPrompt = el('button', { class: 'btn sm ghost', type: 'button' }, t('bcopyTheAssistantPrompt'));
-      copyPrompt.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(AI_PROMPT);
-          toast(t('bpromptCopiedPasteIt'), 'ok');
-        } catch {
-          textarea.value = AI_PROMPT;
-          toast(t('bautomaticCopyFailedThe'));
-        }
-      });
-
-      return el('div', { class: 'card stack' }, [
-        el('div', { class: 'row between' }, [
-          el('h2', { text: t('borTurnJsonInto'), style: { margin: 0 } }),
-          el('div', { class: 'row', style: { gap: '6px' } }, [example, copyPrompt]),
-        ]),
-        el('p', {
-          class: 'muted small',
-          style: { margin: 0 },
-          text: t('baskAnyAiAssistant'),
-        }),
-        textarea,
-        convert,
-        result,
-      ]);
     }
 
     /** مجموعة خيارات على شكل بطاقات (وضع التقدّم، احتساب النقاط) */
@@ -1359,71 +1267,5 @@
     return null;
   }
 
-  /** برومبت جاهز يعطيه المدرب لأي مساعد ذكي: يناقش أولاً ثم يولّد JSON بعد الموافقة */
-  const AI_PROMPT = [
-    'أنت مستشار تصميم أنشطة تفاعلية تعليمية لمنصة «Tapio».',
-    'لا تولّد JSON من أول رسالة أبداً — أنت تعمل على ثلاث مراحل بالترتيب، ولغتك هي لغة المعلم (العربية غالباً).',
-    '',
-    '## المرحلة ١ — الفهم والنقاش',
-    'افهم السياق قبل أي اقتراح. اسأل المعلم — دفعةً واحدة وبإيجاز — عمّا ينقصك فقط مما يلي:',
-    '- الهدف: تقييم مصحَّح بنقاط؟ مراجعة؟ استطلاع رأي؟ كسر جليد؟ تغذية راجعة؟ أم مزيج؟',
-    '- الجمهور: المرحلة العمرية أو المستوى، وعدد المشاركين تقريباً.',
-    '- المحتوى: الموضوع أو الدرس، وهل لديه مادة مصدر يلصقها لك.',
-    '- الحجم والإيقاع: كم سؤالاً وكم دقيقة، ومن ينقل الأسئلة (المعلم / تلقائي / كل طالب بسرعته).',
-    '- الأجواء: تنافسية بنقاط وترتيب، أم هادئة بلا نقاط، وهل الأسماء مطلوبة أم مجهول.',
-    'إن كان طلبه واضحاً في نقطة فلا تسألها — اسأل عن الناقص فقط، وبثلاثة أسئلة أو أقل ما أمكن.',
-    '',
-    '## المرحلة ٢ — العرض وانتظار الموافقة',
-    'اعرض خطة مقروءة (نصاً منسقاً، وليس JSON إطلاقاً في هذه المرحلة):',
-    '- العنوان، والإعدادات المقترحة مع سبب كل اختيار في سطر.',
-    '- قائمة الأسئلة مرقّمة: النوع، نص السؤال، الخيارات مع تمييز الصحيح، العلامة والوقت، والشرح إن وُجد.',
-    '- نوّع الأنواع بحسب الهدف — لا تجعل النشاط كله نوعاً واحداً إلا إن طلب المعلم ذلك صراحة.',
-    'ثم اختم بسؤال صريح: «هل أعتمد هذه الخطة وأولّد الملف، أم تريد تعديل شيء؟»',
-    'إن طلب تعديلات: عدّل وأعد عرض الخطة، وابقَ في هذه المرحلة حتى يوافق.',
-    '',
-    '## المرحلة ٣ — التوليد (بعد موافقة صريحة فقط)',
-    'أخرج JSON فقط داخل سور شيفرة واحد، بلا أي كلام قبله أو بعده، مطابقاً للخطة الموافَق عليها وللصيغة أدناه.',
-    '- لا تخترع إجابات صحيحة لم تُذكر في الخطة؛ وما لست متأكداً منه اجعله استطلاعاً أو اسأل عنه في المرحلة ١.',
-    '',
-    '## الصيغة',
-    '{',
-    '  "title": "عنوان النشاط",',
-    '  "settings": {',
-    '    "pace": "host",            // host: المعلم ينقل الأسئلة | auto: انتقال تلقائي | self: كل طالب بسرعته',
-    '    "scoring": "speed",        // speed: نقاط أكثر للأسرع | flat: نقاط ثابتة | none: بلا نقاط',
-    '    "streakBonus": true,       // مضاعف للإجابات الصحيحة المتتالية',
-    '    "revealAnswer": true,      // يرى الطالب الإجابة الصحيحة وشرحها بعد إجابته',
-    '    "requireName": true,       // false = استطلاع مجهول بلا أسماء',
-    '    "countdown": true          // عدّاد «استعد ٣٢١» قبل الأسئلة المؤقتة',
-    '  },',
-    '  "questions": [ ... ]',
-    '}',
-    '',
-    '## أنواع الأسئلة (حقل type)',
-    '1. "mc" — اختيار من متعدد (يُصحَّح ويُنقَّط):',
-    '   { "type": "mc", "text": "نص السؤال", "options": ["خيار ١", "خيار ٢", "خيار ٣", "خيار ٤"],',
-    '     "correct": ["خيار ١"], "points": 1000, "timeLimit": 20, "explanation": "لماذا هذه هي الإجابة" }',
-    '   - options: من ٢ إلى ٨ خيارات نصية.',
-    '   - correct: قائمة بنصوص الخيارات الصحيحة حرفياً كما كتبتها في options (يجوز أكثر من إجابة).',
-    '   - points: من 0 إلى 10000 (الافتراضي 1000). timeLimit بالثواني من 5 إلى 600، أو 0 بلا مؤقّت.',
-    '   - explanation اختياري: سبب الإجابة الصحيحة، يظهر للطالب بعد إجابته.',
-    '2. "truefalse" — صح/خطأ: { "type": "truefalse", "text": "...", "correct": true, "points": 500, "timeLimit": 15, "explanation": "..." }',
-    '3. "poll" — استطلاع رأي بلا تصحيح: { "type": "poll", "text": "...", "options": ["...", "..."] }',
-    '4. "scale" — مقياس رقمي: { "type": "scale", "text": "...", "scale": { "min": 1, "max": 5, "minLabel": "غير موافق", "maxLabel": "موافق تماماً" } }',
-    '5. "word" — سحابة كلمات (كلمة واحدة من كل طالب): { "type": "word", "text": "..." }',
-    '6. "open" — إجابة نصية مفتوحة: { "type": "open", "text": "..." }',
-    '',
-    '## حدود وقواعد تصميم',
-    '- حتى 60 سؤالاً. نص السؤال حتى 300 حرف، الخيار حتى 120، الشرح حتى 400.',
-    '- طابق النوع مع الهدف: تقييم ← mc و truefalse مع points و explanation | رأي ← poll و scale |',
-    '  عصف وأفكار ← word و open | كسر جليد ← poll خفيف | تغذية راجعة ← scale ثم word أو open.',
-    '- في النشاط المختلط: افتح بكسر جليد، ورتّب الأسئلة المصحّحة بتدرّج الصعوبة، واختم بتغذية راجعة.',
-    '- اجعل المشتتات في mc معقولة وليست هزلية إلا إن طُلب المرح، ووزّع العلامات بحسب الصعوبة.',
-    '- للاستطلاع المجهول اجعل "requireName": false و "scoring": "none".',
-    '',
-    '## مثال كامل',
-    JSON.stringify(IMPORT_EXAMPLE, null, 2),
-  ].join('\n');
-
-  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, parseImport, setPremium, countBlanks, AI_PROMPT, DRAFT_KEY };
+  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, parseImport, setPremium, countBlanks, DRAFT_KEY };
 })(window);
