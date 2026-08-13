@@ -186,8 +186,15 @@ test('المدرب المسجّل يحصل على ردّ ومسودة، والم
     const sent = mock.seen.azureRequests.at(-1);
     assert.equal(sent.headers['api-key'], 'test-azure-key');
     assert.equal(sent.body.model, 'gpt-4.1');
+    assert.equal(sent.body.input[0].type, 'message');
     assert.equal(sent.body.input[0].role, 'system');
-    assert.match(sent.body.input[0].content, /Tapio/);
+    assert.equal(sent.body.input[0].content[0].type, 'input_text');
+    assert.match(sent.body.input[0].content[0].text, /Tapio/);
+    // ردود المساعد السابقة تُرسل بنوع output_text كما تشترط واجهة Responses
+    for (const item of sent.body.input) {
+      assert.equal(item.type, 'message');
+      assert.equal(item.content[0].type, item.role === 'assistant' ? 'output_text' : 'input_text');
+    }
   } finally {
     mock.restore();
   }
