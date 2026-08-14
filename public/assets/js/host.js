@@ -13,8 +13,9 @@
   // نصوص الشريط العلوي ومبدّل اللغة
   const guide = $('#guideLink');
   if (guide) {
-    guide.textContent = '📖 ' + t('hguideShort');
+    guide.textContent = '📖';
     guide.title = t('hteacherGuideTip');
+    guide.setAttribute('aria-label', t('hteacherGuideTip'));
   }
   for (const [id, key] of [['#homeBtn', 'hhomePage'], ['#soundBtn', 'hsound']]) {
     const node = $(id);
@@ -117,15 +118,18 @@
     if (!slot) return;
     slot.innerHTML = '';
     if (state.user) {
-      slot.append(
-        el('a', { class: 'btn ghost sm', href: '#/mine', title: state.user.email }, '📚 ' + state.user.name)
-      );
+      // الاسم الأول فقط ومقصوص: الاسم الكامل كان يدفع بقية الأزرار إلى سطر جديد
+      const name = el('a', { class: 'btn ghost sm', href: '#/mine', title: `${state.user.name} · ${state.user.email}` }, [
+        el('span', { text: '📚 ' }),
+        el('span', { class: 'who', text: firstName(state.user.name) }),
+      ]);
+      slot.append(name);
       if (state.premium?.isAdmin) {
-        slot.append(el('a', { class: 'btn ghost sm', href: '#/admin', title: t('hownerPanel') }, '👑'));
+        slot.append(el('a', { class: 'icon-btn', href: '#/admin', title: t('hownerPanel'), 'aria-label': t('hownerPanel') }, '👑'));
       }
       // زر خروج ظاهر دائماً — لا مدفون داخل صفحة «نشاطاتي»
       slot.append(
-        el('button', { class: 'btn ghost sm', type: 'button', title: t('hsignOut'), onclick: logout }, t('hsignOut2'))
+        el('button', { class: 'icon-btn', type: 'button', title: t('hsignOut'), 'aria-label': t('hsignOut'), onclick: logout }, '🚪')
       );
     } else {
       slot.append(el('a', { class: 'btn ghost sm', href: '/login.html' }, t('hsignIn')));

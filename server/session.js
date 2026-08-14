@@ -940,10 +940,22 @@ class Session {
    * أوسمة تحفيزية تُحسب من الأداء الفعلي — لكل وسام صاحب واحد على الأكثر،
    * عدا ما يمكن أن يشترك فيه أكثر من متدرب (الدقة الكاملة والمثابرة).
    */
+  /**
+   * هل يُقيَّم هذا النشاط أصلاً؟ استطلاع الرأي وسحابة الكلمات والمقياس بلا
+   * إجابة صحيحة، فلا معنى فيها لترتيب ولا لأوسمة أداء.
+   */
+  get isAssessed() {
+    if (this.settings.scoring === 'none') return false;
+    return this.questions.some((q) => (SCORED_TYPES.has(q.type) && q.correct.length > 0) || (q.manual && q.points > 0));
+  }
+
   badges() {
     const people = [...this.participants.values()];
     const result = new Map(people.map((p) => [p.id, []]));
     if (people.length === 0) return result;
+    // نشاط بلا تقييم: المشارك يُشكَر لا يُقيَّم. لا وسام سرعة ولا سبق ولا مثابرة —
+    // فكلها توحي بتفوّق على الآخرين في نشاط لا فائز فيه.
+    if (!this.isAssessed) return result;
 
     const add = (pid, emoji, label) => result.get(pid)?.push({ emoji, label });
     const answeredCount = (p) => p.answers.size;
@@ -1267,6 +1279,8 @@ class Session {
       opensAt: null,
       serverNow: Date.now(),
       settings: this.settings,
+      // هل يُقيَّم النشاط أصلاً؟ الاستطلاع لا ترتيب فيه ولا أوسمة
+      assessed: this.isAssessed,
       me: {
         id: participant.id,
         name: participant.name,
@@ -1291,7 +1305,8 @@ class Session {
       return state;
     }
     if (done) {
-      state.rank = this.rankOf(participant.id);
+      // الترتيب بلا معنى في استطلاع: الجميع «أول» لأن لا إجابة صحيحة
+      if (this.isAssessed) state.rank = this.rankOf(participant.id);
       state.badges = this.badgesFor(participant.id);
       if (this.settings.showLeaderboard) {
         state.leaderboard = this.leaderboard(10);
@@ -1326,6 +1341,8 @@ class Session {
       opensAt: this.questionOpensAt,
       serverNow: Date.now(),
       settings: this.settings,
+      // هل يُقيَّم النشاط أصلاً؟ الاستطلاع لا ترتيب فيه ولا أوسمة
+      assessed: this.isAssessed,
       me: {
         id: participant.id,
         name: participant.name,
@@ -1353,7 +1370,7 @@ class Session {
       state.results = this.aggregate(this.currentIndex);
     }
     if (this.phase === 'leaderboard' || this.phase === 'final') {
-      state.rank = this.rankOf(participant.id);
+      if (this.isAssessed) state.rank = this.rankOf(participant.id);
       // كم مركزاً صعد أو هبط منذ السؤال السابق
       if (participant.prevRank && state.rank) state.rankDelta = participant.prevRank - state.rank.rank;
       if (this.settings.showLeaderboard) {
