@@ -171,6 +171,163 @@ html.stage .brand .dark-only {
   border-bottom: 1px solid var(--border);
 }
 
+/*
+ * أزرار الشريط العلوي. كانت تخلط شكلين وارتفاعين (icon-btn مربّع ٤٠px مع
+ * btn.sm بيضوي ٣٨px) فتتكسّر على الجوال في ثلاثة صفوف غير متساوية. هنا
+ * نوحّد الارتفاع والاستدارة، ونجعل الالتفاف مرتّباً محاذياً لجهة البداية.
+ */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.topbar-actions > * {
+  flex: 0 0 auto;
+}
+
+.topbar-actions .btn.sm,
+.topbar-actions .icon-btn,
+.topbar-actions .badge {
+  min-height: 36px;
+  height: 36px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.topbar-actions .icon-btn {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+}
+
+/* اسم المعلّم قد يطول فيدفع بقية الأزرار إلى سطر جديد */
+.topbar-actions .who {
+  max-width: 11ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.topbar .logo {
+  height: 30px;
+  width: auto;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .topbar-actions {
+    gap: 5px;
+  }
+  .topbar-actions .btn.sm,
+  .topbar-actions .icon-btn,
+  .topbar-actions .badge {
+    min-height: 34px;
+    height: 34px;
+    padding: 0 10px;
+    font-size: 0.78rem;
+  }
+  .topbar-actions .icon-btn {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+  /* على الجوال تكفي الأيقونة: النصّ يبقى في العنوان والقارئ الصوتي */
+  .topbar-actions .label-wide {
+    display: none;
+  }
+  .topbar-actions .who {
+    max-width: 7ch;
+  }
+  .topbar .logo {
+    height: 26px;
+  }
+}
+
+/* الهواتف الضيقة: نشدّ المقاسات قليلاً كي يبقى الشريط سطراً واحداً */
+@media (max-width: 430px) {
+  .topbar {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .topbar-actions {
+    gap: 4px;
+  }
+  .topbar-actions .btn.sm,
+  .topbar-actions .icon-btn,
+  .topbar-actions .badge {
+    min-height: 32px;
+    height: 32px;
+    padding: 0 8px;
+    font-size: 0.75rem;
+  }
+  .topbar-actions .icon-btn {
+    width: 32px;
+    min-width: 32px;
+    padding: 0;
+  }
+  .topbar-actions .who {
+    max-width: 6ch;
+  }
+  .topbar .logo {
+    height: 22px;
+  }
+}
+
+/* ------------------------------------------------------- تذييل الموقع */
+
+.site-footer {
+  /* يُركَّب في body لا داخل .wrap (لأن لوحة المدرب تعيد رسم .wrap كلياً)،
+     فنعطيه العرض والحشوة نفسها كي يبقى محاذياً للمحتوى فوقه */
+  width: min(1100px, 100%);
+  margin: 28px auto 20px;
+  padding: 18px 16px max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.9;
+  display: grid;
+  gap: 6px;
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.site-footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.site-footer a:hover {
+  color: var(--text);
+}
+
+.site-footer-by {
+  font-weight: 600;
+}
+
+.site-footer-actions:empty {
+  display: none;
+}
+
+.site-footer .install-btn {
+  margin-bottom: 6px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

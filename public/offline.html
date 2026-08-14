@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tapio</title>
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+    <style>
+      body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; display: grid; place-items: center;
+             min-height: 100vh; margin: 0; background: #f6f7fb; color: #16162a; text-align: center; padding: 24px; }
+      .em { font-size: 56px; }
+      h1 { font-size: 1.25rem; margin: 12px 0 6px; }
+      p { color: #61657d; margin: 0 0 18px; line-height: 1.9; }
+      button { font: inherit; border: 0; border-radius: 999px; padding: 12px 22px; cursor: pointer;
+               background: #5b45e0; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <div class="em">📡</div>
+      <h1 id="title"></h1>
+      <p id="body"></p>
+      <button type="button" onclick="location.reload()" id="retry"></button>
+    </div>
+    <script>
+      // صفحة مستقلة تعمل بلا شبكة، فلا تستطيع تحميل قاموس الترجمة
+      var en = (navigator.language || 'ar').toLowerCase().indexOf('ar') !== 0;
+      document.documentElement.lang = en ? 'en' : 'ar';
+      document.documentElement.dir = en ? 'ltr' : 'rtl';
+      document.getElementById('title').textContent = en ? 'No internet connection' : 'لا يوجد اتصال بالإنترنت';
+      document.getElementById('body').textContent = en
+        ? 'Tapio needs a connection to run live sessions. Check your network and try again.'
+        : 'يحتاج Tapio اتصالاً لتشغيل الجلسات المباشرة. تحقّق من شبكتك ثم أعد المحاولة.';
+      document.getElementById('retry').textContent = en ? 'Try again' : 'أعد المحاولة';
+    </script>
+  </body>
+</html>

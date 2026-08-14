@@ -67,8 +67,10 @@ test('القاموس متطابق المفاتيح بين العربية وال�
 
 test('لا نصّ عربي مكتوب داخل صفحات HTML — كله من القاموس', () => {
   const offenders = [];
-  for (const file of fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html'))) {
-    // الدليل صفحة محتوى تُرسم كلها من help.js، وHTML فيها هيكل فارغ
+  // offline.html وحدها مستثناة: تُعرض والشبكة مقطوعة فلا تستطيع تحميل
+  // القاموس، فترجمتها مضمّنة فيها وتُختار من لغة المتصفح مباشرة.
+  const EXEMPT = new Set(['offline.html']);
+  for (const file of fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html') && !EXEMPT.has(f))) {
     const html = fs.readFileSync(path.join(PUBLIC, file), 'utf8');
     for (const text of visibleText(html)) {
       if (ARABIC.test(text)) offenders.push(`${file}: ${text.slice(0, 60)}`);
