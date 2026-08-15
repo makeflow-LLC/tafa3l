@@ -267,6 +267,38 @@
       card.append(el('p', { class: 'muted center', text: t('sNoAnswersYet') }));
       return card;
     }
+    // «رتّب» و«طابِق»: ما يفيد المعلّم هو أي عنصر تعثّر فيه الصف، لا من فاز
+    if (results.spots) {
+      card.append(
+        el('div', { class: 'stats' }, [
+          el('div', { class: 'stat' }, [
+            el('div', { class: 'v', text: results.avgPercent + t('pctSuffix') }),
+            el('div', { class: 'k', text: t('sAvgMastery') }),
+          ]),
+          el('div', { class: 'stat' }, [
+            el('div', { class: 'v', text: String(results.perfect) }),
+            el('div', { class: 'k', text: t('sPerfect') }),
+          ]),
+          el('div', { class: 'stat' }, [
+            el('div', { class: 'v', text: String(results.partial) }),
+            el('div', { class: 'k', text: t('sPartial') }),
+          ]),
+        ])
+      );
+      const bars = el('div', { class: 'options' });
+      results.spots.forEach((spot, index) => {
+        bars.append(
+          el('div', { class: 'opt c' + (index % 8) }, [
+            el('i', { class: 'bar', style: { width: spot.percent + '%' } }),
+            el('span', { class: 'grow', text: spot.text }),
+            el('span', { class: 'count', text: `${spot.percent}${t('pctSuffix')} (${spot.count})` }),
+          ])
+        );
+      });
+      card.append(el('p', { class: 'muted center', style: { margin: 0 }, text: t('sSpotMastery') }), bars);
+      return card;
+    }
+
     if (results.options) {
       // التمييز (صحيح/باهت) للأسئلة المصحَّحة عند الكشف فقط — الاستطلاع أعمدة متساوية الوضوح
       const scored = !!q?.scored && reveal;

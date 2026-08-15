@@ -9,7 +9,7 @@
   const tplText = (template, field) => (locale() === 'en' && template[field + 'En'] ? template[field + 'En'] : template[field]);
 
   const DRAFT_KEY = 'tafa3l:draft';
-  const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open', 'blank'];
+  const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open', 'blank', 'order', 'match'];
   /** علامة الفراغ في نص السؤال */
   const BLANK_MARK = '___';
 
@@ -24,7 +24,7 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, blanks: [] };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, blanks: [], items: [], pairs: [] };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -39,6 +39,23 @@
       q.text = t('bBlankSample', { mark: BLANK_MARK });
       q.blanks = [''];
       q.points = 1;
+    }
+    if (type === 'order') {
+      // الترتيب الذي تكتبه هنا هو الصحيح؛ يُخلط تلقائياً على شاشة كل طالب
+      q.items = [
+        { id: 'i0', text: '' },
+        { id: 'i1', text: '' },
+        { id: 'i2', text: '' },
+      ];
+      q.timeLimit = 0;
+    }
+    if (type === 'match') {
+      q.pairs = [
+        { id: 'p0', left: '', right: '' },
+        { id: 'p1', left: '', right: '' },
+        { id: 'p2', left: '', right: '' },
+      ];
+      q.timeLimit = 0;
     }
     if (type === 'scale') q.scale = { min: 1, max: 5, minLabel: t('bdisagree'), maxLabel: t('bstronglyAgree') };
     return q;
@@ -60,6 +77,8 @@
         scoring: 'speed',
         streakBonus: true,
         revealAnswer: true,
+        shuffleQuestions: false,
+        shuffleOptions: false,
         autoStart: true,
         teamMode: false,
         teamCount: 4,
@@ -119,6 +138,18 @@
     } else {
       question.blanks = [];
     }
+    question.items =
+      question.type === 'order' && Array.isArray(raw.items)
+        ? raw.items.map((it, i) => ({ id: String(it?.id || 'i' + i), text: String(it?.text ?? it ?? '') }))
+        : question.type === 'order'
+          ? fresh.items
+          : [];
+    question.pairs =
+      question.type === 'match' && Array.isArray(raw.pairs)
+        ? raw.pairs.map((pr, i) => ({ id: String(pr?.id || 'p' + i), left: String(pr?.left ?? ''), right: String(pr?.right ?? '') }))
+        : question.type === 'match'
+          ? fresh.pairs
+          : [];
     if (question.type === 'scale') question.scale = { ...fresh.scale, ...(raw.scale && typeof raw.scale === 'object' ? raw.scale : {}) };
 
     return question;
@@ -433,6 +464,10 @@
             'revealAnswer',
             t('bafterAnsweringTheLearner')
           ),
+
+          el('label', { text: t('bIntegrity'), style: { marginTop: '6px' } }),
+          switchRow(t('bShuffleQuestions'), 'shuffleQuestions', t('bShuffleQuestionsHint')),
+          switchRow(t('bShuffleOptions'), 'shuffleOptions', t('bShuffleOptionsHint')),
 
           el('label', { text: t('bteamMode'), style: { marginTop: '6px' } }),
           switchRow(t('bsplitAutomaticallyIntoTeams'), 'teamMode', t('beachParticipantIsAssigned')),
@@ -753,6 +788,82 @@
       text.addEventListener('input', drawBlanks);
       drawBlanks();
       if (question.type === 'blank') body.append(blanksBox);
+
+      // ---- رتّب: العناصر بترتيبها الصحيح، وتُخلط تلقائياً لكل طالب
+      if (question.type === 'order') {
+        const itemsBox = el('div', { class: 'stack tight' });
+        const drawItems = () => {
+          itemsBox.innerHTML = '';
+          itemsBox.append(el('label', { text: t('bOrderTitle') }));
+          itemsBox.append(el('p', { class: 'muted small', style: { margin: 0 }, text: t('bOrderHint') }));
+          question.items.forEach((item, i) => {
+            const input = el('input', { maxlength: 100, placeholder: t('bOrderItem', { n: i + 1 }), value: item.text });
+            input.addEventListener('input', () => {
+              item.text = input.value;
+              saveDraft(draft);
+            });
+            const up = el('button', { class: 'icon-btn', type: 'button', title: t('bMoveUp'), disabled: i === 0 }, '↑');
+            up.addEventListener('click', () => {
+              [question.items[i - 1], question.items[i]] = [question.items[i], question.items[i - 1]];
+              update();
+            });
+            const del = el('button', { class: 'icon-btn', type: 'button', title: t('bRemove'), disabled: question.items.length <= 2 }, '✕');
+            del.addEventListener('click', () => {
+              question.items.splice(i, 1);
+              update();
+            });
+            itemsBox.append(el('div', { class: 'row', style: { gap: '6px' } }, [el('span', { class: 'badge', text: String(i + 1) }), input, up, del]));
+          });
+          if (question.items.length < 8) {
+            const add = el('button', { class: 'btn ghost sm', type: 'button' }, t('bOrderAdd'));
+            add.addEventListener('click', () => {
+              question.items.push({ id: 'i' + Date.now().toString(36), text: '' });
+              update();
+            });
+            itemsBox.append(add);
+          }
+        };
+        drawItems();
+        body.append(itemsBox);
+      }
+
+      // ---- طابِق: أزواج، واليمنى تُخلط فتصير خيارات لكل طرف أيسر
+      if (question.type === 'match') {
+        const pairsBox = el('div', { class: 'stack tight' });
+        const drawPairs = () => {
+          pairsBox.innerHTML = '';
+          pairsBox.append(el('label', { text: t('bMatchTitle') }));
+          pairsBox.append(el('p', { class: 'muted small', style: { margin: 0 }, text: t('bMatchHint') }));
+          question.pairs.forEach((pair, i) => {
+            const left = el('input', { maxlength: 100, placeholder: t('bMatchLeft', { n: i + 1 }), value: pair.left });
+            const right = el('input', { maxlength: 100, placeholder: t('bMatchRight', { n: i + 1 }), value: pair.right });
+            left.addEventListener('input', () => {
+              pair.left = left.value;
+              saveDraft(draft);
+            });
+            right.addEventListener('input', () => {
+              pair.right = right.value;
+              saveDraft(draft);
+            });
+            const del = el('button', { class: 'icon-btn', type: 'button', title: t('bRemove'), disabled: question.pairs.length <= 2 }, '✕');
+            del.addEventListener('click', () => {
+              question.pairs.splice(i, 1);
+              update();
+            });
+            pairsBox.append(el('div', { class: 'row', style: { gap: '6px' } }, [left, el('span', { class: 'muted', text: '⟷' }), right, del]));
+          });
+          if (question.pairs.length < 8) {
+            const add = el('button', { class: 'btn ghost sm', type: 'button' }, t('bMatchAdd'));
+            add.addEventListener('click', () => {
+              question.pairs.push({ id: 'p' + Date.now().toString(36), left: '', right: '' });
+              update();
+            });
+            pairsBox.append(add);
+          }
+        };
+        drawPairs();
+        body.append(pairsBox);
+      }
 
       // ---- صورة السؤال: ميزة بريميوم، وزر واحد صغير لا يزحم كل سؤال
       const imageBox = el('div', { class: 'stack tight' });
@@ -1259,6 +1370,14 @@
       }
       if (question.type === 'truefalse' && question.points > 0 && question.correct.length === 0) {
         return t('bValCorrect2', { n: i + 1 });
+      }
+      if (question.type === 'order') {
+        const filled = question.items.filter((it) => String(it.text || '').trim());
+        if (filled.length < 2) return t('bValOrder', { n: i + 1 });
+      }
+      if (question.type === 'match') {
+        const filled = question.pairs.filter((pr) => String(pr.left || '').trim() && String(pr.right || '').trim());
+        if (filled.length < 2) return t('bValMatch', { n: i + 1 });
       }
       if (question.type === 'blank' && countBlanks(question.text) === 0) {
         return t('bValBlank', { n: i + 1 });

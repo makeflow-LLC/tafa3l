@@ -235,7 +235,9 @@
     scale: 'مقياس',
     open: 'إجابة مفتوحة',
     blank: 'أكمل الفراغ',
-  };
+    order: 'رتّب',
+    match: 'طابِق',
+};
   const TYPE_KEYS = {
     mc: 'typeMc',
     truefalse: 'typeTruefalse',
@@ -244,6 +246,8 @@
     scale: 'typeScale',
     open: 'typeOpen',
     blank: 'typeBlank',
+    order: 'typeOrder',
+    match: 'typeMatch',
   };
   const TYPE_LABELS = {};
   for (const type of Object.keys(TYPE_FALLBACK)) {
@@ -261,6 +265,8 @@
     scale: '📈',
     open: '💬',
     blank: '✏️',
+    order: '🔢',
+    match: '🔗',
   };
 
   function fmtMs(ms) {

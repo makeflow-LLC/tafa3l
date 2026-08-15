@@ -328,6 +328,75 @@ html.stage .brand .dark-only {
   margin-bottom: 6px;
 }
 
+/* ------------------------------------------- رتّب وطابِق (شاشة الطالب) */
+
+.order-list {
+  display: grid;
+  gap: 8px;
+}
+
+.order-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-height: 52px;
+  cursor: pointer;
+}
+
+.order-item.on {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface-2));
+}
+
+.order-item .rank {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.order-item.on .rank {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.match-list {
+  display: grid;
+  gap: 10px;
+}
+
+.match-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.match-left {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.match-select {
+  width: 100%;
+  min-height: 46px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
