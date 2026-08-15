@@ -46,6 +46,7 @@
     cancelCountdown: null,
     lastFeedback: '', // لمنع تكرار الصوت/القصاصات عند إعادة الرسم
     shareBlob: null, // بطاقة النتيجة المولّدة — تُرسم مرة واحدة
+    review: null, // مراجعة الطالب لأدائه بعد النشاط
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -88,6 +89,10 @@
         Fx.play(msg.correct === true ? 'correct' : msg.correct === false ? 'wrong' : 'sent');
         if (msg.correct === true) Fx.confetti(70);
         state.submitting = false;
+        break;
+      case 'review':
+        state.review = Array.isArray(msg.items) ? msg.items : [];
+        renderReview();
         break;
       case 'answer:rejected':
         state.submitting = false;
@@ -240,6 +245,25 @@
   }
 
   // ----------------------------------------------------------- العرض العام
+
+
+  /**
+   * تضمين فيديو يوتيوب. الخادم خزّن المعرّف وحده بعد تحقّق صارم، فنبني
+   * الرابط هنا لنطاق يوتيوب فقط — لا نمرّر شيئاً كتبه المعلّم كما هو.
+   * ونستعمل نطاق nocookie فلا يُنشئ يوتيوب ملفّ تتبّع للطالب قبل التشغيل.
+   */
+  function videoNode(id) {
+    return el('div', { class: 'video-wrap' }, [
+      el('iframe', {
+        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?rel=0&modestbranding=1`,
+        title: t('pQuestionVideo'),
+        loading: 'lazy',
+        allow: 'accelerometer; clipboard-write; encrypted-media; picture-in-picture',
+        referrerpolicy: 'strict-origin-when-cross-origin',
+        allowfullscreen: '',
+      }),
+    ]);
+  }
 
   function render(force) {
     const s = state.last;
@@ -394,6 +418,7 @@
     const hideText = q.type === 'blank' && opts?.compact;
     return el('div', { class: 'card stack' }, [
       q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: t('pQuestionImage'), loading: 'lazy' }) : null,
+      q.video ? videoNode(q.video) : null,
       hideText ? el('span', { class: 'badge', text: t('pFillBlank') }) : el('h2', { class: 'big-q', text: q.text }),
     ]);
   }
@@ -816,6 +841,82 @@
 
   }
 
+  /**
+   * شاشة المراجعة: بطاقات يقلبها الطالب بنفسه — سؤال، ثم إجابته والصحيحة
+   * والشرح. القلب بالنقر لا بالكشف التلقائي: استرجاعُ الجواب من ذاكرته قبل
+   * رؤيته هو ما يُثبّت التعلّم، لا قراءته جاهزاً.
+   */
+  function renderReview() {
+    const items = state.review || [];
+    app.innerHTML = '';
+    const wrong = items.filter((x) => x.correct !== true);
+
+    const back = el('button', { class: 'btn ghost sm', type: 'button' }, t('pReviewBack'));
+    back.addEventListener('click', () => {
+      state.review = null;
+      state.renderedKey = '';
+      render(true);
+    });
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between' }, [el('h2', { style: { margin: 0 }, text: t('pReviewTitle') }), back]),
+        el('p', {
+          class: 'muted small',
+          style: { margin: 0 },
+          text: wrong.length ? t('pReviewIntro', { n: wrong.length }) : t('pReviewPerfect'),
+        }),
+      ])
+    );
+
+    if (!items.length) {
+      app.append(el('p', { class: 'muted center', text: t('pReviewEmpty') }));
+      return;
+    }
+
+    // الأخطاء أولاً: هي ما يحتاج مراجعةً فعلاً
+    const ordered = [...wrong, ...items.filter((x) => x.correct === true)];
+    ordered.forEach((item) => {
+      const answer = el('div', { class: 'review-answer', hidden: true }, [
+        el('p', { class: 'small', style: { margin: 0 } }, [
+          el('strong', { text: t('pReviewYours') + ' ' }),
+          el('span', { text: item.answered ? item.mine : t('pReviewNoAnswer') }),
+        ]),
+        item.right
+          ? el('p', { class: 'small ok-text', style: { margin: 0 } }, [
+              el('strong', { text: t('pReviewRight') + ' ' }),
+              el('span', { text: item.right }),
+            ])
+          : null,
+        item.explanation ? el('p', { class: 'muted small', style: { margin: 0 }, text: '💡 ' + item.explanation }) : null,
+      ]);
+
+      const flip = el('button', { class: 'btn ghost sm', type: 'button' }, t('pReviewShow'));
+      flip.addEventListener('click', () => {
+        answer.hidden = !answer.hidden;
+        flip.textContent = answer.hidden ? t('pReviewShow') : t('pReviewHide');
+      });
+
+      const mark = item.pending
+        ? el('span', { class: 'badge', text: '⏳' })
+        : item.correct === true
+          ? el('span', { class: 'badge ok', text: '✓' })
+          : item.correct === 'partial'
+            ? el('span', { class: 'badge', text: '½' })
+            : el('span', { class: 'badge bad', text: '✕' });
+
+      app.append(
+        el('div', { class: 'card stack tight review-card' }, [
+          el('div', { class: 'row between' }, [
+            el('span', { class: 'row', style: { gap: '6px' } }, [mark, el('strong', { text: `${item.index}. ${item.text}` })]),
+          ]),
+          flip,
+          answer,
+        ])
+      );
+    });
+  }
+
   function renderResults(s) {
     const q = s.question;
     const results = s.results;
@@ -963,6 +1064,15 @@
     );
     const awards = badgeList(s.badges);
     if (awards) app.append(awards);
+
+    // أهم ما في الاختبار تربوياً يأتي بعده: مراجعة ما أخطأ فيه وقراءة الشرح
+    const reviewBtn = el('button', { class: 'btn ghost block', type: 'button' }, t('pReviewBtn'));
+    reviewBtn.addEventListener('click', () => {
+      reviewBtn.disabled = true;
+      socket.send({ t: 'review' });
+      setTimeout(() => (reviewBtn.disabled = false), 2000);
+    });
+    app.append(reviewBtn);
 
     // بطاقة النتيجة القابلة للمشاركة — صورة فيها كل الإنجاز
     if (s.me) {
