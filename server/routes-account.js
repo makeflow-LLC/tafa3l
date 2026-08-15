@@ -37,6 +37,19 @@ function safeNext(value) {
   }
 }
 
+/** نصّ قصير مُشذَّب — لحقول المكتبة القادمة من المدرب أو من شريط العنوان */
+function clean(value, max) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/**
+ * الاسم الأول وحده يُنسب إليه النشاط في المكتبة. المعلّم نشر درساً لا سيرةً
+ * ذاتية، والاسم الكامل مع المادة والصف يكفي للتعرّف عليه شخصياً.
+ */
+function firstNameOf(name) {
+  return String(name || '').trim().split(/\s+/)[0] || '';
+}
+
 function accountRoutes(store) {
   const router = express.Router();
 
@@ -198,6 +211,10 @@ function accountRoutes(store) {
           settings: a.settings,
           createdAt: a.createdAt,
           updatedAt: a.updatedAt,
+          published: Boolean(a.published),
+          subject: a.subject || '',
+          grade: a.grade || '',
+          copies: a.copies || 0,
           live: withLiveState(a).live,
         })),
       });
@@ -291,6 +308,10 @@ function accountRoutes(store) {
         title: (activity.title + ' — نسخة').slice(0, 120),
         createdAt: now,
         updatedAt: now,
+        // النسخة لا ترث النشر ولا عدّاد النسخ — وإلا ظهر النشاط مرّتين في المكتبة
+        published: false,
+        publishedAt: null,
+        copies: 0,
       };
       await storage.get().saveActivity(copy);
       res.status(201).json({ activity: { id: copy.id, title: copy.title, updatedAt: copy.updatedAt } });
@@ -365,6 +386,147 @@ function accountRoutes(store) {
       res.json({ item: { id: updated.id, question: updated.question, updatedAt: updated.updatedAt } });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر تحديث السؤال' });
+    }
+  });
+
+  // ------------------------------------------------------- المكتبة العامة
+
+  /**
+   * نشر نشاط في المكتبة. النشر قرار صريح لصاحبه، وما يُنشر يصير مرئياً
+   * بأسئلته وإجاباته الصحيحة — لذا يحذّره العميل قبل الضغط، ويستطيع سحبه
+   * في أي لحظة. النسخ لا تتأثر بالسحب: كل ناسخ أخذ نسخته المستقلة.
+   */
+  router.post('/activities/:id/publish', auth.requireUser, async (req, res) => {
+    try {
+      const activity = await storage.get().getActivity(req.params.id);
+      if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+      if (!Array.isArray(activity.questions) || activity.questions.length < 3) {
+        return res.status(400).json({ error: 'انشر نشاطاً فيه ٣ أسئلة على الأقل — المكتبة للمحتوى المفيد لا للتجارب' });
+      }
+      const updated = {
+        ...activity,
+        published: true,
+        publishedAt: activity.publishedAt || Date.now(),
+        subject: clean(req.body?.subject, 40),
+        grade: clean(req.body?.grade, 40),
+        copies: activity.copies || 0,
+      };
+      await storage.get().saveActivity(updated);
+      res.json({ published: true, subject: updated.subject, grade: updated.grade });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر نشر النشاط' });
+    }
+  });
+
+  router.post('/activities/:id/unpublish', auth.requireUser, async (req, res) => {
+    try {
+      const activity = await storage.get().getActivity(req.params.id);
+      const owner = activity && (activity.ownerId === req.user.id || premium.isAdmin(req.user));
+      if (!owner) return res.status(404).json({ error: 'النشاط غير موجود' });
+      await storage.get().saveActivity({ ...activity, published: false });
+      res.json({ published: false });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر سحب النشاط' });
+    }
+  });
+
+  /** تصفّح المكتبة — متاح بلا حساب: هذه أوسع بوابة يدخل منها معلّم جديد */
+  router.get('/library', async (req, res) => {
+    try {
+      const limit = Math.min(48, Math.max(1, Number(req.query.limit) || 24));
+      const page = Math.max(0, Number(req.query.page) || 0);
+      const { items, total } = await storage.get().listPublished({
+        q: clean(req.query.q, 80),
+        subject: clean(req.query.subject, 40),
+        grade: clean(req.query.grade, 40),
+        lang: req.query.lang === 'en' ? 'en' : req.query.lang === 'ar' ? 'ar' : '',
+        limit,
+        offset: page * limit,
+      });
+      res.json({
+        total,
+        page,
+        limit,
+        // العناوين والوصف فقط — الأسئلة تحتاج حساباً (انظر المسار التالي)
+        items: items.map((a) => ({
+          id: a.id,
+          title: a.title,
+          subject: a.subject || '',
+          grade: a.grade || '',
+          lang: a.settings?.lang || 'ar',
+          questionCount: Array.isArray(a.questions) ? a.questions.length : 0,
+          types: [...new Set((a.questions || []).map((q) => q.type))],
+          copies: a.copies || 0,
+          publishedAt: a.publishedAt,
+          author: firstNameOf(a.authorName),
+        })),
+      });
+    } catch (err) {
+      console.error('library:', err);
+      res.status(500).json({ error: 'تعذّر جلب المكتبة' });
+    }
+  });
+
+  /**
+   * معاينة نشاط منشور بأسئلته. تتطلّب حساباً عمداً: المكتبة تحوي إجابات
+   * صحيحة، وفتحها للزائر المجهول يجعلها ورقة غشّ لطالب يبحث عن اختبار غده.
+   */
+  router.get('/library/:id', auth.requireUser, async (req, res) => {
+    try {
+      const activity = await storage.get().getActivity(req.params.id);
+      if (!activity || !activity.published) return res.status(404).json({ error: 'النشاط غير موجود في المكتبة' });
+      const author = await storage.get().findUserById(activity.ownerId);
+      res.json({
+        activity: {
+          id: activity.id,
+          title: activity.title,
+          subject: activity.subject || '',
+          grade: activity.grade || '',
+          settings: activity.settings,
+          questions: activity.questions,
+          copies: activity.copies || 0,
+          author: firstNameOf(author?.name),
+        },
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر جلب النشاط' });
+    }
+  });
+
+  /** نسخ نشاط من المكتبة إلى أنشطتي — نسخة مستقلة تماماً عن الأصل */
+  router.post('/library/:id/copy', auth.requireUser, async (req, res) => {
+    try {
+      const source = await storage.get().getActivity(req.params.id);
+      if (!source || !source.published) return res.status(404).json({ error: 'النشاط غير موجود في المكتبة' });
+      const list = await storage.get().listActivities(req.user.id);
+      if (list.length >= MAX_ACTIVITIES) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_ACTIVITIES} نشاطاً) — احذف نشاطاً قديماً` });
+      }
+      // صور الأسئلة ميزة بريميوم: نُسقطها للناسخ المجاني بدل رفض النسخة كلها،
+      // ونخبره — فالمنع هنا يحرمه محتوى مجّانياً بسبب صورةٍ ليست له.
+      const paid = premium.isPremium(req.user);
+      const questions = (source.questions || []).map((q) => (paid || !q.image ? q : { ...q, image: null }));
+      const dropped = paid ? 0 : (source.questions || []).filter((q) => q.image).length;
+      const now = Date.now();
+      const copy = {
+        id: storage.newId('a_'),
+        ownerId: req.user.id,
+        title: source.title.slice(0, 120),
+        settings: source.settings,
+        questions,
+        createdAt: now,
+        updatedAt: now,
+        published: false, // النسخة لا تُنشر تلقائياً — النشر قرار ناسخها وحده
+        publishedAt: null,
+        subject: source.subject || '',
+        grade: source.grade || '',
+        copies: 0,
+      };
+      await storage.get().saveActivity(copy);
+      await storage.get().bumpCopies(source.id);
+      res.status(201).json({ activity: { id: copy.id, title: copy.title }, droppedImages: dropped });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر نسخ النشاط' });
     }
   });
 

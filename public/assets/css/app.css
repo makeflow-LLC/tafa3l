@@ -347,6 +347,18 @@ html.stage .brand .dark-only {
   color: var(--ok, #128a4d);
 }
 
+/* ------------------------------------------------------ المكتبة العامة */
+
+.publish-form {
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.publish-form label {
+  display: grid;
+  gap: 4px;
+}
+
 /* ------------------------------------------------------ فيديو السؤال */
 
 .video-wrap {
