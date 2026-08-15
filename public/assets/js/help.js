@@ -63,6 +63,8 @@
                   ['📈 مقياس', 'التغذية الراجعة (١–٥)', 'لا', 'سمِّ الطرفين بوضوح: «غير واضح ← واضح جداً».'],
                   ['💬 إجابة مفتوحة', 'التفسير والتحليل', 'يدوياً (اختياري)', 'علامة صفر = رأي حرّ، وأي علامة أكبر تعني أنك ستصحّحه بنفسك.'],
                   ['✏️ أكمل الفراغ', 'المصطلحات والقواعد والأرقام', 'يدوياً', 'ضع <code>___</code> مكان كل فراغ، واكتب الإجابة المتوقعة لتقارن بها بسرعة.'],
+                  ['🔢 رتّب بالترتيب', 'الخطوات والتسلسل الزمني والمراحل', 'آلياً بعلامة جزئية', 'اكتبها بالترتيب الصحيح — تُخلط لكل طالب. من رتّب ٣ من ٤ يأخذ ٧٥٪.'],
+                  ['🔗 طابِق بين طرفين', 'المصطلح وتعريفه، الدولة وعاصمتها', 'آلياً بعلامة جزئية', 'الأطراف اليمنى تُخلط وتصير قائمة اختيار لكل طرف أيسر.'],
                 ],
               },
             },
@@ -179,6 +181,15 @@
                 'راقب «متوسط زمن الإجابة» في التحليل: زمن مرتفع مع دقة منخفضة = صياغة غامضة غالباً.',
               ],
             },
+            { h3: 'في نزاهة الاختبار' },
+            {
+              ul: [
+                '<strong>خلط الخيارات لكل طالب</strong> أقوى إجراء عملي ضد النقل: ترتيب الخيارات يختلف من جهاز لآخر، فـ«ب» عند جارك ليست «ب» عندك — ولا يحتاج منك شيئاً سوى تفعيله.',
+                '<strong>خلط ترتيب الأسئلة</strong> يفيد حين تعيد الاختبار على شعبة ثانية في اليوم نفسه.',
+                'أضف <strong>مدة للاختبار</strong> فيُقفل تلقائياً للجميع في اللحظة نفسها.',
+                'استخدم <strong>نقاطاً ثابتة</strong> لا نقاط السرعة: الأسرع ليس بالضرورة الأفهم.',
+              ],
+            },
             { h3: 'في إدارة الصف' },
             {
               ul: [
@@ -271,6 +282,8 @@
                   ['📈 Scale', 'Feedback (1–5)', 'No', 'Label both ends clearly: “Not clear → Very clear”.'],
                   ['💬 Open answer', 'Explanation and analysis', 'Manually (optional)', 'A score of zero means a free opinion; any score above zero means you will grade it yourself.'],
                   ['✏️ Fill in the blank', 'Terms, grammar and numbers', 'Manually', 'Put <code>___</code> where each blank goes, and write the expected answer so you can compare at a glance.'],
+                  ['🔢 Put in order', 'Steps, timelines and stages', 'Automatically, partial credit', 'Write them in the correct order — shuffled per student. Getting 3 of 4 in place scores 75%.'],
+                  ['🔗 Match the pairs', 'A term and its definition, a country and its capital', 'Automatically, partial credit', 'The right-hand sides are shuffled into a dropdown for each left-hand item.'],
                 ],
               },
             },
@@ -385,6 +398,15 @@
                 'A short recall question: 15–20 seconds. A question needing calculation or reading: 45–90 seconds.',
                 'For formal exams use <strong>flat points</strong> and turn off the streak bonus — speed is not understanding.',
                 'Watch “average answering time” in the analysis: a long time with low accuracy usually means unclear wording.',
+              ],
+            },
+            { h3: 'On exam integrity' },
+            {
+              ul: [
+                '<strong>Shuffling options per student</strong> is the strongest practical measure against copying: the option order differs per device, so your neighbour’s “B” is not your “B” — and it costs you nothing but a toggle.',
+                '<strong>Shuffling the question order</strong> helps when you repeat the quiz with a second class on the same day.',
+                'Add a <strong>quiz duration</strong> so it closes automatically for everyone at the same moment.',
+                'Use <strong>flat points</strong> rather than speed points: the fastest is not necessarily the one who understood.',
               ],
             },
             { h3: 'Running the class' },

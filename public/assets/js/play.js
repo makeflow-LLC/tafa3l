@@ -444,6 +444,10 @@
     } else if (scored && answered.correct === true) {
       emoji = '🎉';
       msg = t('pCorrect');
+    } else if (scored && answered.correct === 'partial') {
+      // «رتّب» و«طابِق» يُصحَّحان آلياً بعلامة جزئية — لا يصحّ أن يظهرا كإجابة مستلَمة فقط
+      emoji = '👍';
+      msg = t('pPartialAuto');
     } else if (scored && answered.correct === false) {
       emoji = '💡';
       msg = t('pWrong');
@@ -563,6 +567,76 @@
           send,
         ])
       );
+      return box;
+    }
+
+    if (q.type === 'order') {
+      /*
+       * الترتيب بالنقر لا بالسحب: السحب على الجوال هشّ (يتعارك مع تمرير
+       * الصفحة ومع قارئ الشاشة)، أما النقر بالتسلسل فيعمل بإصبع واحدة
+       * وبلوحة مفاتيح، والتراجع بنقرة ثانية.
+       */
+      const picked = [];
+      const list = el('div', { class: 'order-list' });
+      const hint = el('p', { class: 'muted small center', style: { margin: 0 } }, t('pOrderHint'));
+      const send = el('button', { class: 'btn primary block', disabled: true }, t('pSend'));
+
+      function draw() {
+        list.innerHTML = '';
+        (q.items || []).forEach((item) => {
+          const at = picked.indexOf(item.id);
+          const chosen = at >= 0;
+          const btn = el(
+            'button',
+            { class: 'order-item' + (chosen ? ' on' : ''), type: 'button' },
+            [
+              el('span', { class: 'rank', text: chosen ? String(at + 1) : '' }),
+              el('span', { class: 'grow', text: item.text }),
+            ]
+          );
+          btn.addEventListener('click', () => {
+            const idx = picked.indexOf(item.id);
+            if (idx >= 0) picked.splice(idx, 1);
+            else picked.push(item.id);
+            draw();
+          });
+          list.append(btn);
+        });
+        send.disabled = picked.length !== (q.items || []).length;
+        hint.textContent = picked.length
+          ? t('pOrderPicked', { n: picked.length, total: (q.items || []).length })
+          : t('pOrderHint');
+      }
+
+      send.addEventListener('click', () => submit(q, picked));
+      draw();
+      box.append(el('div', { class: 'card stack' }, [hint, list, send]));
+      return box;
+    }
+
+    if (q.type === 'match') {
+      // لكل طرف أيسر قائمة بالأطراف اليمنى مخلوطة — أوضح من السحب وأسرع
+      const chosen = {};
+      const rows = el('div', { class: 'match-list' });
+      const send = el('button', { class: 'btn primary block', disabled: true }, t('pSend'));
+      const pairs = q.pairs || [];
+
+      pairs.forEach((pair) => {
+        const select = el('select', { class: 'match-select' });
+        select.append(el('option', { value: '' }, t('pMatchPick')));
+        (q.rights || []).forEach((right) => select.append(el('option', { value: right }, right)));
+        select.addEventListener('change', () => {
+          if (select.value) chosen[pair.id] = select.value;
+          else delete chosen[pair.id];
+          send.disabled = Object.keys(chosen).length !== pairs.length;
+        });
+        rows.append(
+          el('div', { class: 'match-row' }, [el('span', { class: 'match-left', text: pair.left }), select])
+        );
+      });
+
+      send.addEventListener('click', () => submit(q, chosen));
+      box.append(el('div', { class: 'card stack' }, [rows, send]));
       return box;
     }
 

@@ -2,7 +2,13 @@
 
 const crypto = require('crypto');
 
-const QUESTION_TYPES = ['mc', 'truefalse', 'poll', 'word', 'scale', 'open', 'blank'];
+const QUESTION_TYPES = ['mc', 'truefalse', 'poll', 'word', 'scale', 'open', 'blank', 'order', 'match'];
+
+/**
+ * أنواع تُصحَّح آلياً بعلامة جزئية: الطالب الذي رتّب ثلاثة من أربعة صحيحاً
+ * ليس كمن أخطأ كلها. النسبة تضرب في علامة السؤال.
+ */
+const PARTIAL_TYPES = new Set(['order', 'match']);
 /** علامة الفراغ في نص سؤال «أكمل الفراغ»: ثلاث شرطات سفلية فأكثر */
 const BLANK_RE = /_{3,}/g;
 const MAX_BLANKS = 8;
@@ -34,6 +40,10 @@ const TEAMS = [
 /** الأنواع التي لا تُظهر هوية المشارك في النتائج */
 const LIMITS = {
   title: 120,
+  // عناصر الترتيب وأزواج المطابقة
+  items: 8,
+  pairs: 8,
+  itemText: 100,
   questionText: 300,
   explanation: 400,
   optionText: 120,
@@ -119,6 +129,10 @@ function normalizeQuestion(raw, index) {
     scale: null,
     // الإجابات المتوقعة لفراغات سؤال «أكمل الفراغ»
     blanks: [],
+    // عناصر سؤال «رتّب» بترتيبها الصحيح كما كتبها المدرب
+    items: [],
+    // أزواج سؤال «طابِق»: كل زوج {id, left, right}
+    pairs: [],
     // صورة توضيحية اختيارية تظهر فوق نص السؤال
     image: cleanImage(raw?.image),
   };
@@ -142,6 +156,33 @@ function normalizeQuestion(raw, index) {
       { id: 'true', text: 'صحيح' },
       { id: 'false', text: 'خطأ' },
     ];
+  } else if (type === 'order') {
+    // الترتيب الصحيح هو ترتيب الإدخال؛ يُخلط عند العرض على الطالب
+    const items = Array.isArray(raw?.items) ? raw.items.slice(0, LIMITS.items) : [];
+    q.items = items
+      .map((it, i) => ({ id: clean(it?.id, 40) || `i${i}`, text: clean(typeof it === 'string' ? it : it?.text, LIMITS.itemText) }))
+      .filter((it) => it.text.length > 0);
+    if (q.items.length < 2) {
+      q.items = [
+        { id: 'i0', text: 'العنصر الأول' },
+        { id: 'i1', text: 'العنصر الثاني' },
+      ];
+    }
+  } else if (type === 'match') {
+    const pairs = Array.isArray(raw?.pairs) ? raw.pairs.slice(0, LIMITS.pairs) : [];
+    q.pairs = pairs
+      .map((pr, i) => ({
+        id: clean(pr?.id, 40) || `p${i}`,
+        left: clean(pr?.left, LIMITS.itemText),
+        right: clean(pr?.right, LIMITS.itemText),
+      }))
+      .filter((pr) => pr.left.length > 0 && pr.right.length > 0);
+    if (q.pairs.length < 2) {
+      q.pairs = [
+        { id: 'p0', left: 'الطرف الأول', right: 'ما يقابله' },
+        { id: 'p1', left: 'الطرف الثاني', right: 'ما يقابله' },
+      ];
+    }
   } else if (type === 'scale') {
     const min = clamp(raw?.scale?.min, 0, 10, 1);
     const max = clamp(raw?.scale?.max, min + 1, 10, Math.max(min + 1, 5));
@@ -165,6 +206,9 @@ function normalizeQuestion(raw, index) {
     q.blanks = Array.from({ length: count }, (_, i) => clean(expected[i], LIMITS.blankAnswer));
     // العلامة الافتراضية = علامة لكل فراغ، والمدرب يعدّلها كما يشاء
     q.points = raw?.points == null ? Math.max(1, count) : clamp(raw.points, 0, 1000, Math.max(1, count));
+  } else if (PARTIAL_TYPES.has(type)) {
+    // مصحَّحان آلياً بعلامة جزئية — الافتراضي كعلامة الاختيار من متعدد
+    q.points = clamp(raw?.points, 0, 10000, 1000);
   } else if (type === 'open') {
     // السؤال المفتوح: علامة صفر = رأي حرّ، وعلامة أكبر من صفر = يصحّحه المدرب يدوياً
     q.points = raw?.points == null ? 0 : clamp(raw.points, 0, 1000, 0);
@@ -223,6 +267,10 @@ function normalizeQuiz(payload) {
       streakBonus: payload?.settings?.streakBonus !== false,
       // إظهار الإجابة الصحيحة وشرحها للمتدرب فور إجابته
       revealAnswer: payload?.settings?.revealAnswer !== false,
+      // نزاهة الاختبار: خلط ترتيب الأسئلة مرة عند الإطلاق،
+      // وخلط الخيارات لكل طالب على حدة فلا يُجدي النظر في شاشة الجار
+      shuffleQuestions: payload?.settings?.shuffleQuestions === true,
+      shuffleOptions: payload?.settings?.shuffleOptions === true,
 
       // وضع الفرق: يُقسَّم المشاركون تلقائياً إلى فرق ملوّنة، ونقاطهم تُجمع لترتيب جماعي
       teamMode: payload?.settings?.teamMode === true,
@@ -409,6 +457,11 @@ class Session {
   }
 
   start() {
+    // مرة واحدة عند الإطلاق: يمنع أن يعرف طلاب الحصة الثانية ترتيب الأسئلة
+    if (this.settings.shuffleQuestions && !this._shuffled && this.questions.length > 1) {
+      this.questions = seededShuffle(this.questions, this.code + ':q');
+      this._shuffled = true;
+    }
     if (this.status === 'ended') return;
     this.status = 'live';
     // لحظة الانطلاق الفعلية — منها تُحسب مدة النشاط في التقارير ومهلة الإقفال
@@ -668,6 +721,21 @@ class Session {
         participant.streak = 0;
       }
       participant.score += points;
+    } else if (PARTIAL_TYPES.has(q.type) && q.points > 0) {
+      // نسبة الصواب تضرب في العلامة: ثلاثة من أربعة ليست كصفر من أربعة
+      const ratio = ratioCorrect(q, value);
+      const scored = this.scorePoints(q, ms, participant);
+      points = Math.round(scored.points * ratio);
+      multiplier = scored.multiplier;
+      correct = ratio >= 1 ? true : ratio > 0 ? 'partial' : false;
+      if (correct === true) {
+        participant.streak += 1;
+        participant.bestStreak = Math.max(participant.bestStreak, participant.streak);
+        if (isFirst) participant.firstCount += 1;
+      } else {
+        participant.streak = 0;
+      }
+      participant.score += points;
     }
 
     // سؤال مفتوح بعلامة: لا نتيجة قبل أن يقرأه المدرب ويمنح العلامة
@@ -699,6 +767,11 @@ class Session {
     answer.correct = points >= q.points ? true : points > 0 ? 'partial' : false;
     this.touch();
     return { ok: true, points, correct: answer.correct };
+  }
+
+  /** رؤية العرض الخاصة بمشارك: بذرته الثابتة وهل يُخلط له الخيارات */
+  viewFor(participant) {
+    return { shuffleOptions: !!this.settings.shuffleOptions, seed: participant?.id || '' };
   }
 
   /** كم إجابة لهذا المشارك تنتظر تصحيح المدرب */
@@ -796,6 +869,25 @@ class Session {
         const v = clean(raw, LIMITS.openAnswer);
         return v.length ? v : null;
       }
+      case 'order': {
+        // ترتيب معرّفات العناصر كما رتّبها الطالب — يجب أن يشملها كلها مرة واحدة
+        const ids = q.items.map((i) => i.id);
+        const arr = (Array.isArray(raw) ? raw : []).map((v) => clean(v, 40));
+        if (arr.length !== ids.length) return null;
+        if (new Set(arr).size !== arr.length) return null;
+        if (!arr.every((v) => ids.includes(v))) return null;
+        return arr;
+      }
+      case 'match': {
+        // خريطة: معرّف الزوج ← نصّ الطرف الأيمن الذي اختاره الطالب
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+        const out = {};
+        for (const pair of q.pairs) {
+          const picked = clean(raw[pair.id], LIMITS.itemText);
+          if (picked) out[pair.id] = picked;
+        }
+        return Object.keys(out).length ? out : null;
+      }
       case 'blank': {
         const count = q.blanks.length || 1;
         const arr = (Array.isArray(raw) ? raw : [raw]).slice(0, count).map((v) => clean(v, LIMITS.blankAnswer));
@@ -844,6 +936,34 @@ class Session {
         })),
         correctCount: answers.filter((x) => x.a.correct === true).length,
         avgMs: answers.length ? Math.round(answers.reduce((s, x) => s + x.a.ms, 0) / answers.length) : 0,
+      };
+    }
+
+    if (PARTIAL_TYPES.has(q.type)) {
+      // ما يهمّ المعلّم هنا: كم أتقنه الصف، وأي عنصر أو زوج تعثّر فيه أكثر
+      const ratios = answers.map((x) => ratioCorrect(q, x.a.value));
+      const spots =
+        q.type === 'order'
+          ? q.items.map((it, i) => ({
+              text: it.text,
+              right: answers.filter((x) => Array.isArray(x.a.value) && x.a.value[i] === it.id).length,
+            }))
+          : q.pairs.map((pr) => ({
+              text: pr.left,
+              right: answers.filter((x) => x.a.value && x.a.value[pr.id] === pr.right).length,
+            }));
+      return {
+        ...base,
+        spots: spots.map((sp) => ({
+          text: sp.text,
+          count: sp.right,
+          percent: answers.length ? Math.round((sp.right / answers.length) * 100) : 0,
+        })),
+        perfect: answers.filter((x) => x.a.correct === true).length,
+        partial: answers.filter((x) => x.a.correct === 'partial').length,
+        avgPercent: ratios.length ? Math.round((ratios.reduce((n, r) => n + r, 0) / ratios.length) * 100) : 0,
+        correctCount: answers.filter((x) => x.a.correct === true).length,
+        avgMs: answers.length ? Math.round(answers.reduce((s2, x) => s2 + x.a.ms, 0) / answers.length) : 0,
       };
     }
 
@@ -933,7 +1053,9 @@ class Session {
 
   hasScoredQuestions() {
     if (this.settings.scoring === 'none') return false;
-    return this.questions.some((q) => SCORED_TYPES.has(q.type) && q.correct.length > 0 && q.points > 0);
+    return this.questions.some(
+      (q) => ((SCORED_TYPES.has(q.type) && q.correct.length > 0) || PARTIAL_TYPES.has(q.type)) && q.points > 0
+    );
   }
 
   /**
@@ -946,7 +1068,12 @@ class Session {
    */
   get isAssessed() {
     if (this.settings.scoring === 'none') return false;
-    return this.questions.some((q) => (SCORED_TYPES.has(q.type) && q.correct.length > 0) || (q.manual && q.points > 0));
+    return this.questions.some(
+      (q) =>
+        (SCORED_TYPES.has(q.type) && q.correct.length > 0) ||
+        (PARTIAL_TYPES.has(q.type) && q.points > 0) ||
+        (q.manual && q.points > 0)
+    );
   }
 
   badges() {
@@ -1025,7 +1152,7 @@ class Session {
     const perQuestion = this.questions.map((q, i) => {
       const answers = participants.map((p) => p.answers.get(q.id)).filter(Boolean);
       const correct = answers.filter((a) => a.correct === true).length;
-      const scoredQ = SCORED_TYPES.has(q.type) && q.correct.length > 0;
+      const scoredQ = (SCORED_TYPES.has(q.type) && q.correct.length > 0) || PARTIAL_TYPES.has(q.type);
       // كم متدرباً وصل إلى هذا السؤال (في الوضع الحر)
       const reached = selfPaced
         ? participants.filter((p) => p.phase === 'done' || p.index >= i).length
@@ -1130,6 +1257,7 @@ class Session {
     const maxScore = this.questions.reduce((sum, q) => {
       if (q.manual) return sum + q.points;
       if (SCORED_TYPES.has(q.type) && q.correct.length > 0) return sum + q.points;
+      if (PARTIAL_TYPES.has(q.type)) return sum + q.points;
       return sum;
     }, 0);
 
@@ -1145,7 +1273,7 @@ class Session {
       const fullyCorrect = answers.filter((a) => a.correct === true).length;
       const partial = answers.filter((a) => a.correct === 'partial').length;
       const wrong = graded.length - fullyCorrect - partial;
-      const scoredQ = q.manual || (SCORED_TYPES.has(q.type) && q.correct.length > 0);
+      const scoredQ = q.manual || (SCORED_TYPES.has(q.type) && q.correct.length > 0) || PARTIAL_TYPES.has(q.type);
       return {
         index: i + 1,
         text: q.text,
@@ -1316,7 +1444,7 @@ class Session {
     }
     if (q) {
       // نكشف الإجابة الصحيحة والشرح بعد أن يجيب، إن سمح المدرب بذلك
-      state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer, this.code);
+      state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer, this.code, this.viewFor(participant));
       if (participant.phase === 'feedback') state.results = this.aggregate(participant.index);
     }
     return state;
@@ -1364,7 +1492,7 @@ class Session {
     if (q && (this.phase === 'question' || this.phase === 'results')) {
       // بعد عرض النتائج تُكشف للجميع؛ وقبلها تُكشف لمن أجاب فقط إن فعّل المدرب الخيار
       const reveal = this.phase === 'results' || (this.settings.revealAnswer && !!answer);
-      state.question = publicQuestion(q, reveal, this.code);
+      state.question = publicQuestion(q, reveal, this.code, this.viewFor(participant));
     }
     if (this.phase === 'results' && q) {
       state.results = this.aggregate(this.currentIndex);
@@ -1425,7 +1553,7 @@ class Session {
       teams: this.teams,
     };
     if (q) {
-      state.question = publicQuestion(q, true, this.code);
+      state.question = publicQuestion(q, true, this.code, null);
       state.results = this.aggregate(this.currentIndex);
     }
     // الترتيب دائماً: شاشة العرض تعرضه بين الأسئلة وبعد النتائج لا في مرحلة الترتيب فقط
@@ -1467,7 +1595,59 @@ class Session {
 }
 
 /** نسخة السؤال المرسلة للعملاء — تُخفي الإجابة الصحيحة أثناء الإجابة */
-function publicQuestion(q, revealCorrect, code) {
+/**
+ * خلط ثابت مبذور: نفس البذرة تعطي نفس الترتيب دائماً.
+ * ضروري لأن الطالب قد يعيد الاتصال أو تُعاد الحالة إليه مرات، ولو تغيّر
+ * ترتيب الخيارات بينها لبدا التطبيق مضطرباً — أو لأجاب على خيار غير الذي رآه.
+ */
+function seededShuffle(list, seed) {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    h = (Math.imul(h, 1103515245) + 12345) >>> 0;
+    const j = h % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * نسبة صواب إجابة تُصحَّح جزئياً (٠ إلى ١).
+ * الترتيب: كم عنصراً وقع في موضعه الصحيح. المطابقة: كم زوجاً صحّ.
+ */
+function ratioCorrect(q, value) {
+  if (q.type === 'order') {
+    const right = q.items.map((i) => i.id);
+    if (!Array.isArray(value) || !right.length) return 0;
+    const hits = right.reduce((n, id, i) => n + (value[i] === id ? 1 : 0), 0);
+    return hits / right.length;
+  }
+  if (q.type === 'match') {
+    if (!value || typeof value !== 'object' || !q.pairs.length) return 0;
+    const hits = q.pairs.reduce((n, pr) => n + (value[pr.id] === pr.right ? 1 : 0), 0);
+    return hits / q.pairs.length;
+  }
+  return 0;
+}
+
+/**
+ * @param {object} q
+ * @param {boolean} revealCorrect
+ * @param {string} code
+ * @param {{shuffleOptions?: boolean, seed?: string}} [view] رؤية هذا الطالب تحديداً
+ */
+function publicQuestion(q, revealCorrect, code, view) {
+  // خلط الخيارات لكل طالب على حدة: «ب» عند جاره ليست «ب» عنده، فلا يُجدي النقل
+  const shuffle = view?.shuffleOptions && view?.seed;
+  const order = shuffle ? seededShuffle(q.options, view.seed + q.id) : q.options;
+  // «رتّب» يُخلط دائماً وإلا وصل الجواب مرتّباً؛ والبذرة تُثبّته لهذا الطالب
+  const items = seededShuffle(q.items, (view?.seed || 'x') + q.id + ':items');
+  // أطراف المطابقة اليمنى تُخلط كي لا يكون الترتيب نفسه هو الجواب
+  const rights = seededShuffle(q.pairs.map((pr) => pr.right), (view?.seed || 'x') + q.id + ':right');
   return {
     id: q.id,
     type: q.type,
@@ -1478,17 +1658,23 @@ function publicQuestion(q, revealCorrect, code) {
     explanation: revealCorrect ? q.explanation || '' : '',
     timeLimit: q.timeLimit,
     points: q.points,
-    options: q.options.map((o) => ({
+    options: order.map((o) => ({
       id: o.id,
       text: o.text,
       ...(revealCorrect ? { correct: q.correct.includes(o.id) } : {}),
     })),
+    // «رتّب»: العناصر مخلوطة، والترتيب الصحيح لا يُكشف إلا بعد الإجابة
+    items: items.map((it) => ({ id: it.id, text: it.text })),
+    correctOrder: revealCorrect ? q.items.map((it) => it.id) : [],
+    // «طابِق»: الأطراف اليسرى بترتيبها، واليمنى مخلوطة كخيارات لكل طرف
+    pairs: q.pairs.map((pr) => ({ id: pr.id, left: pr.left, ...(revealCorrect ? { right: pr.right } : {}) })),
+    rights,
     scale: q.scale,
     // الطالب يحتاج عدد الفراغات ليكتب فيها؛ والإجابات المتوقعة لا تُكشف إلا مع الإجابة
     blankCount: q.blanks.length,
     blanks: revealCorrect ? q.blanks : [],
     // «مصحَّح» يعني: لا نكشف النتائج للقاعة أثناء الإجابة
-    scored: (SCORED_TYPES.has(q.type) && q.correct.length > 0) || !!q.manual,
+    scored: (SCORED_TYPES.has(q.type) && q.correct.length > 0) || PARTIAL_TYPES.has(q.type) || !!q.manual,
     manual: !!q.manual,
     multi: q.correct.length > 1,
   };
