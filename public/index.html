@@ -8,15 +8,15 @@
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.35.0" />
-    <script src="/assets/js/i18n.js?v=1.35.0"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.35.1" />
+    <script src="/assets/js/i18n.js?v=1.35.1"></script>
   </head>
   <body>
     <div class="wrap narrow">
       <div class="row" style="justify-content: flex-end; padding-top: 10px" id="langRow"></div>
       <div class="center" style="padding: 10px 0 18px">
         <div class="brand hero" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.35.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.35.0" alt="Tapio" width="249" height="159" />
+          <img class="logo light-only" src="/assets/logo.svg?v=1.35.1" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.35.1" alt="Tapio" width="249" height="159" />
         </div>
         <p class="muted small" style="margin-top: 8px" id="tagline"></p>
         <p id="welcome" class="hidden" style="margin: 10px 0 0; font-weight: 700"></p>
@@ -27,15 +27,22 @@
         <form id="joinForm" class="stack">
           <div>
             <label for="code" id="codeLabel"></label>
-            <input
-              id="code"
-              class="code-input"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              maxlength="6"
-              autocomplete="off"
-              placeholder="000000"
-            />
+            <!--
+              خانة لكل رقم، لكن الحقل الحقيقي واحد شفّاف فوقها: اللصق والإكمال
+              التلقائي ولوحة المفاتيح والقارئ الصوتي تعمل كلها بلا حيلة، والخانات
+              الستّ مجرّد طبقة عرض تُملأ من قيمته.
+            -->
+            <div class="code-field" id="codeField">
+              <input
+                id="code"
+                class="code-input"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="6"
+                autocomplete="one-time-code"
+                enterkeyhint="go"
+              />
+            </div>
           </div>
           <button class="btn primary block" type="submit" id="joinBtn"></button>
           <p class="muted small center" style="margin: 0" id="orScan"></p>
@@ -63,9 +70,9 @@
       <p class="footer" id="pageFooter"></p>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.35.0"></script>
-    <script src="/assets/js/common.js?v=1.35.0"></script>
-    <script src="/assets/js/footer.js?v=1.35.0"></script>
+    <script src="/assets/js/avatar.js?v=1.35.1"></script>
+    <script src="/assets/js/common.js?v=1.35.1"></script>
+    <script src="/assets/js/footer.js?v=1.35.1"></script>
     <script>
       (function () {
         const { $, api, toast, store, serverAlive, showOfflineBanner } = window.T;
@@ -105,10 +112,39 @@
         const preset = params.get('code');
         if (preset) input.value = preset.replace(/\D/g, '').slice(0, 6);
 
+        // الخانات الستّ: طبقة عرض فقط، مصدرها قيمة الحقل الواحد فوقها
+        const field = $('#codeField');
+        const cells = [];
+        for (let i = 0; i < 6; i += 1) {
+          const cell = document.createElement('span');
+          cell.className = 'code-cell';
+          cell.setAttribute('aria-hidden', 'true');
+          field.append(cell);
+          cells.push(cell);
+        }
+
+        function paintCells() {
+          const digits = input.value;
+          cells.forEach((cell, i) => {
+            cell.textContent = digits[i] || '';
+            cell.classList.toggle('filled', i < digits.length);
+            cell.classList.toggle('next', i === digits.length);
+          });
+        }
+
+        input.addEventListener('focus', () => field.classList.add('focused'));
+        input.addEventListener('blur', () => field.classList.remove('focused'));
+        // المؤشّر دائماً في آخر الرمز: النقر في منتصفه لا يجعله يكتب بين رقمين
+        const toEnd = () => setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+        input.addEventListener('click', toEnd);
+        input.addEventListener('focus', toEnd);
+
         input.addEventListener('input', () => {
           input.value = input.value.replace(/\D/g, '').slice(0, 6);
+          paintCells();
           if (input.value.length === 6) $('#joinForm').requestSubmit();
         });
+        paintCells();
 
         $('#joinForm').addEventListener('submit', async (event) => {
           event.preventDefault();
