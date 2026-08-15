@@ -92,6 +92,25 @@
     }
   }
 
+
+  /**
+   * تضمين فيديو يوتيوب. الخادم خزّن المعرّف وحده بعد تحقّق صارم، فنبني
+   * الرابط هنا لنطاق يوتيوب فقط — لا نمرّر شيئاً كتبه المعلّم كما هو.
+   * ونستعمل نطاق nocookie فلا يُنشئ يوتيوب ملفّ تتبّع للطالب قبل التشغيل.
+   */
+  function videoNode(id) {
+    return el('div', { class: 'video-wrap' }, [
+      el('iframe', {
+        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?rel=0&modestbranding=1`,
+        title: t('pQuestionVideo'),
+        loading: 'lazy',
+        allow: 'accelerometer; clipboard-write; encrypted-media; picture-in-picture',
+        referrerpolicy: 'strict-origin-when-cross-origin',
+        allowfullscreen: '',
+      }),
+    ]);
+  }
+
   function render() {
     clearTick();
     const s = state.live;
@@ -179,6 +198,7 @@
         el('div', { class: 'card stack center' }, [
           el('span', { class: 'badge' }, t('sTypedQuestion', { emoji: TYPE_EMOJI[q.type], index: s.index + 1, total: s.total })),
           q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: t('pQuestionImage') }) : null,
+          q.video ? videoNode(q.video) : null,
           el('h1', { class: 'big-q', text: q.text }),
           el('p', { class: 'muted', text: t('pGetReady') }),
         ])
@@ -209,6 +229,7 @@
         el('span', { class: 'badge' + (answered === total && total > 0 ? ' ok' : '') }, t('sAnsweredOf', { answered, total })),
       ]),
       q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: t('pQuestionImage') }) : null,
+      q.video ? videoNode(q.video) : null,
       el('h1', { class: 'big-q', text: q.text }),
     ]);
     if (q.timeLimit && s.phase === 'question') {

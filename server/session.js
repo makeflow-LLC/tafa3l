@@ -56,6 +56,7 @@ const LIMITS = {
   optionText: 120,
   // نصّ شريحة المحتوى: فقرة شرح لا سؤال، فهي أطول
   slideBody: 1200,
+  videoUrl: 300,
   options: 8,
   questions: 60,
   name: 24,
@@ -122,6 +123,32 @@ function clamp(n, min, max, fallback) {
 }
 
 /** تحويل سؤال قادم من العميل إلى شكل آمن ومُتحقق منه. */
+/**
+ * معرّف فيديو يوتيوب من أي صيغة رابط يلصقها المعلّم.
+ *
+ * نخزّن المعرّف لا الرابط عمداً: الرابط الخام قد يحمل معاملات تتبّع أو يكون
+ * لموقع آخر كلياً، وتضمينه كما هو يفتح باب حقن إطار من نطاق مجهول. والمعرّف
+ * أحد عشر محرفاً من مجموعة معروفة — لا شيء آخر يمرّ.
+ */
+function cleanVideo(value) {
+  const raw = clean(value, LIMITS.videoUrl);
+  if (!raw) return null;
+  // معرّف مباشر
+  if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+  const patterns = [
+    /(?:youtube\.com|youtube-nocookie\.com)\/watch\?(?:.*&)?v=([A-Za-z0-9_-]{11})/,
+    /youtu\.be\/([A-Za-z0-9_-]{11})/,
+    /(?:youtube\.com|youtube-nocookie\.com)\/(?:embed|shorts|live)\/([A-Za-z0-9_-]{11})/,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(raw);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+const t2 = (x) => x;
+
 function normalizeQuestion(raw, index) {
   const type = QUESTION_TYPES.includes(raw?.type) ? raw.type : 'mc';
   const q = {
@@ -146,6 +173,8 @@ function normalizeQuestion(raw, index) {
     body: '',
     // صورة توضيحية اختيارية تظهر فوق نص السؤال
     image: cleanImage(raw?.image),
+    // فيديو يوتيوب اختياري — نخزّن المعرّف لا الرابط، فيُبنى التضمين عندنا
+    video: cleanVideo(raw?.video),
   };
 
   if (type === 'mc' || type === 'poll') {
@@ -792,6 +821,57 @@ class Session {
   /** رؤية العرض الخاصة بمشارك: بذرته الثابتة وهل يُخلط له الخيارات */
   viewFor(participant) {
     return { shuffleOptions: !!this.settings.shuffleOptions, seed: participant?.id || '' };
+  }
+
+  /**
+   * مراجعة الطالب لأدائه بعد النشاط: كل سؤال، وما أجاب، وما الصحيح، والشرح.
+   *
+   * أهم ما في الاختبار تربوياً يأتي بعده لا أثناءه، وأكثر الطلاب لا يرون
+   * الشرح لأنه يمرّ في ثوانٍ على الشاشة. هذه بياناته هو وحده — لا تُرسل
+   * إلا إليه، وتموت مع الجلسة كبقية بياناته.
+   */
+  reviewFor(participant) {
+    const items = [];
+    this.questions.forEach((q, index) => {
+      if (CONTENT_TYPES.has(q.type)) return;
+      const a = participant.answers.get(q.id);
+      const readable = (value) => {
+        if (value == null) return '';
+        if (q.type === 'order') {
+          const byId = new Map(q.items.map((it) => [it.id, it.text]));
+          return (Array.isArray(value) ? value : []).map((id2) => byId.get(id2) || id2).join(' ← ');
+        }
+        if (q.type === 'match') {
+          return q.pairs.map((pr) => `${pr.left}: ${value?.[pr.id] || '—'}`).join(' · ');
+        }
+        if (Array.isArray(value)) {
+          const byId = new Map(q.options.map((o) => [o.id, o.text]));
+          return value.map((v) => byId.get(v) || v).join(t2(' + '));
+        }
+        return String(value);
+      };
+      const rightAnswer = () => {
+        if (q.type === 'order') return q.items.map((it) => it.text).join(' ← ');
+        if (q.type === 'match') return q.pairs.map((pr) => `${pr.left}: ${pr.right}`).join(' · ');
+        if (q.type === 'blank') return q.blanks.filter(Boolean).join(' · ');
+        const byId = new Map(q.options.map((o) => [o.id, o.text]));
+        return q.correct.map((c) => byId.get(c) || c).join(' · ');
+      };
+      items.push({
+        index: index + 1,
+        type: q.type,
+        text: q.text,
+        explanation: q.explanation || '',
+        mine: a ? readable(a.value) : '',
+        answered: !!a,
+        correct: a ? a.correct : null,
+        points: a ? a.points || 0 : 0,
+        maxPoints: q.points || 0,
+        right: rightAnswer(),
+        pending: !!a?.pending,
+      });
+    });
+    return items;
   }
 
   /** كم إجابة لهذا المشارك تنتظر تصحيح المدرب */
@@ -1711,6 +1791,8 @@ function publicQuestion(q, revealCorrect, code, view) {
     scale: q.scale,
     // نصّ شريحة المحتوى
     body: q.body || '',
+    // معرّف الفيديو — تبنيه الواجهة رابطَ تضمين لنطاق يوتيوب وحده
+    video: q.video || null,
     content: CONTENT_TYPES.has(q.type),
     // الطالب يحتاج عدد الفراغات ليكتب فيها؛ والإجابات المتوقعة لا تُكشف إلا مع الإجابة
     blankCount: q.blanks.length,

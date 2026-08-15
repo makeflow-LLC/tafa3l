@@ -24,7 +24,7 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, blanks: [], items: [], pairs: [], body: '' };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '' };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -144,6 +144,7 @@
       question.blanks = [];
     }
     question.body = question.type === 'slide' ? String(raw.body ?? '') : '';
+    question.video = typeof raw.video === 'string' ? raw.video : '';
     question.items =
       question.type === 'order' && Array.isArray(raw.items)
         ? raw.items.map((it, i) => ({ id: String(it?.id || 'i' + i), text: String(it?.text ?? it ?? '') }))
@@ -1021,6 +1022,30 @@
         drawPairs();
         body.append(pairsBox);
       }
+
+      // ---- فيديو يوتيوب: سطر واحد لا يزحم السؤال، ومعاينة فورية للتأكد
+      const videoBox = el('div', { class: 'stack tight' });
+      const drawVideo = () => {
+        videoBox.innerHTML = '';
+        const input = el('input', { maxlength: 300, placeholder: t('bVideoPlaceholder'), value: question.video || '' });
+        const preview = el('div', { class: 'small muted' });
+        const check = () => {
+          const raw = String(input.value || '').trim();
+          const m = /(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})|^([A-Za-z0-9_-]{11})$/.exec(raw);
+          const vid = m ? m[1] || m[2] : null;
+          preview.textContent = !raw ? '' : vid ? t('bVideoOk') : t('bVideoBad');
+          preview.style.color = !raw || vid ? '' : '#fca5a5';
+        };
+        input.addEventListener('input', () => {
+          question.video = input.value;
+          check();
+          saveDraft(draft);
+        });
+        check();
+        videoBox.append(el('label', { text: t('bVideo') }), input, preview);
+      };
+      drawVideo();
+      body.append(videoBox);
 
       // ---- صورة السؤال: ميزة بريميوم، وزر واحد صغير لا يزحم كل سؤال
       const imageBox = el('div', { class: 'stack tight' });
