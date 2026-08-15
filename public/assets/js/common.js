@@ -237,6 +237,7 @@
     blank: 'أكمل الفراغ',
     order: 'رتّب',
     match: 'طابِق',
+    slide: 'شريحة عرض',
 };
   const TYPE_KEYS = {
     mc: 'typeMc',
@@ -248,6 +249,7 @@
     blank: 'typeBlank',
     order: 'typeOrder',
     match: 'typeMatch',
+    slide: 'typeSlide',
   };
   const TYPE_LABELS = {};
   for (const type of Object.keys(TYPE_FALLBACK)) {
@@ -267,6 +269,7 @@
     blank: '✏️',
     order: '🔢',
     match: '🔗',
+    slide: '🖼️',
   };
 
   function fmtMs(ms) {

@@ -2,7 +2,14 @@
 
 const crypto = require('crypto');
 
-const QUESTION_TYPES = ['mc', 'truefalse', 'poll', 'word', 'scale', 'open', 'blank', 'order', 'match'];
+const QUESTION_TYPES = ['mc', 'truefalse', 'poll', 'word', 'scale', 'open', 'blank', 'order', 'match', 'slide'];
+
+/**
+ * شريحة محتوى: تُعرض ولا تُجاب. تعيش داخل مصفوفة الأسئلة نفسها كي ترث
+ * التنقّل والجدولة والبثّ بلا مسار موازٍ، لكنها تُستثنى من كل ما يخصّ
+ * التقييم: لا علامة، ولا نسبة مشاركة، ولا وسام، ولا سطر في التقرير.
+ */
+const CONTENT_TYPES = new Set(['slide']);
 
 /**
  * أنواع تُصحَّح آلياً بعلامة جزئية: الطالب الذي رتّب ثلاثة من أربعة صحيحاً
@@ -47,6 +54,8 @@ const LIMITS = {
   questionText: 300,
   explanation: 400,
   optionText: 120,
+  // نصّ شريحة المحتوى: فقرة شرح لا سؤال، فهي أطول
+  slideBody: 1200,
   options: 8,
   questions: 60,
   name: 24,
@@ -133,6 +142,8 @@ function normalizeQuestion(raw, index) {
     items: [],
     // أزواج سؤال «طابِق»: كل زوج {id, left, right}
     pairs: [],
+    // نصّ شريحة المحتوى تحت العنوان
+    body: '',
     // صورة توضيحية اختيارية تظهر فوق نص السؤال
     image: cleanImage(raw?.image),
   };
@@ -156,6 +167,10 @@ function normalizeQuestion(raw, index) {
       { id: 'true', text: 'صحيح' },
       { id: 'false', text: 'خطأ' },
     ];
+  } else if (type === 'slide') {
+    q.body = clean(raw?.body, LIMITS.slideBody);
+    q.points = 0;
+    q.timeLimit = raw?.timeLimit === 0 || raw?.timeLimit == null ? 0 : clamp(raw.timeLimit, 5, 600, 0);
   } else if (type === 'order') {
     // الترتيب الصحيح هو ترتيب الإدخال؛ يُخلط عند العرض على الطالب
     const items = Array.isArray(raw?.items) ? raw.items.slice(0, LIMITS.items) : [];
@@ -206,6 +221,8 @@ function normalizeQuestion(raw, index) {
     q.blanks = Array.from({ length: count }, (_, i) => clean(expected[i], LIMITS.blankAnswer));
     // العلامة الافتراضية = علامة لكل فراغ، والمدرب يعدّلها كما يشاء
     q.points = raw?.points == null ? Math.max(1, count) : clamp(raw.points, 0, 1000, Math.max(1, count));
+  } else if (CONTENT_TYPES.has(type)) {
+    q.points = 0;
   } else if (PARTIAL_TYPES.has(type)) {
     // مصحَّحان آلياً بعلامة جزئية — الافتراضي كعلامة الاختيار من متعدد
     q.points = clamp(raw?.points, 0, 10000, 1000);
@@ -690,6 +707,9 @@ class Session {
         return { ok: false, error: 'السؤال غير متاح الآن' };
       }
     }
+    if (CONTENT_TYPES.has(q.type)) {
+      return { ok: false, error: 'هذه شريحة عرض لا سؤال' };
+    }
     if (participant.answers.has(qid)) {
       return { ok: false, error: 'تم تسجيل إجابتك مسبقاً' };
     }
@@ -939,6 +959,8 @@ class Session {
       };
     }
 
+    if (CONTENT_TYPES.has(q.type)) return { ...base, content: true, total: 0 };
+
     if (PARTIAL_TYPES.has(q.type)) {
       // ما يهمّ المعلّم هنا: كم أتقنه الصف، وأي عنصر أو زوج تعثّر فيه أكثر
       const ratios = answers.map((x) => ratioCorrect(q, x.a.value));
@@ -1097,7 +1119,10 @@ class Session {
     }
 
     // 💪 المثابر: أجاب على كل الأسئلة المعروضة
-    const asked = this.settings.pace === 'self' ? this.questions.length : Math.max(0, this.currentIndex + 1);
+    const asked =
+      this.settings.pace === 'self'
+        ? this.answerableUpTo(this.questions.length)
+        : this.answerableUpTo(this.currentIndex + 1);
     if (asked >= 2) {
       for (const p of people) if (answeredCount(p) >= asked) add(p.id, '💪', 'أجاب على كل الأسئلة');
     }
@@ -1137,6 +1162,18 @@ class Session {
     return entry ? { rank: entry.rank, of: board.length } : null;
   }
 
+  /**
+   * كم سؤالاً **يُجاب عليه** ضمن أول `upto` عنصراً.
+   * شرائح المحتوى تعيش في المصفوفة نفسها، فلو عددناها لظهر الطالب وكأنه
+   * ترك أسئلة لم يُسأل عنها أصلاً، ولانخفضت نسبة تقدّمه بلا ذنب.
+   */
+  answerableUpTo(upto) {
+    const end = Math.max(0, Math.min(upto, this.questions.length));
+    let n = 0;
+    for (let i = 0; i < end; i += 1) if (!CONTENT_TYPES.has(this.questions[i].type)) n += 1;
+    return n;
+  }
+
   /** إحصاءات كاملة للوحة تحكم المدرب */
   dashboard() {
     const participants = [...this.participants.values()];
@@ -1144,9 +1181,9 @@ class Session {
     const selfPaced = this.settings.pace === 'self';
     // في الوضع الحر كل الأسئلة متاحة للجميع، وكل متدرب له تقدّمه الخاص
     const asked = selfPaced
-      ? this.questions.length
+      ? this.answerableUpTo(this.questions.length)
       : this.currentIndex >= 0
-        ? Math.min(this.currentIndex + 1, this.questions.length)
+        ? this.answerableUpTo(this.currentIndex + 1)
         : 0;
 
     const perQuestion = this.questions.map((q, i) => {
@@ -1161,6 +1198,7 @@ class Session {
         index: i,
         id: q.id,
         text: q.text,
+        content: CONTENT_TYPES.has(q.type),
         type: q.type,
         asked: selfPaced ? reached > 0 : i <= this.currentIndex,
         reached,
@@ -1180,7 +1218,7 @@ class Session {
         const correct = answered.filter((a) => a.correct === true).length;
         const scoredAnswered = answered.filter((a) => a.correct !== null).length;
         // في الوضع الحر: عدد الأسئلة التي وصل إليها هذا المتدرب تحديداً
-        const seen = selfPaced ? (p.phase === 'done' ? this.questions.length : p.index + 1) : asked;
+        const seen = selfPaced ? this.answerableUpTo(p.phase === 'done' ? this.questions.length : p.index + 1) : asked;
         return {
           id: p.id,
           name: p.name,
@@ -1204,7 +1242,7 @@ class Session {
       })
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'ar'));
 
-    const askedQuestions = perQuestion.filter((q) => q.asked);
+    const askedQuestions = perQuestion.filter((q) => q.asked && !q.content);
     const totalResponses = askedQuestions.reduce((s, q) => s + q.responses, 0);
     // المتوقع = مجموع من وصل فعلاً لكل سؤال (يختلف عن الجميع في الوضع الحر)
     const expected = askedQuestions.reduce((s, q) => s + q.reached, 0);
@@ -1317,10 +1355,11 @@ class Session {
         scheduledAt: this.settings.opensAt ? new Date(this.settings.opensAt).toISOString() : null,
         durationMinutes: this.settings.durationMinutes || null,
       },
-      questionCount: this.questions.length,
+      questionCount: this.answerableUpTo(this.questions.length),
       participantCount: participants.length,
       maxScore,
-      questions: this.questions.map(questionStat),
+      // الشرائح تُستثنى من التقرير: ليست أسئلة، ولا نتيجة لها تُحلَّل
+      questions: this.questions.filter((q) => !CONTENT_TYPES.has(q.type)).map(questionStat),
       participants: participants.map((p) => {
         const answered = this.questions.filter((q) => p.answers.has(q.id)).length;
         const values = [...p.answers.values()];
@@ -1670,6 +1709,9 @@ function publicQuestion(q, revealCorrect, code, view) {
     pairs: q.pairs.map((pr) => ({ id: pr.id, left: pr.left, ...(revealCorrect ? { right: pr.right } : {}) })),
     rights,
     scale: q.scale,
+    // نصّ شريحة المحتوى
+    body: q.body || '',
+    content: CONTENT_TYPES.has(q.type),
     // الطالب يحتاج عدد الفراغات ليكتب فيها؛ والإجابات المتوقعة لا تُكشف إلا مع الإجابة
     blankCount: q.blanks.length,
     blanks: revealCorrect ? q.blanks : [],

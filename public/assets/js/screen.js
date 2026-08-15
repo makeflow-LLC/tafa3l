@@ -190,6 +190,19 @@
       return;
     }
 
+    // شريحة عرض: العنوان والنصّ بخطّ كبير، بلا عدّاد إجابات ولا نتائج
+    if (q.content) {
+      app.append(
+        el('div', { class: 'card stack slide-stage' }, [
+          el('span', { class: 'badge', text: t('sSlideBadge') }),
+          el('h1', { class: 'big-q', text: q.text }),
+          q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: q.text }) : null,
+          q.body ? el('p', { class: 'slide-body big', text: q.body }) : null,
+        ])
+      );
+      return;
+    }
+
     const head = el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
         el('span', { class: 'badge' }, t('sTypedQuestionFull', { emoji: TYPE_EMOJI[q.type], label: TYPE_LABELS[q.type], index: s.index + 1, total: s.total })),

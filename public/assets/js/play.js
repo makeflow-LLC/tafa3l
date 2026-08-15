@@ -570,6 +570,27 @@
       return box;
     }
 
+    if (q.content) {
+      // شريحة عرض: يقرأها الطالب ولا يجيب. في الوضع الحر له زر «تابع»،
+      // وفي وضع المدرب ينتظر انتقاله — فلا زر يوهمه بأن عليه فعل شيء.
+      const card = el('div', { class: 'card stack slide-card' }, [
+        q.body ? el('p', { class: 'slide-body', text: q.body }) : null,
+      ]);
+      box.append(card);
+      if (s.settings?.pace === 'self') {
+        const go = el('button', { class: 'btn primary block' }, t('pSlideNext'));
+        go.addEventListener('click', () => {
+          go.disabled = true;
+          socket.send({ t: 'next' });
+          setTimeout(() => (go.disabled = false), 1500);
+        });
+        box.append(go);
+      } else {
+        box.append(el('p', { class: 'muted small center', style: { margin: 0 }, text: t('pSlideWait') }));
+      }
+      return box;
+    }
+
     if (q.type === 'order') {
       /*
        * الترتيب بالنقر لا بالسحب: السحب على الجوال هشّ (يتعارك مع تمرير
