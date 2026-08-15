@@ -9,7 +9,7 @@
   const tplText = (template, field) => (locale() === 'en' && template[field + 'En'] ? template[field + 'En'] : template[field]);
 
   const DRAFT_KEY = 'tafa3l:draft';
-  const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open', 'blank', 'order', 'match'];
+  const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open', 'blank', 'order', 'match', 'slide'];
   /** علامة الفراغ في نص السؤال */
   const BLANK_MARK = '___';
 
@@ -24,7 +24,7 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, blanks: [], items: [], pairs: [] };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, blanks: [], items: [], pairs: [], body: '' };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -55,6 +55,11 @@
         { id: 'p1', left: '', right: '' },
         { id: 'p2', left: '', right: '' },
       ];
+      q.timeLimit = 0;
+    }
+    if (type === 'slide') {
+      // شريحة شرح: بلا علامة ولا مؤقّت، المدرب ينتقل حين ينتهي من الشرح
+      q.points = 0;
       q.timeLimit = 0;
     }
     if (type === 'scale') q.scale = { min: 1, max: 5, minLabel: t('bdisagree'), maxLabel: t('bstronglyAgree') };
@@ -138,6 +143,7 @@
     } else {
       question.blanks = [];
     }
+    question.body = question.type === 'slide' ? String(raw.body ?? '') : '';
     question.items =
       question.type === 'order' && Array.isArray(raw.items)
         ? raw.items.map((it, i) => ({ id: String(it?.id || 'i' + i), text: String(it?.text ?? it ?? '') }))
@@ -402,6 +408,9 @@
       root.append(templatesBox);
       loadTemplates(templatesBox.querySelector('#tmplRow'));
 
+      // ---- استيراد بنك أسئلة من جدول: أسرع طريق لمعلّم أسئلته في Excel
+      root.append(sheetImportCard());
+
       // ---- العنوان والإعدادات
       const titleInput = el('input', { maxlength: 120, placeholder: t('beGUnit3'), value: draft.title });
       titleInput.addEventListener('input', () => {
@@ -547,6 +556,137 @@
           ),
         ])
       );
+    }
+
+    /**
+     * استيراد من جدول. المعلّم الذي يملك بنك أسئلة في Excel لن يعيد كتابته
+     * يدوياً — إما ننقله له في دقيقة أو يبقى حيث هو. يقبل ملفاً أو لصقاً
+     * مباشراً من الجدول (اللصق من Excel يصل مفصولاً بتبويب).
+     */
+    function sheetImportCard() {
+      const card = el('div', { class: 'card stack' });
+      const panel = el('div', { class: 'stack', hidden: true });
+      const result = el('div', { class: 'stack tight' });
+
+      const toggle = el('button', { class: 'btn ghost sm', type: 'button' }, t('iOpen'));
+      toggle.addEventListener('click', () => {
+        panel.hidden = !panel.hidden;
+        toggle.textContent = panel.hidden ? t('iOpen') : t('iClose');
+      });
+
+      const file = el('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/tab-separated-values' });
+      const area = el('textarea', {
+        rows: 4,
+        placeholder: t('iPastePlaceholder'),
+        style: { fontFamily: 'ui-monospace, monospace', fontSize: '0.78rem' },
+      });
+
+      const sample = el('button', { class: 'btn ghost sm', type: 'button' }, t('iTemplate'));
+      sample.addEventListener('click', () => {
+        const blob = new Blob([global.SheetImport.templateCsv()], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = el('a', { href: url, download: 'tapio-template.csv' });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      });
+
+      /** يعرض ما فُهم من الجدول قبل أي تغيير على المسودة */
+      function preview(text) {
+        result.innerHTML = '';
+        const parsed = global.SheetImport.parse(text);
+        if (!parsed.questions.length) {
+          result.append(el('div', { class: 'note warn small', text: parsed.warnings[0] || t('iNothingFound') }));
+          return;
+        }
+        result.append(
+          el('p', { class: 'small', style: { margin: 0 }, text: t('iFound', { n: parsed.questions.length }) })
+        );
+        result.append(
+          el(
+            'div',
+            { class: 'stack tight' },
+            parsed.questions.slice(0, 6).map((q, i) =>
+              el('div', { class: 'q-preview' }, [
+                el('span', { class: 'badge', text: `${TYPE_EMOJI[q.type] || '❓'} ${TYPE_LABELS[q.type] || q.type}` }),
+                el('div', { class: 'grow stack tight' }, [
+                  el('strong', { text: `${i + 1}. ${q.text}` }),
+                  (q.options || []).length
+                    ? el('span', { class: 'muted small', text: (q.options || []).join(' · ') + (q.correct?.length ? '  ✅ ' + q.correct.join(t('listSep')) : '') })
+                    : null,
+                ]),
+              ])
+            )
+          )
+        );
+        if (parsed.questions.length > 6) {
+          result.append(el('p', { class: 'muted small', style: { margin: 0 }, text: t('iAndMore', { n: parsed.questions.length - 6 }) }));
+        }
+        if (parsed.warnings.length) {
+          result.append(
+            el('div', { class: 'note warn stack tight' }, [
+              el('strong', { text: t('iNotes') }),
+              ...[...new Set(parsed.warnings)].slice(0, 4).map((w) => el('span', { class: 'small', text: '• ' + w })),
+            ])
+          );
+        }
+
+        const add = el('button', { class: 'btn accent', type: 'button' }, t('iAppend', { n: parsed.questions.length }));
+        add.addEventListener('click', () => {
+          const imported = parsed.questions.map((raw) => {
+            const q = blankQuestion(raw.type);
+            q.text = raw.text;
+            if (raw.explanation) q.explanation = raw.explanation;
+            if (raw.points !== undefined) {
+              q.points = raw.points;
+              q.pointsSet = true;
+            }
+            if (raw.timeLimit !== undefined) q.timeLimit = raw.timeLimit;
+            if (raw.options) {
+              q.options = raw.options.map((text, i) => ({ id: 'o' + i, text }));
+              q.correct = (raw.correct || []).map((textValue) => q.options.find((o) => o.text === textValue)?.id).filter(Boolean);
+            } else if (raw.correct) {
+              q.correct = raw.correct.slice();
+            }
+            if (raw.blanks) q.blanks = raw.blanks.slice();
+            return q;
+          });
+          // نُلحق ولا نستبدل: المعلّم قد يستورد دفعتين من ملفين
+          draft.questions = draft.questions.filter((q) => String(q.text || '').trim()).concat(imported);
+          openIndex = draft.questions.length - imported.length;
+          update();
+          toast(t('iImported', { n: imported.length }), 'ok');
+        });
+        result.append(add);
+      }
+
+      file.addEventListener('change', () => {
+        const chosen = file.files && file.files[0];
+        if (!chosen) return;
+        const reader = new FileReader();
+        reader.onload = () => preview(String(reader.result || ''));
+        reader.onerror = () => toast(t('iReadFailed'), 'bad');
+        reader.readAsText(chosen, 'utf-8');
+      });
+      area.addEventListener('input', () => {
+        if (area.value.trim().length > 20) preview(area.value);
+      });
+
+      panel.append(
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('iHint') }),
+        file,
+        el('p', { class: 'muted small center', style: { margin: 0 }, text: t('iOrPaste') }),
+        area,
+        el('div', { class: 'row', style: { gap: '6px' } }, [sample]),
+        result
+      );
+
+      card.append(
+        el('div', { class: 'row between' }, [el('h2', { style: { margin: 0 }, text: t('iTitle') }), toggle]),
+        panel
+      );
+      return card;
     }
 
     /** مجموعة خيارات على شكل بطاقات (وضع التقدّم، احتساب النقاط) */
@@ -788,6 +928,23 @@
       text.addEventListener('input', drawBlanks);
       drawBlanks();
       if (question.type === 'blank') body.append(blanksBox);
+
+      // ---- شريحة عرض: عنوان ونصّ شرح، بلا إجابة
+      if (question.type === 'slide') {
+        const bodyBox = el('div', { class: 'stack tight' });
+        const area = el('textarea', {
+          maxlength: 1200,
+          rows: 5,
+          placeholder: t('bSlideBodyPlaceholder'),
+          value: question.body || '',
+        });
+        area.addEventListener('input', () => {
+          question.body = area.value;
+          saveDraft(draft);
+        });
+        bodyBox.append(el('label', { text: t('bSlideBody') }), area, el('p', { class: 'muted small', style: { margin: 0 }, text: t('bSlideHint') }));
+        body.append(bodyBox);
+      }
 
       // ---- رتّب: العناصر بترتيبها الصحيح، وتُخلط تلقائياً لكل طالب
       if (question.type === 'order') {

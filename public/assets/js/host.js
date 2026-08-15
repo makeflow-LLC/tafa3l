@@ -1791,7 +1791,12 @@
       );
     } else {
       actions.push(el('button', { class: 'icon-btn', type: 'button', title: t('hpreviousQuestion'), disabled: s.index <= 0, onclick: () => send('host:prev') }, '⟩'));
-      if (s.phase === 'question') {
+      if (s.question?.content) {
+        // شريحة عرض: لا إجابات تُغلق ولا نتائج تُكشف — زرّ انتقال واحد فقط
+        actions.push(
+          el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? t('hfinish') : t('hnextQuestion'))
+        );
+      } else if (s.phase === 'question') {
         actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: () => send('host:lock') }, t('hlockAnswers')));
         actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:results') }, t('hshowResults2')));
       } else if (s.phase === 'results') {
