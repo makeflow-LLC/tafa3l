@@ -134,6 +134,27 @@ function fileDriver() {
       schedule();
     },
 
+    async listPublished({ q = '', subject = '', grade = '', lang = '', limit = 24, offset = 0 } = {}) {
+      const needle = q.trim().toLowerCase();
+      const all = Object.values(db.activities)
+        .filter((a) => a.published)
+        .filter((a) => !subject || a.subject === subject)
+        .filter((a) => !grade || a.grade === grade)
+        .filter((a) => !lang || (a.settings?.lang || 'ar') === lang)
+        .filter((a) => !needle || String(a.title).toLowerCase().includes(needle))
+        .sort((a, b) => (b.copies || 0) - (a.copies || 0) || b.publishedAt - a.publishedAt);
+      return {
+        total: all.length,
+        items: all.slice(offset, offset + limit).map((a) => ({ ...a, authorName: db.users[a.ownerId]?.name || '' })),
+      };
+    },
+    async bumpCopies(id) {
+      const a = db.activities[id];
+      if (!a) return;
+      a.copies = (a.copies || 0) + 1;
+      schedule();
+    },
+
     async listBankQuestions(ownerId) {
       return Object.values(db.bankQuestions)
         .filter((q) => q.ownerId === ownerId)
@@ -219,6 +240,12 @@ function postgresDriver(connectionString) {
       questions: r.questions,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at),
+      published: Boolean(r.published),
+      publishedAt: r.published_at == null ? null : Number(r.published_at),
+      subject: r.subject || '',
+      grade: r.grade || '',
+      copies: Number(r.copies || 0),
+      ...(r.author_name === undefined ? {} : { authorName: r.author_name || '' }),
     };
 
   const rowToBankQuestion = (r) =>
@@ -261,6 +288,14 @@ function postgresDriver(connectionString) {
           updated_at BIGINT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS activities_owner_idx ON activities(owner_id);
+        -- المكتبة العامة: نشاط يختار صاحبه نشره فيُصبح مرئياً للجميع
+        ALTER TABLE activities ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE activities ADD COLUMN IF NOT EXISTS published_at BIGINT;
+        ALTER TABLE activities ADD COLUMN IF NOT EXISTS subject TEXT;
+        ALTER TABLE activities ADD COLUMN IF NOT EXISTS grade TEXT;
+        ALTER TABLE activities ADD COLUMN IF NOT EXISTS copies INTEGER NOT NULL DEFAULT 0;
+        -- فهرس جزئي: صفوف المكتبة قليلة بين كل الأنشطة، فلا داعي لفهرسة الباقي
+        CREATE INDEX IF NOT EXISTS activities_published_idx ON activities(published, copies DESC) WHERE published;
         CREATE TABLE IF NOT EXISTS bank_questions (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -319,15 +354,45 @@ function postgresDriver(connectionString) {
     },
     async saveActivity(a) {
       await pool.query(
-        `INSERT INTO activities (id, owner_id, title, settings, questions, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT (id) DO UPDATE SET title = $3, settings = $4, questions = $5, updated_at = $7`,
-        [a.id, a.ownerId, a.title, JSON.stringify(a.settings), JSON.stringify(a.questions), a.createdAt, a.updatedAt]
+        `INSERT INTO activities (id, owner_id, title, settings, questions, created_at, updated_at, published, published_at, subject, grade, copies)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (id) DO UPDATE SET title = $3, settings = $4, questions = $5, updated_at = $7,
+           published = $8, published_at = $9, subject = $10, grade = $11, copies = $12`,
+        [
+          a.id, a.ownerId, a.title, JSON.stringify(a.settings), JSON.stringify(a.questions), a.createdAt, a.updatedAt,
+          Boolean(a.published), a.publishedAt ?? null, a.subject || null, a.grade || null, Number(a.copies || 0),
+        ]
       );
       return a;
     },
     async deleteActivity(id) {
       await pool.query('DELETE FROM activities WHERE id = $1', [id]);
+    },
+
+    async listPublished({ q = '', subject = '', grade = '', lang = '', limit = 24, offset = 0 } = {}) {
+      // البحث بـ ILIKE على العنوان وحده: المكتبة بمئات الصفوف لا ملايينها،
+      // وفهرس نصّي كامل بالعربية يحتاج قاموساً لا يستحقه هذا الحجم بعد.
+      const where = ['a.published'];
+      const params = [];
+      const add = (sql, value) => { params.push(value); where.push(sql.replace('$?', '$' + params.length)); };
+      if (q.trim()) add('a.title ILIKE $?', '%' + q.trim() + '%');
+      if (subject) add('a.subject = $?', subject);
+      if (grade) add('a.grade = $?', grade);
+      if (lang) add("COALESCE(a.settings->>'lang', 'ar') = $?", lang);
+      const clause = where.join(' AND ');
+      const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int AS n FROM activities a WHERE ${clause}`, params);
+      const { rows } = await pool.query(
+        `SELECT a.*, u.name AS author_name FROM activities a
+         LEFT JOIN users u ON u.id = a.owner_id
+         WHERE ${clause}
+         ORDER BY a.copies DESC, a.published_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, Number(limit) || 24, Number(offset) || 0]
+      );
+      return { total: countRows[0]?.n || 0, items: rows.map(rowToActivity) };
+    },
+    async bumpCopies(id) {
+      await pool.query('UPDATE activities SET copies = copies + 1 WHERE id = $1', [id]);
     },
 
     async listBankQuestions(ownerId) {

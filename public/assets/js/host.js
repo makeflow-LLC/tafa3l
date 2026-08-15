@@ -89,6 +89,9 @@
     if (match) return openLive(match[1]);
     if (hash === '/demo') return startDemo();
     if (hash === '/mine') return openMyActivities();
+    if (hash === '/library') return openLibrary();
+    const lib = hash.match(/^\/library\/([\w-]+)$/);
+    if (lib) return openLibraryItem(lib[1]);
     if (hash === '/ai') return openAiDesigner();
     if (hash === '/admin') return openAdmin();
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
@@ -183,6 +186,7 @@
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/library' }, t('lNav')),
           el('a', { class: 'btn ghost sm', href: '#/ai' }, t('hdesignWithAi')),
           el('a', { class: 'btn accent sm', href: '#/' }, t('hnewActivity')),
         ]),
@@ -276,6 +280,26 @@
       }
     });
 
+    // النشر في المكتبة: زرّ واحد يفتح نموذجاً في البطاقة، وسحبٌ فوري إن كان منشوراً
+    const slot = el('div', { class: 'stack tight' });
+    const share = el('button', { class: 'btn ghost sm', type: 'button' }, activity.published ? t('lUnpublish') : t('lPublish'));
+    share.addEventListener('click', async () => {
+      if (activity.published) {
+        share.disabled = true;
+        try {
+          await api(`/api/activities/${activity.id}/unpublish`, { method: 'POST' });
+          toast(t('lUnpublishedOk'), 'ok');
+          openMyActivities();
+        } catch (err) {
+          toast(err.message, 'bad');
+          share.disabled = false;
+        }
+        return;
+      }
+      if (slot.firstChild) return slot.replaceChildren();
+      slot.append(publishForm(activity, openMyActivities, () => slot.replaceChildren()));
+    });
+
     return el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
         el('h2', { text: activity.title, style: { margin: 0, fontSize: '1.05rem' } }),
@@ -284,6 +308,8 @@
       el('div', { class: 'row', style: { gap: '6px' } }, [
         el('span', { class: 'badge', text: t('hQuestionCount', { count: activity.questionCount }) }),
         pace ? el('span', { class: 'badge', text: pace }) : null,
+        activity.published ? el('span', { class: 'badge ok', text: t('lPublished') }) : null,
+        activity.published && activity.copies ? el('span', { class: 'badge', text: t('lCopies', { n: activity.copies }) }) : null,
         el('span', { class: 'muted small', text: t('hlastEdited') + when }),
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
@@ -292,10 +318,246 @@
           : launch,
         el('a', { class: 'btn ghost sm', href: '#/edit/' + activity.id }, t('hopenAndEdit')),
         duplicate,
+        share,
         el('span', { class: 'grow' }),
         remove,
       ]),
+      slot,
     ]);
+  }
+
+  // ------------------------------------------------------- المكتبة العامة
+
+  const library = { q: '', subject: '', grade: '', lang: '', page: 0, items: [], total: 0 };
+
+  /** يجمع قيم حقل من النتائج لبناء قوائم التصفية بلا مسار خادم إضافي */
+  const facet = (key) => [...new Set(library.items.map((x) => x[key]).filter(Boolean))].sort();
+
+  async function openLibrary(keepFilters) {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    if (!keepFilters) Object.assign(library, { q: '', subject: '', grade: '', lang: '', page: 0, items: [], total: 0 });
+    if (!state.user) loadAccount();
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    let data;
+    try {
+      const query = new URLSearchParams({ q: library.q, subject: library.subject, grade: library.grade, lang: library.lang, page: String(library.page) });
+      data = await api('/api/library?' + query);
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('lTitle') }), el('p', { class: 'muted small', text: err.message })]));
+      return;
+    }
+    library.items = library.page ? [...library.items, ...data.items] : data.items;
+    library.total = data.total;
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
+          el('a', { class: 'btn accent sm', href: '#/' }, t('hnewActivity')),
+        ]),
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('lTitle') }));
+    app.append(el('p', { class: 'muted small', text: t('lIntro') }));
+
+    // البحث بالضغط على Enter أو الزر لا عند كل حرف: كل حرف طلبٌ للخادم
+    const search = el('input', { type: 'search', placeholder: t('lSearchPlaceholder'), value: library.q, maxlength: 80 });
+    const run = () => {
+      library.q = search.value;
+      library.page = 0;
+      openLibrary(true);
+    };
+    search.addEventListener('keydown', (e) => e.key === 'Enter' && run());
+    const pick = (key, allLabel, options) => {
+      const sel = el('select', {}, [el('option', { value: '', text: allLabel }), ...options.map((o) => el('option', { value: o.value ?? o, text: o.label ?? o, selected: library[key] === (o.value ?? o) }))]);
+      sel.value = library[key];
+      sel.addEventListener('change', () => {
+        library[key] = sel.value;
+        library.page = 0;
+        openLibrary(true);
+      });
+      return sel;
+    };
+    app.append(
+      el('div', { class: 'card stack tight' }, [
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('span', { class: 'grow' }, search),
+          el('button', { class: 'btn primary sm', type: 'button', onclick: run }, '🔍'),
+        ]),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          pick('subject', t('lAllSubjects'), facet('subject')),
+          pick('grade', t('lAllGrades'), facet('grade')),
+          pick('lang', t('lAllLangs'), [{ value: 'ar', label: t('lArabic') }, { value: 'en', label: t('lEnglish') }]),
+          el('span', { class: 'grow' }),
+          el('span', { class: 'muted small', text: t('lCount', { n: library.total }) }),
+        ]),
+      ])
+    );
+
+    if (!library.items.length) {
+      const filtered = library.q || library.subject || library.grade || library.lang;
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('div', { style: { fontSize: '2.4rem' }, text: filtered ? '🔍' : '🌍' }),
+          el('p', { class: 'muted', text: filtered ? t('lEmpty') : t('lEmptyAll') }),
+          el('a', { class: 'btn primary', href: '#/mine' }, t('hmyActivities')),
+        ])
+      );
+      return;
+    }
+
+    const list = el('div', { class: 'stack' });
+    library.items.forEach((item) => list.append(libraryCard(item)));
+    app.append(list);
+
+    if (library.items.length < library.total) {
+      const more = el('button', { class: 'btn ghost block', type: 'button' }, t('lMore'));
+      more.addEventListener('click', () => {
+        library.page += 1;
+        openLibrary(true);
+      });
+      app.append(more);
+    }
+  }
+
+  function libraryCard(item) {
+    return el('div', { class: 'card stack tight' }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { text: item.title, style: { margin: 0, fontSize: '1.05rem' } }),
+        item.copies ? el('span', { class: 'badge', text: t('lCopies', { n: item.copies }) }) : null,
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('span', { class: 'badge', text: t('hQuestionCount', { count: item.questionCount }) }),
+        item.subject ? el('span', { class: 'badge', text: item.subject }) : null,
+        item.grade ? el('span', { class: 'badge', text: item.grade }) : null,
+        el('span', { class: 'badge', text: item.lang === 'en' ? t('lEnglish') : t('lArabic') }),
+        ...item.types.slice(0, 5).map((type) => el('span', { class: 'badge', text: TYPE_EMOJI[type] || '•' })),
+      ]),
+      el('div', { class: 'row between' }, [
+        el('span', { class: 'muted small', text: item.author ? t('lBy', { name: item.author }) : '' }),
+        el('a', { class: 'btn ghost sm', href: '#/library/' + item.id }, t('lPreview')),
+      ]),
+    ]);
+  }
+
+  /** معاينة نشاط من المكتبة قبل نسخه — الأسئلة كما سيراها الطالب */
+  async function openLibraryItem(id) {
+    teardown();
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+    const user = state.user || (await loadAccount());
+    if (!user) {
+      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/library/' + id);
+      return;
+    }
+
+    let activity;
+    try {
+      activity = (await api('/api/library/' + id)).activity;
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(el('div', { class: 'card stack center' }, [el('p', { class: 'muted', text: err.message }), el('a', { class: 'btn primary', href: '#/library' }, t('lBack'))]));
+      return;
+    }
+
+    const copy = el('button', { class: 'btn accent', type: 'button' }, t('lCopyToMine'));
+    copy.addEventListener('click', async () => {
+      copy.disabled = true;
+      copy.textContent = t('lCopying');
+      try {
+        const res = await api(`/api/library/${id}/copy`, { method: 'POST' });
+        toast(res.droppedImages ? t('lCopiedNoImages', { title: res.activity.title, n: res.droppedImages }) : t('lCopied', { title: res.activity.title }), 'ok');
+        location.hash = '#/edit/' + res.activity.id;
+      } catch (err) {
+        toast(err.message, 'bad');
+        copy.disabled = false;
+        copy.textContent = t('lCopyToMine');
+      }
+    });
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/library' }, t('lBack')),
+        copy,
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: activity.title }));
+    app.append(
+      el('div', { class: 'row', style: { gap: '6px', marginBottom: '10px' } }, [
+        activity.author ? el('span', { class: 'muted small', text: t('lBy', { name: activity.author }) }) : null,
+        activity.subject ? el('span', { class: 'badge', text: activity.subject }) : null,
+        activity.grade ? el('span', { class: 'badge', text: activity.grade }) : null,
+        el('span', { class: 'badge', text: t('hQuestionCount', { count: activity.questions.length }) }),
+      ])
+    );
+
+    activity.questions.forEach((q, index) => {
+      const right = new Set(q.correct || []);
+      app.append(
+        el('div', { class: 'card stack tight' }, [
+          el('div', { class: 'row', style: { gap: '6px' } }, [
+            el('span', { class: 'badge', text: `${TYPE_EMOJI[q.type] || '•'} ${index + 1}` }),
+            el('strong', { text: q.text }),
+          ]),
+          q.body ? el('p', { class: 'muted small', style: { margin: 0 }, text: q.body }) : null,
+          (q.options || []).length
+            ? el(
+                'div',
+                { class: 'row', style: { gap: '6px' } },
+                q.options.map((o) => el('span', { class: 'badge' + (right.has(o.id) ? ' ok' : ''), text: (right.has(o.id) ? '✓ ' : '') + o.text }))
+              )
+            : null,
+          q.explanation ? el('p', { class: 'muted small', style: { margin: 0 }, text: '💡 ' + q.explanation }) : null,
+        ])
+      );
+    });
+
+    app.append(
+      el('p', { class: 'footer' }, [
+        el('a', { href: 'https://wa.me/970597750343?text=' + encodeURIComponent(`${t('lReport')}: ${location.origin}/host.html#/library/${id}`), target: '_blank', rel: 'noopener', class: 'muted small' }, t('lReport')),
+      ])
+    );
+  }
+
+  /**
+   * نموذج النشر داخل البطاقة نفسها لا في نافذة عائمة: النشر قرار يحتاج قراءة
+   * تحذيرٍ بجانب اسم النشاط، والنافذة العائمة على الجوال تخفي ما تُقرَّر عليه.
+   */
+  function publishForm(activity, onDone, onCancel) {
+    const subject = el('input', { maxlength: 40, placeholder: t('lSubjectPlaceholder'), value: activity.subject || '' });
+    const grade = el('input', { maxlength: 40, placeholder: t('lGradePlaceholder'), value: activity.grade || '' });
+
+    const go = el('button', { class: 'btn accent sm', type: 'button' }, t('lConfirmPublish'));
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      try {
+        await api(`/api/activities/${activity.id}/publish`, { method: 'POST', body: { subject: subject.value, grade: grade.value } });
+        toast(t('lPublishedOk'), 'ok');
+        onDone();
+      } catch (err) {
+        toast(err.message, 'bad');
+        go.disabled = false;
+      }
+    });
+
+    const box = el('div', { class: 'stack tight publish-form' }, [
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('lPublishWarn') }),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('label', { class: 'grow' }, [el('span', { class: 'small', text: t('lSubject') }), subject]),
+        el('label', { class: 'grow' }, [el('span', { class: 'small', text: t('lGrade') }), grade]),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [go, el('button', { class: 'btn ghost sm', type: 'button', onclick: onCancel }, t('lCancel'))]),
+    ]);
+    setTimeout(() => subject.focus(), 0);
+    return box;
   }
 
   /** فتح نشاط محفوظ داخل المحرّر */
@@ -371,6 +633,7 @@
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/library' }, t('lNav')),
           el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuide')),
           el('span', { class: 'muted small', text: t('hyourDraftIsSaved') }),
         ]),
