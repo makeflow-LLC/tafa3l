@@ -33,7 +33,7 @@
               ol: [
                 '<strong>افتح «نشاط جديد»</strong> من الصفحة الرئيسية (لا حاجة لحساب للتجربة، لكن الحساب يحفظ أنشطتك).',
                 '<strong>اكتب عنواناً واضحاً</strong> — يراه الطلاب على شاشاتهم، مثل «مراجعة الوحدة الثالثة».',
-                '<strong>أضف أسئلتك</strong>: اختر النوع، اكتب النص، حدّد الإجابة الصحيحة والعلامة والوقت. أو ابدأ من <em>قالب جاهز</em>، أو دع <em>المساعد الذكي</em> يصوغها لك.',
+                '<strong>أضف أسئلتك</strong>: اختر النوع، اكتب النص، حدّد الإجابة الصحيحة والعلامة والوقت. أو ابدأ من <em>قالب جاهز</em>، أو دع <em>المساعد الذكي</em> يصوغها لك — وهو يصوغ افتراضياً أسئلةً <strong>تُصحَّح آلياً</strong> (اختيار من متعدد، صح/خطأ، ترتيب، مطابقة) فلا يتركك أمام كومة إجاباتٍ تصحّحها بيدك؛ وإن أردت أسئلة الجواب الحرّ أو أكمل الفراغ فعّل خيارها تحت المحادثة. وكلُّ دخولٍ إلى المساعد يبدأ حواراً جديداً، فلا يبني على كلامٍ قديم انتهى.',
                 '<strong>اضبط الإعدادات</strong>: نمط العرض، احتساب النقاط، لوحة الترتيب، الفرق.',
                 '<strong>اضغط «ابدأ الجلسة»</strong> فيظهر رمز من ٦ أرقام و QR.',
                 '<strong>اعرض الرمز على البروجكتر</strong> من زر «افتح شاشة العرض»، والطلاب يدخلون من <code>tapio.fun</code> بالرمز أو بمسح الـ QR.',
@@ -269,7 +269,7 @@
               ol: [
                 '<strong>Open “New activity”</strong> from the home page (no account needed to try it, but an account saves your activities).',
                 '<strong>Write a clear title</strong> — students see it on their screens, e.g. “Unit 3 review”.',
-                '<strong>Add your questions</strong>: pick the type, write the text, set the correct answer, the score and the time. Or start from a <em>ready template</em>, or let the <em>AI assistant</em> write them for you.',
+                '<strong>Add your questions</strong>: pick the type, write the text, set the correct answer, the score and the time. Or start from a <em>ready template</em>, or let the <em>AI assistant</em> write them for you — by default it only writes <strong>auto-graded</strong> questions (multiple choice, true/false, ordering, matching), so it never leaves you with a pile of answers to mark by hand; if you do want open-ended or fill-in-the-blank questions, turn on the option under the chat. And every time you open the assistant it starts a fresh conversation rather than continuing an old one.',
                 '<strong>Adjust the settings</strong>: pace, scoring, leaderboard, teams.',
                 '<strong>Press “Start the session”</strong> and a 6-digit code and a QR appear.',
                 '<strong>Show the code on the projector</strong> via “Open the projector screen”. Students join from <code>tapio.fun</code> with the code or by scanning the QR.',

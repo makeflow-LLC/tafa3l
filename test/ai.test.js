@@ -17,7 +17,7 @@ process.env.GOOGLE_CLIENT_ID = 'test-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 process.env.AZURE_OPENAI_KEY = 'test-azure-key';
 const { server, ready } = require('../server/index');
-const { splitDraft, sanitizeMessages } = require('../server/routes-ai');
+const { splitDraft, sanitizeMessages, systemFor, dropManual } = require('../server/routes-ai');
 const ai = require('../server/ai');
 const storage = require('../server/storage');
 
@@ -289,4 +289,90 @@ test('حالة الخدمة تُعلن التهيئة بلا كشف المفتا
   assert.equal(res.data.configured, true);
   assert.equal(res.data.model, 'gpt-4.1');
   assert.equal(JSON.stringify(res.data).includes('test-azure-key'), false);
+});
+
+// ------------------------------- الافتراضي: أسئلة تُصحَّح آلياً وحدها
+
+test('تعليمات النظام تمنع أسئلة التصحيح اليدوي ما لم يأذن المعلّم', () => {
+  const off = systemFor(false);
+  assert.match(off, /ممنوع/, 'المنع صريح لا تلميح');
+  assert.match(off, /اسأل المعلّم صراحةً/, 'ويُؤمر بسؤاله بدل الافتراض عنه');
+  assert.match(off, /order/, 'والترتيب والمطابقة معروضان كبديلٍ آليّ');
+  assert.match(off, /match/);
+
+  const on = systemFor(true);
+  assert.match(on, /سمح/, 'وحين يأذن تتبدّل القاعدة');
+  assert.equal(/ممنوع/.test(on), false);
+});
+
+test('الحارس يُسقط أسئلة التصحيح اليدوي إن تسلّلت رغم التعليمات', () => {
+  // النموذج يخالف أحياناً؛ الحارس هو ما يجعل الوعد حقيقياً لا رجاءً
+  const draft = {
+    title: 'اختبار',
+    questions: [
+      { type: 'mc', text: 'س١', options: ['أ', 'ب'], correct: ['أ'] },
+      { type: 'open', text: 'اشرح بأسلوبك', points: 5 },
+      { type: 'blank', text: 'الماء يغلي عند ___', blanks: ['100'], points: 1 },
+      { type: 'order', text: 'رتّب', items: ['١', '٢'] },
+      { type: 'truefalse', text: 'س٤', correct: true },
+    ],
+  };
+  const { draft: clean, dropped } = dropManual(draft);
+  assert.deepEqual(clean.questions.map((q) => q.type), ['mc', 'order', 'truefalse']);
+  assert.equal(dropped.length, 2, 'ويُبلَّغ عمّا أُسقط — لا حذف صامت');
+  assert.match(dropped[0], /اشرح/);
+  assert.equal(clean.title, 'اختبار', 'وبقية المسودة كما هي');
+
+  // سؤال مفتوح بلا علامة ليس عبئاً على المعلّم: لا تصحيح له أصلاً
+  const opinion = dropManual({ questions: [{ type: 'open', text: 'رأيك؟', points: 0 }] });
+  assert.equal(opinion.draft.questions.length, 1);
+  assert.equal(opinion.dropped.length, 0);
+
+  // ومسودة بلا أسئلة لا تنكسر
+  assert.deepEqual(dropManual(null).dropped, []);
+});
+
+test('المسار يحذف أسئلة التصحيح اليدوي ويُبلّغ، ويُبقيها إن أذن المعلّم', async () => {
+  const draftJson = JSON.stringify({
+    title: 'دورة المياه',
+    questions: [
+      { type: 'mc', text: 'أول المراحل؟', options: ['التبخّر', 'التكاثف'], correct: ['التبخّر'] },
+      { type: 'open', text: 'اشرح بأسلوبك', points: 5 },
+    ],
+  });
+  const reply = 'تفضّل:\n```json\n' + draftJson + '\n```';
+
+  // الافتراضي: بلا إذن
+  const c1 = client();
+  const mail1 = `aim1.${Date.now()}@example.com`;
+  const m1 = mockUpstream({ email: mail1, azure: azureReply(reply) });
+  try {
+    await login(c1, m1);
+    await grantPremium(mail1);
+    const res = await c1.request('POST', '/api/ai/design', { messages: [{ role: 'user', content: 'اختبار' }] });
+    assert.equal(res.data.draft.questions.length, 1, 'السؤال المفتوح لا يصل المعلّم');
+    assert.equal(res.data.draft.questions[0].type, 'mc');
+    assert.match(res.data.reply, /تصحيحاً يدويّاً/, 'ويُخبَر بما أُسقط ولماذا');
+    assert.match(m1.seen.azureRequests.at(-1).body.input[0].content[0].text, /ممنوع/);
+  } finally {
+    m1.restore();
+  }
+
+  // وبإذنٍ صريح
+  const c2 = client();
+  const mail2 = `aim2.${Date.now()}@example.com`;
+  const m2 = mockUpstream({ email: mail2, azure: azureReply(reply) });
+  try {
+    await login(c2, m2);
+    await grantPremium(mail2);
+    const res = await c2.request('POST', '/api/ai/design', {
+      messages: [{ role: 'user', content: 'اختبار' }],
+      allowManual: true,
+    });
+    assert.equal(res.data.draft.questions.length, 2, 'وحين يأذن تصله كما صاغها النموذج');
+    assert.equal(/تصحيحاً يدويّاً/.test(res.data.reply), false, 'وبلا تنبيهٍ لا معنى له');
+    assert.match(m2.seen.azureRequests.at(-1).body.input[0].content[0].text, /سمح/);
+  } finally {
+    m2.restore();
+  }
 });
