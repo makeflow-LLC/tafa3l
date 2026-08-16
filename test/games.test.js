@@ -94,7 +94,11 @@ async function login(c, name, email) {
 
 const HTML = '<!doctype html><html><body><h1>لعبة الجمع</h1><script>let s=0</script></body></html>';
 
-const GAME = (over) => ({ title: 'لعبة الجمع', subject: 'رياضيات', grades: ['الثالث', 'الرابع'], html: HTML, ...over });
+/** أصغر PNG صالحة — بكسل واحد شفّاف */
+const PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+const GAME = (over) => ({ title: 'لعبة الجمع', subject: 'math', grades: ['g3', 'g4'], html: HTML, cover: PNG, ...over });
 
 // ------------------------------------------------------------------ الأمان
 
@@ -264,4 +268,45 @@ test('الترتيب: الأكثر زيارة، والأعلى تقييماً ب
   await db.rateGame(lucky, 5);
   const again = await client().request('GET', '/api/games?sort=rated');
   assert.equal(again.data.items[0].title, 'مقيَّمة', 'الترجيح يمنع تصدّر تقييمٍ واحد');
+});
+
+// -------------------------------------------------------- الصورة المصغّرة
+
+test('الصورة المصغّرة مطلوبة، وبأنواعٍ نعرف تقديمها بأمان', async () => {
+  const c = client();
+  await login(c, 'سلمى');
+
+  const bare = await c.request('POST', '/api/games', GAME({ cover: '' }));
+  assert.equal(bare.status, 400, 'لا لعبة بلا صورة تدلّ عليها');
+  assert.match(bare.data.error, /صورة/);
+
+  // رابط خارجي ليس صورةً نملكها — نرفض ما لا نستطيع تقديمه بأنفسنا
+  assert.equal((await c.request('POST', '/api/games', GAME({ cover: 'https://x.test/a.png' }))).status, 400);
+  // SVG مستندٌ كامل لا صورة — نغلق البابَ ولا نفتحه من أجل بطاقة
+  const svg = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64');
+  assert.equal((await c.request('POST', '/api/games', GAME({ cover: svg }))).status, 400);
+
+  const huge = 'data:image/png;base64,' + Buffer.alloc(401 * 1024, 1).toString('base64');
+  assert.equal((await c.request('POST', '/api/games', GAME({ cover: huge }))).status, 413);
+});
+
+test('الصورة تُقدَّم من مسارها الخاص، والبطاقة تحمل وجودها لا بايتاتها', async () => {
+  const c = client();
+  await login(c, 'سلمى');
+  const id = (await c.request('POST', '/api/games', GAME())).data.game.id;
+
+  const list = await client().request('GET', '/api/games');
+  const card = list.data.items.find((g) => g.id === id);
+  assert.equal(card.cover, true, 'البطاقة تقول إنّ لها صورة');
+  assert.equal(JSON.stringify(list.data).includes('base64'), false, 'ولا تحمل بايتاتها — القائمة تبقى خفيفة');
+
+  const res = await fetch(`${base}/api/games/${id}/cover`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/png');
+  assert.match(res.headers.get('cache-control') || '', /max-age=/, 'تُخزَّن في المتصفّح فلا تُطلب مع كل تصفّح');
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  const bytes = Buffer.from(await res.arrayBuffer());
+  assert.equal(bytes.subarray(1, 4).toString(), 'PNG', 'وبايتاتها صورة PNG حقيقية');
+
+  assert.equal((await fetch(`${base}/api/games/g_nope/cover`)).status, 404);
 });

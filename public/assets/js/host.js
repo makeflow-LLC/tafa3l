@@ -2,11 +2,14 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner } =
+  const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink } =
     window.T;
   const Fx = window.Fx;
   // اختصار الترجمة — إن غاب المحرّك نعرض المفتاح بدل الانهيار
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
+  const tagLabel = (kind, id) => (window.I18n ? window.I18n.tagLabel(kind, id) : id);
+  const SUBJECTS = (window.I18n && window.I18n.SUBJECTS) || [];
+  const GRADES = (window.I18n && window.I18n.GRADES) || [];
   /** لغة التنسيق للتواريخ والأرقام */
   const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
 
@@ -370,6 +373,20 @@
     app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gMine') }));
     app.append(el('p', { class: 'muted small', text: t('gMineIntro') }));
 
+    // رابطُ صفحةِ ألعاب المعلّم: يضعه في مجموعة صفّه فيتصفّح طلابه ألعابه وحدها
+    const shelf = location.origin + '/games.html#/t/' + user.id;
+    app.append(
+      el('div', { class: 'card stack tight' }, [
+        el('strong', { text: t('gShelfTitle') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('gShelfHint') }),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('code', { class: 'grow link-box', text: shelf }),
+          shareButton(shelf, t('gCopyLink')),
+          el('a', { class: 'btn ghost sm', href: shelf, target: '_blank', rel: 'noopener' }, t('gOpen')),
+        ]),
+      ])
+    );
+
     app.append(uploadCard());
 
     if (!mine.length) {
@@ -383,13 +400,37 @@
 
   function uploadCard() {
     const title = el('input', { maxlength: 120, placeholder: t('gFormTitlePlaceholder') });
-    const subject = el('input', { maxlength: 40, placeholder: t('gFormSubjectPlaceholder') });
-    const grades = el('input', { maxlength: 200, placeholder: t('gFormGradesPlaceholder') });
+    const subject = el('select', {}, [
+      el('option', { value: '', text: t('gFormPickSubject') }),
+      ...SUBJECTS.map((id) => el('option', { value: id, text: tagLabel('subj', id) })),
+    ]);
+    const gradePicker = gradeChips();
     const description = el('input', { maxlength: 300, placeholder: t('gFormDescPlaceholder') });
     const file = el('input', { type: 'file', accept: '.html,.htm,text/html' });
     const code = el('textarea', { rows: 6, placeholder: t('gFormCodePlaceholder') });
     const note = el('div', { class: 'muted small' });
     const submit = el('button', { class: 'btn accent', type: 'button' }, t('gFormSubmit'));
+
+    const shot = el('input', { type: 'file', accept: 'image/*' });
+    const shotNote = el('div', { class: 'muted small' });
+    const preview = el('div', { class: 'cover-preview', hidden: true });
+    let cover = '';
+    shot.addEventListener('change', async () => {
+      const picked = shot.files?.[0];
+      if (!picked) return;
+      shotNote.textContent = t('gFormShotWorking');
+      try {
+        cover = await shrinkImage(picked);
+        preview.innerHTML = '';
+        preview.append(el('img', { src: cover, alt: t('gFormShot') }));
+        preview.hidden = false;
+        shotNote.textContent = t('gFormShotReady', { kb: Math.round((cover.length * 3) / 4 / 1024) });
+      } catch (err) {
+        cover = '';
+        preview.hidden = true;
+        shotNote.textContent = err.message;
+      }
+    });
 
     let html = '';
     const setHtml = (value, from) => {
@@ -408,14 +449,16 @@
     code.addEventListener('input', () => setHtml(code.value, t('gFormPasted')));
 
     submit.addEventListener('click', async () => {
+      if (!cover) return toast(t('gFormShotRequired'), 'bad');
       submit.disabled = true;
       try {
         const body = {
           title: title.value,
           subject: subject.value,
           description: description.value,
-          // «كل المراحل» = اتركه فارغاً؛ وإلا صفوف مفصولة بفاصلة
-          grades: grades.value.split(/[,،]/).map((g) => g.trim()).filter(Boolean),
+          // مصفوفة فارغة = «كل المراحل»
+          grades: gradePicker.value(),
+          cover,
           html,
         };
         const res = await api('/api/games', { method: 'POST', body });
@@ -431,18 +474,59 @@
       el('h2', { style: { margin: 0 }, text: t('gFormTitle') }),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormHint') }),
       el('label', {}, [el('span', { class: 'small', text: t('gFormName') }), title]),
-      el('div', { class: 'row', style: { gap: '8px' } }, [
-        el('label', { class: 'grow' }, [el('span', { class: 'small', text: t('gFormSubject') }), subject]),
-        el('label', { class: 'grow' }, [el('span', { class: 'small', text: t('gFormGrades') }), grades]),
+      el('label', {}, [el('span', { class: 'small', text: t('gFormSubject') }), subject]),
+      el('div', { class: 'stack tight' }, [
+        el('span', { class: 'small', text: t('gFormGrades') }),
+        el('span', { class: 'muted small', text: t('gFormGradesHint') }),
+        gradePicker.node,
       ]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormDesc') }), description]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormFile') }), file]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormCode') }), code]),
       note,
+      el('label', {}, [
+        el('span', { class: 'small', text: t('gFormShot') }),
+        el('span', { class: 'muted small', style: { display: 'block' }, text: t('gFormShotHint') }),
+        shot,
+      ]),
+      preview,
+      shotNote,
       el('div', { class: 'row', style: { gap: '6px' } }, [submit]),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormSafety') }),
     ]);
   }
+
+  /**
+   * اختيار الصفوف: شرائح تُنقر — واحدة أو عدّة، أو «كل المراحل» فتلغي الباقي.
+   * القيمة مصفوفة معرِّفات، والفارغة تعني «الجميع» كما يفهمها الخادم.
+   */
+  function gradeChips() {
+    const chosen = new Set();
+    const node = el('div', { class: 'chips' });
+    const all = el('button', { class: 'chip on', type: 'button' }, t('gAllStages'));
+    const paint = () => {
+      all.classList.toggle('on', chosen.size === 0);
+      [...node.querySelectorAll('.chip[data-grade]')].forEach((c) => c.classList.toggle('on', chosen.has(c.dataset.grade)));
+    };
+    all.addEventListener('click', () => {
+      chosen.clear();
+      paint();
+    });
+    node.append(all);
+    GRADES.forEach((id) => {
+      const chip = el('button', { class: 'chip', type: 'button', 'data-grade': id }, tagLabel('grade', id));
+      chip.addEventListener('click', () => {
+        if (chosen.has(id)) chosen.delete(id);
+        else chosen.add(id);
+        paint();
+      });
+      node.append(chip);
+    });
+    return { node, value: () => GRADES.filter((id) => chosen.has(id)) };
+  }
+
+  /** حجمٌ مقروء — لعبةٌ صغيرة تُكتب «أقل من ١KB» لا «0KB» */
+  const kb = (bytes) => (bytes < 1024 ? t('gUnderKb') : Math.round(bytes / 1024) + 'KB');
 
   /** طول النص بالبايت — الحدّ على الخادم بالبايت لا بالمحارف */
   function Buffer_len(text) {
@@ -462,24 +546,54 @@
       }
     });
     return el('div', { class: 'card stack tight' }, [
-      el('div', { class: 'row between' }, [
-        el('strong', { text: game.title }),
-        el('span', { class: 'row', style: { gap: '6px' } }, [
-          el('span', { class: 'badge', text: t('gPlays', { n: game.plays }) }),
-          game.rating ? el('span', { class: 'badge', text: `⭐ ${game.rating}` }) : null,
+      el('div', { class: 'row', style: { gap: '10px', alignItems: 'flex-start' } }, [
+        gameThumb(game, 'sm'),
+        el('div', { class: 'stack tight grow' }, [
+          el('div', { class: 'row between' }, [
+            el('strong', { text: game.title }),
+            el('span', { class: 'row', style: { gap: '6px' } }, [
+              el('span', { class: 'badge', text: t('gPlays', { n: game.plays }) }),
+              game.rating ? el('span', { class: 'badge', text: `⭐ ${game.rating}` }) : null,
+            ]),
+          ]),
+          el('div', { class: 'row', style: { gap: '6px' } }, [
+            game.subject ? el('span', { class: 'badge', text: tagLabel('subj', game.subject) }) : null,
+            ...(game.grades.length
+              ? game.grades.map((g) => el('span', { class: 'badge', text: tagLabel('grade', g) }))
+              : [el('span', { class: 'badge', text: t('gAllStages') })]),
+            el('span', { class: 'muted small', text: kb(game.bytes) }),
+          ]),
         ]),
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
-        game.subject ? el('span', { class: 'badge', text: game.subject }) : null,
-        ...(game.grades.length ? game.grades.map((g) => el('span', { class: 'badge', text: g })) : [el('span', { class: 'badge', text: t('gAllStages') })]),
-        el('span', { class: 'muted small', text: Math.round(game.bytes / 1024) + 'KB' }),
-      ]),
-      el('div', { class: 'row', style: { gap: '6px' } }, [
         el('a', { class: 'btn primary sm', href: '/games.html#/g/' + game.id }, t('gOpen')),
+        shareButton(location.origin + '/games.html#/g/' + game.id, t('gCopyLink')),
         el('span', { class: 'grow' }),
         remove,
       ]),
     ]);
+  }
+
+  /** صورة اللعبة، وبديلٌ مولَّد لألعابٍ رُفعت قبل أن تصير الصورة مطلوبة */
+  function gameThumb(game, size) {
+    const box = el('div', { class: 'game-thumb' + (size === 'sm' ? ' sm' : '') });
+    if (game.cover) {
+      box.append(el('img', { src: '/api/games/' + game.id + '/cover', alt: game.title, loading: 'lazy' }));
+    } else {
+      box.classList.add('blank');
+      box.append(el('span', { text: (game.title || '🎮').trim().slice(0, 1) }));
+    }
+    return box;
+  }
+
+  /** زرّ «انسخ الرابط» — يخبرك أنّه نسخ فعلاً لا أنّه حاول */
+  function shareButton(url, label) {
+    const btn = el('button', { class: 'btn ghost sm', type: 'button' }, '🔗 ' + label);
+    btn.addEventListener('click', async () => {
+      const done = await copyLink(url);
+      toast(done ? t('gLinkCopied') : url, done ? 'ok' : '');
+    });
+    return btn;
   }
 
   // ------------------------------------------------------- المكتبة العامة

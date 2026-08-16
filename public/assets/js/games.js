@@ -1,9 +1,12 @@
-/* قسم الألعاب التفاعلية — تصفّح وبحث وتشغيل داخل إطار معزول */
+/* قسم الألعاب التفاعلية — تصفّح وبحث وتشغيل ملء الشاشة داخل إطار معزول */
 (function () {
   'use strict';
 
-  const { $, el, api, toast } = window.T;
+  const { $, el, api, toast, copyLink } = window.T;
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
+  const tagLabel = (kind, id) => (window.I18n ? window.I18n.tagLabel(kind, id) : id);
+  const SUBJECTS = (window.I18n && window.I18n.SUBJECTS) || [];
+  const GRADES = (window.I18n && window.I18n.GRADES) || [];
   const app = $('#app');
 
   document.title = t('brand') + ' — ' + t('gTitle');
@@ -34,16 +37,30 @@
 
   function route() {
     const hash = location.hash.slice(1) || '/';
+    // اللعب مسارٌ مستقلّ لا حالةً داخلية: زرّ الرجوع في الجوال يخرج من
+    // اللعبة كما يتوقّع الطالب، والرابط يصلح للمشاركة كما هو
+    const play = hash.match(/^\/g\/([\w-]+)\/play$/);
+    if (play) return openGame(play[1], true);
     const one = hash.match(/^\/g\/([\w-]+)$/);
-    if (one) return openGame(one[1]);
+    if (one) return openGame(one[1], false);
+    const teacher = hash.match(/^\/t\/([\w-]+)$/);
+    if (teacher) {
+      if (state.teacher !== teacher[1]) Object.assign(state, { teacher: teacher[1], q: '', subject: '', grade: '', page: 0, items: [] });
+      return openList(true);
+    }
+    if (state.teacher) Object.assign(state, { teacher: '', page: 0, items: [] });
     return openList();
+  }
+
+  // تصريحُ دالة لا ثابتاً: `route()` تُستدعى عند التحميل قبل هذا السطر
+  function exitImmersive() {
+    document.body.classList.remove('playing');
   }
 
   // ------------------------------------------------------------- الفهرس
 
-  const facet = (key) => [...new Set(state.items.flatMap((g) => (Array.isArray(g[key]) ? g[key] : [g[key]])).filter(Boolean))].sort();
-
   async function openList(keep) {
+    exitImmersive();
     if (!keep) Object.assign(state, { page: 0, items: [] });
     app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
     let data;
@@ -59,14 +76,15 @@
     state.total = data.total;
 
     app.innerHTML = '';
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gTitle') }));
-    app.append(el('p', { class: 'muted small', text: t('gIntro') }));
+    const teacherName = state.teacher ? state.items[0]?.author || '' : '';
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: state.teacher ? t('gByTeacher', { name: teacherName }) : t('gTitle') }));
+    app.append(el('p', { class: 'muted small', text: state.teacher ? t('gTeacherIntro') : t('gIntro') }));
 
     const search = el('input', { type: 'search', placeholder: t('gSearchPlaceholder'), value: state.q, maxlength: 80 });
     const run = () => {
       state.q = search.value;
       state.page = 0;
-      openList();
+      openList(true);
     };
     search.addEventListener('keydown', (e) => e.key === 'Enter' && run());
 
@@ -76,7 +94,7 @@
       sel.addEventListener('change', () => {
         state[key] = sel.value;
         state.page = 0;
-        openList();
+        openList(true);
       });
       return sel;
     };
@@ -88,8 +106,10 @@
           el('button', { class: 'btn primary sm', type: 'button', onclick: run }, t('gSearchBtn')),
         ]),
         el('div', { class: 'row filters', style: { gap: '6px' } }, [
-          pick('subject', t('gAllSubjects'), facet('subject')),
-          pick('grade', t('gAllGrades'), facet('grades')),
+          // القوائم ثابتة لا مشتقّة من نتائج الصفحة: المادة موجودة في
+          // القائمة حتى لو لم تظهر لعبةٌ منها في الصفحة الأولى
+          pick('subject', t('gAllSubjects'), SUBJECTS.map((id) => ({ value: id, label: tagLabel('subj', id) }))),
+          pick('grade', t('gAllGrades'), GRADES.map((id) => ({ value: id, label: tagLabel('grade', id) }))),
           pick('sort', '', [
             { value: 'popular', label: t('gSortPopular') },
             { value: 'rated', label: t('gSortRated') },
@@ -100,8 +120,8 @@
         ]),
         state.teacher
           ? el('div', { class: 'row', style: { gap: '6px' } }, [
-              el('span', { class: 'badge', text: t('gByTeacher', { name: state.items[0]?.author || '' }) }),
-              el('button', { class: 'btn ghost sm', type: 'button', onclick: () => { state.teacher = ''; state.page = 0; openList(); } }, t('gAllTeachers')),
+              shareButton(location.origin + '/games.html#/t/' + state.teacher, t('gCopyShelf')),
+              el('a', { class: 'btn ghost sm', href: '#/' }, t('gAllTeachers')),
             ])
           : null,
       ])
@@ -133,16 +153,41 @@
     }
   }
 
+  /** صورة اللعبة، وبديلٌ مولَّد لألعابٍ رُفعت قبل أن تصير الصورة مطلوبة */
+  function gameThumb(game) {
+    const box = el('div', { class: 'game-thumb' });
+    if (game.cover) {
+      box.append(el('img', { src: '/api/games/' + game.id + '/cover', alt: game.title, loading: 'lazy' }));
+    } else {
+      box.classList.add('blank');
+      box.append(el('span', { text: (game.title || '🎮').trim().slice(0, 1) }));
+    }
+    return box;
+  }
+
+  function shareButton(url, label) {
+    const btn = el('button', { class: 'btn ghost sm', type: 'button' }, '🔗 ' + label);
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const done = await copyLink(url);
+      toast(done ? t('gLinkCopied') : url, done ? 'ok' : '');
+    });
+    return btn;
+  }
+
   function gameCard(game) {
     return el('a', { class: 'card stack tight game-card', href: '#/g/' + game.id }, [
+      gameThumb(game),
       el('div', { class: 'row between' }, [
         el('strong', { text: game.title }),
         game.rating ? el('span', { class: 'badge', text: `⭐ ${game.rating}` }) : null,
       ]),
       game.description ? el('span', { class: 'muted small', text: game.description }) : null,
       el('div', { class: 'row', style: { gap: '6px' } }, [
-        game.subject ? el('span', { class: 'badge', text: game.subject }) : null,
-        ...(game.grades.length ? game.grades.slice(0, 3).map((g) => el('span', { class: 'badge', text: g })) : [el('span', { class: 'badge', text: t('gAllStages') })]),
+        game.subject ? el('span', { class: 'badge', text: tagLabel('subj', game.subject) }) : null,
+        ...(game.grades.length
+          ? game.grades.slice(0, 3).map((g) => el('span', { class: 'badge', text: tagLabel('grade', g) }))
+          : [el('span', { class: 'badge', text: t('gAllStages') })]),
       ]),
       el('div', { class: 'row between' }, [
         el('span', { class: 'muted small', text: game.author ? t('gBy', { name: game.author }) : '' }),
@@ -153,7 +198,8 @@
 
   // ------------------------------------------------------------ اللعب
 
-  async function openGame(id) {
+  async function openGame(id, immersive) {
+    exitImmersive();
     app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
     let game;
     try {
@@ -163,59 +209,101 @@
       app.append(el('div', { class: 'card stack center' }, [el('p', { class: 'muted', text: err.message }), el('a', { class: 'btn primary', href: '#/' }, t('gBack'))]));
       return;
     }
+    return immersive ? renderPlay(game) : renderDetails(game);
+  }
 
+  /** بطاقة اللعبة قبل اللعب: الصورة والمعلومات ورابط المشاركة وزرّ البدء */
+  function renderDetails(game) {
     app.innerHTML = '';
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '#/' }, t('gBack')),
-        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => frame.requestFullscreen?.() }, t('gFullscreen')),
+        shareButton(location.origin + '/games.html#/g/' + game.id, t('gCopyLink')),
       ])
     );
+
+    const cover = gameThumb(game);
+    cover.classList.add('big');
+    app.append(cover);
+
     app.append(el('h1', { style: { marginBottom: '4px' }, text: game.title }));
     app.append(
       el('div', { class: 'row', style: { gap: '6px', marginBottom: '10px' } }, [
-        game.author
-          ? el('a', { class: 'badge', href: '#/', onclick: () => { state.teacher = game.authorId; state.page = 0; } }, t('gBy', { name: game.author }))
-          : null,
-        game.subject ? el('span', { class: 'badge', text: game.subject }) : null,
-        ...(game.grades.length ? game.grades.map((g) => el('span', { class: 'badge', text: g })) : [el('span', { class: 'badge', text: t('gAllStages') })]),
+        game.author ? el('a', { class: 'badge', href: '#/t/' + game.authorId }, t('gBy', { name: game.author })) : null,
+        game.subject ? el('span', { class: 'badge', text: tagLabel('subj', game.subject) }) : null,
+        ...(game.grades.length
+          ? game.grades.map((g) => el('span', { class: 'badge', text: tagLabel('grade', g) }))
+          : [el('span', { class: 'badge', text: t('gAllStages') })]),
         el('span', { class: 'badge', text: t('gPlays', { n: game.plays }) }),
+        game.rating ? el('span', { class: 'badge', text: `⭐ ${game.rating}` }) : null,
       ])
     );
     if (game.description) app.append(el('p', { class: 'muted small', text: game.description }));
 
-    /**
-     * الإطار المعزول. غياب `allow-same-origin` مقصود وهو كل الحماية: أصل
-     * اللعبة يصير «مبهماً» فلا كوكي ولا تخزين ولا وصول إلى هذه الصفحة.
-     * لا تُضِف `allow-same-origin` هنا مهما بدا مغرياً.
-     */
+    app.append(el('a', { class: 'btn accent block big-cta', href: '#/g/' + game.id + '/play' }, t('gPlayNow')));
+    app.append(el('p', { class: 'muted small center', style: { marginTop: '6px' }, text: t('gPlayFullNote') }));
+
+    if (game.author) {
+      app.append(el('a', { class: 'btn ghost block', href: '#/t/' + game.authorId }, t('gMoreByTeacher', { name: game.author })));
+    }
+    app.append(rateCard(game));
+    app.append(reportNote(game));
+  }
+
+  /**
+   * اللعب ملء الشاشة. الإطار باقٍ لأنه هو الحماية — غياب `allow-same-origin`
+   * يجعل أصل اللعبة مبهماً — لكنه لم يعد «مربّعاً داخل صفحة»: يغطّي الشاشة
+   * كاملةً بلا شريطٍ ولا تمرير، فيتصرّف في الجوال كتطبيق.
+   * لا تُضِف `allow-same-origin` هنا مهما بدا مغرياً.
+   */
+  function renderPlay(game) {
+    app.innerHTML = '';
+    document.body.classList.add('playing');
+
     const frame = el('iframe', {
       class: 'game-frame',
       src: '/api/games/' + game.id + '/frame',
       title: game.title,
       sandbox: 'allow-scripts allow-forms allow-modals allow-pointer-lock',
-      loading: 'lazy',
+      allow: 'fullscreen; gamepad; accelerometer; gyroscope',
       referrerpolicy: 'no-referrer',
     });
-    app.append(el('div', { class: 'game-stage' }, frame));
 
-    app.append(rateCard(game));
-    app.append(
-      el('p', { class: 'footer' }, [
-        el('span', { class: 'muted small', text: t('gSafetyNote') }),
-        el('br'),
+    const stage = el('div', { class: 'game-stage immersive' }, [
+      frame,
+      el('div', { class: 'game-hud' }, [
+        el('a', { class: 'hud-btn', href: '#/g/' + game.id, title: t('gExit'), 'aria-label': t('gExit') }, '✕'),
         el(
-          'a',
+          'button',
           {
-            class: 'muted small',
-            target: '_blank',
-            rel: 'noopener',
-            href: 'https://wa.me/970597750343?text=' + encodeURIComponent(`${t('gReport')}: ${location.origin}/games.html#/g/${game.id}`),
+            class: 'hud-btn',
+            type: 'button',
+            title: t('gFullscreen'),
+            'aria-label': t('gFullscreen'),
+            onclick: () => (document.fullscreenElement ? document.exitFullscreen?.() : stage.requestFullscreen?.().catch(() => {})),
           },
-          t('gReport')
+          '⛶'
         ),
-      ])
-    );
+      ]),
+    ]);
+    app.append(stage);
+  }
+
+  function reportNote(game) {
+    return el('p', { class: 'footer' }, [
+      el('span', { class: 'muted small', text: t('gSafetyNote') }),
+      el('br'),
+      el(
+        'a',
+        {
+          class: 'muted small',
+          target: '_blank',
+          rel: 'noopener',
+          href: 'https://wa.me/970597750343?text=' + encodeURIComponent(`${t('gReport')}: ${location.origin}/games.html#/g/${game.id}`),
+        },
+        t('gReport')
+      ),
+    ]);
   }
 
   /** نجومٌ تُنقر — والتقييم مرة واحدة لكل متصفّح */
