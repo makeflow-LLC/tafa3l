@@ -90,6 +90,7 @@
     if (hash === '/demo') return startDemo();
     if (hash === '/mine') return openMyActivities();
     if (hash === '/library') return openLibrary();
+    if (hash === '/games') return openMyGames();
     const lib = hash.match(/^\/library\/([\w-]+)$/);
     if (lib) return openLibraryItem(lib[1]);
     if (hash === '/ai') return openAiDesigner();
@@ -187,6 +188,7 @@
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
           el('a', { class: 'btn ghost sm', href: '#/library' }, t('lNav')),
+          el('a', { class: 'btn ghost sm', href: '/games.html' }, t('gNav')),
           el('a', { class: 'btn ghost sm', href: '#/ai' }, t('hdesignWithAi')),
           el('a', { class: 'btn accent sm', href: '#/' }, t('hnewActivity')),
         ]),
@@ -326,6 +328,160 @@
     ]);
   }
 
+  // ------------------------------------------------- ألعابي التفاعلية
+
+  /**
+   * رفع لعبة: ملف HTML واحد مكتفٍ بذاته. نقرأ الملف في المتصفّح ونرسل نصّه،
+   * فلا نحتاج رفعاً ثنائياً ولا تخزين ملفات — واللعبة تُقدَّم لاحقاً داخل
+   * إطار معزول بلا أصل، فلا ترى حساب أحد ولا بيانات أحد.
+   */
+  async function openMyGames() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    const user = state.user || (await loadAccount());
+    if (!user) {
+      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/games');
+      return;
+    }
+
+    let mine = [];
+    try {
+      mine = (await api('/api/games?teacher=' + encodeURIComponent(user.id) + '&sort=new&limit=48')).items;
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('gMine') }), el('p', { class: 'muted small', text: err.message })]));
+      return;
+    }
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '/games.html' }, t('gNav')),
+          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
+        ]),
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gMine') }));
+    app.append(el('p', { class: 'muted small', text: t('gMineIntro') }));
+
+    app.append(uploadCard());
+
+    if (!mine.length) {
+      app.append(el('div', { class: 'card stack center' }, [el('div', { style: { fontSize: '2.2rem' }, text: '🎮' }), el('p', { class: 'muted', text: t('gNoneYet') })]));
+      return;
+    }
+    const list = el('div', { class: 'stack' });
+    mine.forEach((game) => list.append(myGameCard(game)));
+    app.append(el('div', { class: 'card stack' }, [el('h2', { style: { margin: 0 }, text: t('gMineCount', { n: mine.length }) }), list]));
+  }
+
+  function uploadCard() {
+    const title = el('input', { maxlength: 120, placeholder: t('gFormTitlePlaceholder') });
+    const subject = el('input', { maxlength: 40, placeholder: t('gFormSubjectPlaceholder') });
+    const grades = el('input', { maxlength: 200, placeholder: t('gFormGradesPlaceholder') });
+    const description = el('input', { maxlength: 300, placeholder: t('gFormDescPlaceholder') });
+    const file = el('input', { type: 'file', accept: '.html,.htm,text/html' });
+    const code = el('textarea', { rows: 6, placeholder: t('gFormCodePlaceholder') });
+    const note = el('div', { class: 'muted small' });
+    const submit = el('button', { class: 'btn accent', type: 'button' }, t('gFormSubmit'));
+
+    let html = '';
+    const setHtml = (value, from) => {
+      html = value;
+      const kb = Math.round(Buffer_len(value) / 1024);
+      note.textContent = value ? t('gFormLoaded', { from, kb }) : '';
+      note.style.color = kb > 2048 ? '#fca5a5' : '';
+    };
+    file.addEventListener('change', async () => {
+      const f = file.files?.[0];
+      if (!f) return;
+      const text = await f.text();
+      code.value = text;
+      setHtml(text, f.name);
+    });
+    code.addEventListener('input', () => setHtml(code.value, t('gFormPasted')));
+
+    submit.addEventListener('click', async () => {
+      submit.disabled = true;
+      try {
+        const body = {
+          title: title.value,
+          subject: subject.value,
+          description: description.value,
+          // «كل المراحل» = اتركه فارغاً؛ وإلا صفوف مفصولة بفاصلة
+          grades: grades.value.split(/[,،]/).map((g) => g.trim()).filter(Boolean),
+          html,
+        };
+        const res = await api('/api/games', { method: 'POST', body });
+        toast(t('gUploaded', { title: res.game.title }), 'ok');
+        openMyGames();
+      } catch (err) {
+        toast(err.message, 'bad');
+        submit.disabled = false;
+      }
+    });
+
+    return el('div', { class: 'card stack' }, [
+      el('h2', { style: { margin: 0 }, text: t('gFormTitle') }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormHint') }),
+      el('label', {}, [el('span', { class: 'small', text: t('gFormName') }), title]),
+      el('div', { class: 'row', style: { gap: '8px' } }, [
+        el('label', { class: 'grow' }, [el('span', { class: 'small', text: t('gFormSubject') }), subject]),
+        el('label', { class: 'grow' }, [el('span', { class: 'small', text: t('gFormGrades') }), grades]),
+      ]),
+      el('label', {}, [el('span', { class: 'small', text: t('gFormDesc') }), description]),
+      el('label', {}, [el('span', { class: 'small', text: t('gFormFile') }), file]),
+      el('label', {}, [el('span', { class: 'small', text: t('gFormCode') }), code]),
+      note,
+      el('div', { class: 'row', style: { gap: '6px' } }, [submit]),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormSafety') }),
+    ]);
+  }
+
+  /** طول النص بالبايت — الحدّ على الخادم بالبايت لا بالمحارف */
+  function Buffer_len(text) {
+    return new TextEncoder().encode(String(text || '')).length;
+  }
+
+  function myGameCard(game) {
+    const remove = el('button', { class: 'btn danger sm', type: 'button' }, t('hdelete'));
+    remove.addEventListener('click', async () => {
+      if (!confirm(t('gDeleteConfirm', { title: game.title }))) return;
+      try {
+        await api('/api/games/' + game.id, { method: 'DELETE' });
+        toast(t('gDeleted'), 'ok');
+        openMyGames();
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    });
+    return el('div', { class: 'card stack tight' }, [
+      el('div', { class: 'row between' }, [
+        el('strong', { text: game.title }),
+        el('span', { class: 'row', style: { gap: '6px' } }, [
+          el('span', { class: 'badge', text: t('gPlays', { n: game.plays }) }),
+          game.rating ? el('span', { class: 'badge', text: `⭐ ${game.rating}` }) : null,
+        ]),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        game.subject ? el('span', { class: 'badge', text: game.subject }) : null,
+        ...(game.grades.length ? game.grades.map((g) => el('span', { class: 'badge', text: g })) : [el('span', { class: 'badge', text: t('gAllStages') })]),
+        el('span', { class: 'muted small', text: Math.round(game.bytes / 1024) + 'KB' }),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('a', { class: 'btn primary sm', href: '/games.html#/g/' + game.id }, t('gOpen')),
+        el('span', { class: 'grow' }),
+        remove,
+      ]),
+    ]);
+  }
+
   // ------------------------------------------------------- المكتبة العامة
 
   const library = { q: '', subject: '', grade: '', lang: '', page: 0, items: [], total: 0 };
@@ -391,7 +547,7 @@
           el('span', { class: 'grow' }, search),
           el('button', { class: 'btn primary sm', type: 'button', onclick: run }, '🔍'),
         ]),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('div', { class: 'row filters', style: { gap: '6px' } }, [
           pick('subject', t('lAllSubjects'), facet('subject')),
           pick('grade', t('lAllGrades'), facet('grade')),
           pick('lang', t('lAllLangs'), [{ value: 'ar', label: t('lArabic') }, { value: 'en', label: t('lEnglish') }]),
@@ -634,6 +790,7 @@
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
           el('a', { class: 'btn ghost sm', href: '#/library' }, t('lNav')),
+          el('a', { class: 'btn ghost sm', href: '/games.html' }, t('gNav')),
           el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuide')),
           el('span', { class: 'muted small', text: t('hyourDraftIsSaved') }),
         ]),
