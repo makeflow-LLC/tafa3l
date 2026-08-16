@@ -13,6 +13,20 @@
   const CHAT_KEY = 'tapio:ai:chat';
   const MAX_KEPT = 30;
 
+  /**
+   * المحادثة لا تُحفظ: كل دخولٍ إلى المساعد يبدأ من الصفر.
+   * كانت تُحفظ في التخزين المحلي فيعود المعلّم بعد أيام إلى حوارٍ انتهى،
+   * فيبني المساعد على سياقٍ ميت ويردّ ردّاً لا علاقة له بما يريده الآن.
+   */
+  function forgetOldChat() {
+    try {
+      store.local.set(CHAT_KEY, null);
+      localStorage.removeItem(CHAT_KEY);
+    } catch {
+      /* تخزين معطّل */
+    }
+  }
+
   const STARTERS = [
     t('cStarter1'),
     t('cStarter2'),
@@ -20,14 +34,8 @@
     t('cStarter4'),
   ];
 
-  function loadChat() {
-    const saved = store.local.get(CHAT_KEY, null);
-    return Array.isArray(saved) ? saved.slice(-MAX_KEPT) : [];
-  }
-
-  function saveChat(messages) {
-    store.local.set(CHAT_KEY, messages.slice(-MAX_KEPT));
-  }
+  /** المحادثة تعيش في الذاكرة وحدها ما دامت الصفحة مفتوحة */
+  const trim = (messages) => messages.slice(-MAX_KEPT);
 
   /**
    * يرسم صفحة المحادثة داخل عنصر.
@@ -35,7 +43,8 @@
    * @param {{onApprove:(draft:object)=>void}} opts
    */
   function render(root, opts) {
-    const state = { messages: loadChat(), draft: null, busy: false };
+    forgetOldChat();
+    const state = { messages: [], draft: null, busy: false, allowManual: false };
 
     const thread = el('div', { class: 'chat-thread' });
     const preview = el('div');
@@ -47,6 +56,23 @@
     });
     const sendBtn = el('button', { class: 'btn primary', type: 'button' }, t('cSend'));
     const clearBtn = el('button', { class: 'btn ghost sm', type: 'button' }, t('cNewChat'));
+
+    /**
+     * الافتراضي: أسئلة تُصحَّح آلياً وحدها. أسئلة «الجواب الحرّ» و«أكمل
+     * الفراغ» تُلقي على المعلّم عملَ تصحيحٍ يدويّ بعد كل جلسة، فلا تُفرض
+     * عليه ضمناً — هذا هو الزرّ الذي يجيب به على سؤال المساعد.
+     */
+    const manualBox = el('input', { type: 'checkbox' });
+    manualBox.addEventListener('change', () => {
+      state.allowManual = manualBox.checked;
+    });
+    const manualRow = el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start' } }, [
+      manualBox,
+      el('span', { class: 'small' }, [
+        el('strong', { text: t('cAllowManual') }),
+        el('span', { class: 'muted small', style: { display: 'block' }, text: t('cAllowManualHint') }),
+      ]),
+    ]);
 
     root.innerHTML = '';
     root.append(
@@ -60,6 +86,7 @@
           text: t('cIntro'),
         }),
         thread,
+        manualRow,
         el('div', { class: 'chat-compose' }, [input, sendBtn]),
       ])
     );
@@ -171,16 +198,15 @@
       const text = input.value.trim();
       if (!text || state.busy) return;
       state.messages.push({ role: 'user', content: text });
-      saveChat(state.messages);
+      state.messages = trim(state.messages);
       input.value = '';
       state.busy = true;
       sendBtn.disabled = true;
       drawThread();
 
       try {
-        const data = await api('/api/ai/design', { method: 'POST', body: { messages: state.messages } });
+        const data = await api('/api/ai/design', { method: 'POST', body: { messages: state.messages, allowManual: state.allowManual } });
         state.messages.push({ role: 'assistant', content: data.reply });
-        saveChat(state.messages);
         if (data.draft) {
           const parsed = global.Builder.parseImport(JSON.stringify(data.draft));
           if (parsed.error) {
@@ -195,7 +221,7 @@
       } finally {
         state.busy = false;
         sendBtn.disabled = false;
-        saveChat(state.messages);
+        state.messages = trim(state.messages);
         drawThread();
         drawPreview();
       }
@@ -212,7 +238,6 @@
     clearBtn.addEventListener('click', () => {
       state.messages = [];
       state.draft = null;
-      saveChat([]);
       drawThread();
       drawPreview();
     });

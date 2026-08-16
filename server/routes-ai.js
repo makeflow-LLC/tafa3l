@@ -34,6 +34,33 @@ function rateLimited(userId) {
   return null;
 }
 
+/**
+ * النوعان اللذان يُلقيان على المعلّم تصحيحاً يدويّاً بعد الجلسة.
+ * (session.js: `q.manual = (open || blank) && points > 0`)
+ */
+const MANUAL_TYPES = new Set(['open', 'blank']);
+
+const AUTO_ONLY_RULE = [
+  '',
+  'قاعدة التصحيح — مهمّة:',
+  '- الوضع الافتراضي: **أسئلة تُصحَّح آلياً فقط** — mc، truefalse، order، match. ومعها',
+  '  poll وword وscale إن كان الغرض استطلاعاً أو كسر جمود (وهذه بلا تصحيح أصلاً).',
+  '- **ممنوع** أن تضع في المسودة سؤال open (جواب حرّ) أو blank (أكمل الفراغ):',
+  '  هذان يُلزمان المعلّم بتصحيح كل إجابة بيده بعد الجلسة.',
+  '- إن رأيت أن الموضوع يستفيد منهما فعلاً، **اسأل المعلّم صراحةً** بجملة',
+  '  واحدة: هل يقبل أسئلةً تحتاج تصحيحاً يدويّاً منه؟ ونبّهه أن عليه تفعيل',
+  '  خيار «اسمح بأسئلة تحتاج تصحيحاً يدوياً» تحت المحادثة. ثم صمّم بلا هذين',
+  '  النوعين ريثما يوافق.',
+].join('\n');
+
+const MANUAL_OK_RULE = [
+  '',
+  'قاعدة التصحيح:',
+  '- المعلّم **سمح** بأسئلة التصحيح اليدوي، فيجوز لك استعمال open وblank عند الحاجة.',
+  '- ومع ذلك لا تُكثر منهما: اجعل معظم الأسئلة مما يُصحَّح آلياً، وبيّن للمعلّم',
+  '  كم سؤالاً سيحتاج تصحيحه بيده.',
+].join('\n');
+
 const SYSTEM_PROMPT = [
   'أنت «مصمّم الأنشطة» في منصة Tapio: منصة أسئلة واستطلاعات تفاعلية مباشرة للمعلّمين والمدرّبين.',
   'مهمتك أن تحاور المعلّم حتى تفهم ما يريد، ثم تصوغ له نشاطاً جاهزاً.',
@@ -45,13 +72,18 @@ const SYSTEM_PROMPT = [
   '- لا تكتب فقرات طويلة: ملخّص من سطرين ثم المسودة.',
   '',
   'أنواع الأسئلة المدعومة فقط:',
+  'أ) تُصحَّح آلياً — وهذه هي الأصل:',
   '- mc: اختيار من متعدّد (٢–٦ خيارات، وإجابة صحيحة واحدة على الأقل)',
   '- truefalse: صح/خطأ',
-  '- poll: استطلاع رأي بلا إجابة صحيحة',
+  '- order: ترتيب عناصر — "items" بالترتيب الصحيح، وتُخلط على الطالب (علامة جزئية)',
+  '- match: مطابقة — "pairs" فيها left وright لكل زوج (علامة جزئية)',
+  'ب) بلا إجابة صحيحة أصلاً (للاستطلاع وكسر الجمود، ولا تصحيح فيها):',
+  '- poll: استطلاع رأي',
   '- word: سحابة كلمات (كلمة واحدة من كل مشارك)',
   '- scale: مقياس رقمي بمنزلق (min/max ووصفَي الطرفين)',
-  '- blank: أكمل الفراغ — اكتب الجملة وضع ___ (ثلاث شرطات سفلية) مكان كل فراغ، وأرفق "blanks" بالإجابات المتوقعة و"points" للعلامة؛ يصحّحه المعلّم بيده',
-  '- open: سؤال مفتوح نصّي — اجعل له "points" (مثلاً 5) إن أردت أن يصحّحه المعلّم بيده ويمنح علامة كاملة أو جزئية، أو اتركه بلا points لسؤال رأي حرّ',
+  'ج) تحتاج تصحيحاً يدويّاً من المعلّم — لا تستعملها إلا بإذنه الصريح:',
+  '- blank: أكمل الفراغ — اكتب الجملة وضع ___ (ثلاث شرطات سفلية) مكان كل فراغ، وأرفق "blanks" بالإجابات المتوقعة و"points"',
+  '- open: سؤال مفتوح نصّي — بـ"points" ليصحّحه المعلّم ويمنح علامة، أو بلا points لسؤال رأي حرّ',
   '',
   'متى تكتب المسودة: كلما توفّرت لديك معلومات كافية، وفي كل مرة يطلب المعلّم تعديلاً.',
   'اكتب المسودة كاملةً في كل مرة (لا تكتب التعديل وحده) ككتلة JSON واحدة بين ```json و``` في نهاية ردّك،',
@@ -66,6 +98,8 @@ const SYSTEM_PROMPT = [
   '    { "type": "poll", "text": "سؤال استطلاع", "options": ["أ", "ب"] },',
   '    { "type": "scale", "text": "ما مدى وضوح الدرس؟", "scale": { "min": 1, "max": 5, "minLabel": "غير واضح", "maxLabel": "واضح جداً" } },',
   '    { "type": "word", "text": "صف الدرس بكلمة واحدة" },',
+  '    { "type": "order", "text": "رتّب مراحل دورة الماء", "items": ["التبخّر", "التكاثف", "الهطول"], "points": 1000 },',
+  '    { "type": "match", "text": "طابق العاصمة ببلدها", "pairs": [{ "left": "الأردن", "right": "عمّان" }, { "left": "مصر", "right": "القاهرة" }], "points": 1000 },',
   '    { "type": "open", "text": "ما الذي تقترح تحسينه؟" },',
   '    { "type": "open", "text": "اشرح بأسلوبك سبب حدوث التبخّر.", "points": 5 },',
   '    { "type": "blank", "text": "الماء يغلي عند ___ درجة مئوية عند سطح البحر.", "blanks": ["100"], "points": 1 }',
@@ -81,6 +115,25 @@ const SYSTEM_PROMPT = [
   `- لا تتجاوز ${MAX_QUESTIONS} سؤالاً في النشاط الواحد.`,
   '- إن لم يوافق المعلّم على شيء، عدّله وأعد إرسال المسودة كاملة.',
 ].join('\n');
+
+/** تعليمات النظام حسب إذن المعلّم بالتصحيح اليدوي */
+const systemFor = (allowManual) => SYSTEM_PROMPT + (allowManual ? MANUAL_OK_RULE : AUTO_ONLY_RULE);
+
+/**
+ * حارسٌ خلف التعليمات. النموذج يخالف أحياناً مهما وُضّحت له القاعدة، ولا
+ * يصحّ أن يُفاجأ المعلّم بعشرين إجابةً تنتظر تصحيحه لأنه لم يطلب ذلك.
+ * لا نحذف بصمت: نُرجع ما أُسقط ليُذكر في الردّ.
+ */
+function dropManual(draft) {
+  if (!draft || !Array.isArray(draft.questions)) return { draft, dropped: [] };
+  const dropped = [];
+  const questions = draft.questions.filter((q) => {
+    const manual = MANUAL_TYPES.has(String(q?.type)) && Number(q?.points ?? 1) > 0;
+    if (manual) dropped.push(String(q.text || '').slice(0, 60));
+    return !manual;
+  });
+  return { draft: { ...draft, questions }, dropped };
+}
 
 /** يفصل كتلة JSON عن نصّ الردّ — يعيد { text, draft } */
 function splitDraft(reply) {
@@ -164,9 +217,24 @@ function aiRoutes() {
       }
 
       const messages = sanitizeMessages(req.body?.messages);
-      const reply = await ai.complete({ system: SYSTEM_PROMPT, messages });
+      const allowManual = req.body?.allowManual === true;
+      const reply = await ai.complete({ system: systemFor(allowManual), messages });
       const { text, draft } = splitDraft(reply);
-      res.json({ reply: text || 'جاهزة المسودة أدناه 👇', draft });
+
+      let out = draft;
+      let note = '';
+      if (!allowManual && draft) {
+        const guarded = dropManual(draft);
+        out = guarded.draft;
+        if (guarded.dropped.length) {
+          note =
+            `\n\nℹ️ أسقطتُ ${guarded.dropped.length} سؤالاً يحتاج تصحيحاً يدويّاً منك ` +
+            '(جواب حرّ أو أكمل الفراغ). فعّل «اسمح بأسئلة تحتاج تصحيحاً يدوياً» تحت المحادثة إن أردتها.';
+        }
+        // لو لم يبقَ سؤال، فالمسودة الفارغة أسوأ من لا مسودة
+        if (!out.questions.length) out = null;
+      }
+      res.json({ reply: (text || 'جاهزة المسودة أدناه 👇') + note, draft: out });
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message || 'تعذّر توليد النشاط' });
     }
@@ -175,4 +243,4 @@ function aiRoutes() {
   return router;
 }
 
-module.exports = { aiRoutes, splitDraft, sanitizeMessages, SYSTEM_PROMPT };
+module.exports = { aiRoutes, splitDraft, sanitizeMessages, SYSTEM_PROMPT, systemFor, dropManual, MANUAL_TYPES };
