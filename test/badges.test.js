@@ -29,7 +29,8 @@ const POLL = (n) => ({
 
 /** يبني جلسة ويجعل مشاركَين يجيبان عن كل أسئلتها */
 function play(questions, settings) {
-  const session = new Session('000100', { questions, settings });
+  // هذه الاختبارات تقود الأسئلة بنفسها، فتطلب وضع المدرب صراحةً
+  const session = new Session('000100', { questions, settings: { pace: 'host', ...settings } });
   const fast = session.addParticipant({ name: 'سريع' });
   const slow = session.addParticipant({ name: 'بطيء' });
   session.start();
@@ -84,9 +85,9 @@ test('«بلا نقاط» يلغي التقييم حتى مع أسئلة لها 
 });
 
 test('سؤال نصّي بعلامة يُصحّحه المدرب يجعل النشاط مُقيَّماً', () => {
-  const session = new Session('000101', { questions: [{ type: 'open', text: 'اشرح', points: 5 }] });
+  const session = new Session('000101', { settings: { pace: 'host' }, questions: [{ type: 'open', text: 'اشرح', points: 5 }] });
   assert.equal(session.isAssessed, true, 'العلامة اليدوية تقييم أيضاً');
 
-  const free = new Session('000102', { questions: [{ type: 'open', text: 'رأيك؟', points: 0 }] });
+  const free = new Session('000102', { settings: { pace: 'host' }, questions: [{ type: 'open', text: 'رأيك؟', points: 0 }] });
   assert.equal(free.isAssessed, false, 'سؤال مفتوح بلا علامة = رأي حرّ لا تقييم');
 });

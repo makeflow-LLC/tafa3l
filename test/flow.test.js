@@ -100,7 +100,7 @@ async function post(path, body, headers) {
 const QUIZ = {
   title: 'اختبار تجريبي',
   // العدّاد مطفأ في معظم الاختبارات حتى لا ننتظر ٣ ثوانٍ قبل كل سؤال
-  settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: false },
+  settings: { pace: 'host', requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: false },
   questions: [
     {
       type: 'mc',
@@ -312,7 +312,7 @@ test('شاشة العرض المنفصلة: تتطلب مفتاح المضيف،
 test('وضع الفرق: يصل معلوم الفريق للمشارك وللمضيف، وترتيب الفرق في مرحلة الترتيب', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'اختبار الفرق',
-    settings: { requireName: true, countdown: false, showLeaderboard: true, teamMode: true, teamCount: 2, scoring: 'flat' },
+    settings: { pace: 'host', requireName: true, countdown: false, showLeaderboard: true, teamMode: true, teamCount: 2, scoring: 'flat' },
     questions: [
       { type: 'mc', text: 'س', timeLimit: 0, points: 1000, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] },
     ],
@@ -362,7 +362,7 @@ test('وضع الفرق: يصل معلوم الفريق للمشارك وللم�
 test('الاستطلاع المجهول لا يطلب اسماً ولا يكشف هوية المجيبين', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'استطلاع',
-    settings: { requireName: false, showLeaderboard: false },
+    settings: { pace: 'host', requireName: false, showLeaderboard: false },
     questions: [{ type: 'open', text: 'رأيك؟', timeLimit: 0 }],
   });
 
@@ -439,7 +439,7 @@ test('إعادة الاتصال تحافظ على النقاط والإجابا�
 test('عدّاد «استعد» يمنع الإجابة المبكرة ويفتح السؤال بعده', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'مع عدّاد',
-    settings: { countdown: true },
+    settings: { pace: 'host', countdown: true },
     questions: [
       {
         // مدة قصيرة: لو بدأ العدّ من لحظة «ابدأ» بدل لحظة الفتح لضاع أكثر من نصف الوقت
@@ -687,7 +687,7 @@ test('احتساب النقاط: ثابتة، وبلا نقاط، ومضاعف �
   async function runOnce(settings) {
     const { data } = await post('/api/sessions', {
       title: 'نقاط',
-      settings: { countdown: false, ...settings },
+      settings: { pace: 'host', countdown: false, ...settings },
       questions: [0, 1, 2].map((i) => ({
         type: 'mc',
         text: 'س' + i,
@@ -736,7 +736,7 @@ test('احتساب النقاط: ثابتة، وبلا نقاط، ومضاعف �
 test('الأوسمة تُمنح حسب الأداء الفعلي', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'أوسمة',
-    settings: { countdown: false, scoring: 'flat', streakBonus: false },
+    settings: { pace: 'host', countdown: false, scoring: 'flat', streakBonus: false },
     questions: [0, 1, 2].map((i) => ({
       type: 'mc',
       text: 'س' + i,
@@ -917,4 +917,41 @@ test('تنظيف المدخلات: تقصير النصوص وتجاهل الخي
   assert.equal(dashboard.perQuestion[0].text.length, 300);
   // الخيار الفارغ حُذف، والإجابة الصحيحة المشيرة إليه أُسقطت
   assert.equal(dashboard.hasScores, false);
+});
+
+test('الافتراضي حرّ: الطالب يدخل فيبدأ، ويجيب فينتقل', async () => {
+  // نشاطٌ بلا أي إعداد للوتيرة — كما ينشئه معلّم لم يفتح الإعدادات أصلاً
+  const { data: created } = await post('/api/sessions', {
+    title: 'واجب',
+    settings: { countdown: false },
+    questions: [0, 1].map((i) => ({
+      type: 'mc',
+      text: 'س' + i,
+      timeLimit: 0,
+      points: 1000,
+      options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }],
+      correct: ['o0'],
+    })),
+  });
+
+  const player = ws();
+  await player.ready;
+  player.send({ t: 'join', code: created.code, name: 'ليان' });
+  const joined = await player.next('state');
+
+  assert.equal(joined.settings.pace, 'self', 'الوتيرة الافتراضية حرّة');
+  assert.equal(joined.settings.autoStart, true);
+  assert.equal(joined.settings.autoNext, true, 'والانتقال بعد الإجابة تلقائي');
+  // بلا انتظار المدرب: الطالب على السؤال الأول فور دخوله
+  assert.equal(joined.phase, 'question', 'لا قاعة انتظار');
+  assert.equal(joined.index, 0);
+
+  // يجيب فينتقل بأمر «next» الذي يرسله العميل تلقائياً
+  player.send({ t: 'answer', questionId: joined.question.id, value: 'o0' });
+  await player.next('answer:accepted');
+  player.send({ t: 'next' });
+  const second = await player.next((m) => m.t === 'state' && m.index === 1);
+  assert.equal(second.phase, 'question', 'صار على السؤال الثاني بلا تدخّل من المدرب');
+
+  player.close();
 });

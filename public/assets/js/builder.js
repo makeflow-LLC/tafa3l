@@ -74,7 +74,8 @@
         allowLateJoin: true,
         showLeaderboard: true,
         countdown: true,
-        pace: 'host',
+        // الافتراضي حرّ: الطالب يدخل فيبدأ، ويجيب فينتقل
+        pace: 'self',
         autoAdvanceSec: 6,
         // الجدولة: موعد الفتح (نص محلي من حقل datetime-local) ومدة الاختبار بالدقائق
         opensAt: '',
@@ -89,6 +90,7 @@
         shuffleQuestions: false,
         shuffleOptions: false,
         autoStart: true,
+        autoNext: true,
         teamMode: false,
         teamCount: 4,
       },
@@ -442,9 +444,9 @@
           choiceGroup(
             'pace',
             [
+              { value: 'self', emoji: '🏃', title: t('bselfPaced'), hint: t('beveryLearnerAdvancesAt') },
               { value: 'host', emoji: '🎛️', title: t('bteacher'), hint: t('byouMoveBetweenQuestions') },
               { value: 'auto', emoji: '⏱️', title: t('bautomatic'), hint: t('beveryoneTogetherAdvancingOn') },
-              { value: 'self', emoji: '🏃', title: t('bselfPaced'), hint: t('beveryLearnerAdvancesAt') },
             ],
             () => update()
           ),
@@ -455,6 +457,9 @@
                 'autoStart',
                 t('bnoWaitingForThe')
               )
+            : null,
+          draft.settings.pace === 'self'
+            ? switchRow(t('bAutoNext'), 'autoNext', t('bAutoNextHint'))
             : null,
           draft.settings.pace === 'self'
             ? el('p', { class: 'muted small', style: { margin: 0 }, text: t('binSelfPacedMode') })

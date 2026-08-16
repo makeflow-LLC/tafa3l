@@ -1083,6 +1083,44 @@ textarea::placeholder {
   font-size: 0.9rem;
 }
 
+/* ------------------------------------------- الانتقال التلقائي بعد الإجابة */
+
+.autonext {
+  display: grid;
+  gap: 6px;
+  margin: -4px 0 6px;
+  text-align: center;
+}
+
+.autonext-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* شريط يتقلّص: يرى الطالب متى ينتقل فلا يفاجئه الانتقال */
+.autonext-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--brand);
+  transform-origin: inline-start;
+  animation: autonext-shrink linear forwards;
+}
+
+@keyframes autonext-shrink {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .autonext-bar {
+    display: none;
+  }
+}
+
 /* ---------------------------------------------------- بطاقة علامة الطالب */
 
 .mark-card {

@@ -72,8 +72,10 @@ function mockUpstream({ email, sub = 'g_ai_' + Math.random().toString(36).slice(
       return { ok: true, json: async () => ({ sub, email, email_verified: true, name: 'مدرب' }) };
     }
     if (u.includes('services.ai.azure.com') || u.includes('openai')) {
-      seen.azureRequests.push({ url: u, headers: opts?.headers, body: JSON.parse(opts.body) });
-      return azure();
+      const body = JSON.parse(opts.body);
+      seen.azureRequests.push({ url: u, headers: opts?.headers, body });
+      // نمرّر الجسم كي تستطيع المحاكاة التحقّق من شكله كما يفعل أزور
+      return azure(body);
     }
     return original(url, opts);
   };
@@ -195,6 +197,54 @@ test('المدرب المسجّل يحصل على ردّ ومسودة، والم
       assert.equal(item.type, 'message');
       assert.equal(item.content[0].type, item.role === 'assistant' ? 'output_text' : 'input_text');
     }
+  } finally {
+    mock.restore();
+  }
+});
+
+test('ردّ المساعد السابق يُعاد بالشكل الذي تشترطه Foundry (annotations)', async () => {
+  // المساعد كان يعمل في أول رسالة ويسقط في الثانية: الثانية وحدها تحمل
+  // دوراً سابقاً للمساعد، و«output_text» بلا annotations يرفضه أزور.
+  const c = client();
+  const userEmail = `ai3${Date.now()}@example.com`;
+  const mock = mockUpstream({
+    email: userEmail,
+    /** يحاكي تحقّق Foundry الصارم بدل أن يقبل أي شكل */
+    azure: (body) => {
+      for (const item of body.input || []) {
+        if (!item.type) return { ok: false, status: 400, text: async () => JSON.stringify({ error: { message: "Invalid value: ''" } }) };
+        for (const part of item.content || []) {
+          if (!part.type) return { ok: false, status: 400, text: async () => JSON.stringify({ error: { message: "Invalid value: ''" } }) };
+          if (part.type === 'output_text' && !Array.isArray(part.annotations)) {
+            return { ok: false, status: 400, text: async () => JSON.stringify({ error: { message: "Required property 'annotations' is missing" } }) };
+          }
+        }
+      }
+      return azureReply('وعليكم السلام! كيف أساعدك؟')();
+    },
+  });
+  try {
+    await login(c, mock);
+    await grantPremium(userEmail);
+    const res = await c.request('POST', '/api/ai/design', {
+      messages: [
+        { role: 'user', content: 'السلام عليكم' },
+        { role: 'assistant', content: 'وعليكم السلام، عن أي درس تريد نشاطاً؟' },
+        { role: 'user', content: 'عن دورة المياه' },
+      ],
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.data));
+
+    const sent = mock.seen.azureRequests.at(-1);
+    const assistantParts = sent.body.input.filter((i) => i.role === 'assistant').flatMap((i) => i.content);
+    assert.ok(assistantParts.length, 'دور المساعد السابق مُرسَل فعلاً');
+    for (const part of assistantParts) {
+      assert.equal(part.type, 'output_text');
+      assert.deepEqual(part.annotations, [], 'كل جزء output_text يحمل annotations ولو فارغاً');
+    }
+    // وأجزاء المستخدم تبقى input_text بلا annotations
+    const userParts = sent.body.input.filter((i) => i.role !== 'assistant').flatMap((i) => i.content);
+    for (const part of userParts) assert.equal(part.type, 'input_text');
   } finally {
     mock.restore();
   }
