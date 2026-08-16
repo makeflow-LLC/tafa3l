@@ -24,7 +24,7 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '' };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, mark: 0, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '' };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -82,6 +82,9 @@
         durationMinutes: 0,
         // نظام التقييم: نقاط (لعبة) أو علامات (تقييم) أو بلا تقييم
         reward: 'points',
+        markMode: 'equal',
+        timeMode: 'each',
+        timeLimit: 30,
         scoring: 'speed',
         totalMark: 20,
         passPercent: 50,
@@ -128,6 +131,8 @@
     question.text = typeof raw.text === 'string' ? raw.text : '';
     question.explanation = typeof raw.explanation === 'string' ? raw.explanation : '';
     question.timeLimit = Number.isFinite(Number(raw.timeLimit)) ? Number(raw.timeLimit) : fresh.timeLimit;
+    // علامة السؤال بوحدات العلامة — تُستعمل في التوزيع المخصّص
+    question.mark = Number.isFinite(Number(raw.mark)) ? Math.max(0, Number(raw.mark)) : 0;
     question.points = Number.isFinite(Number(raw.points)) ? Number(raw.points) : fresh.points;
     question.pointsSet = raw.pointsSet === true;
 
@@ -316,6 +321,7 @@
       out.blanks = Array.from({ length: count }, (_, i) => given[i] || '');
       if (!count) warnings.push(t('bWarnNoBlank', { n: index + 1 }));
     }
+    if (Number.isFinite(Number(q.mark))) out.mark = Math.max(0, Number(q.mark));
     if (q.timeLimit != null || q.time != null || q.seconds != null) {
       const t = Number(q.timeLimit ?? q.time ?? q.seconds);
       out.timeLimit = Number.isFinite(t) ? Math.max(0, Math.round(t)) : out.timeLimit;
@@ -497,6 +503,19 @@
               ])
             : null,
           draft.settings.reward === 'marks' ? markRow() : null,
+
+          // ---- النافذة الزمنية: اختيارية، ولكل الأسئلة معاً أو لكل سؤال
+          el('label', { text: t('bTimeTitle'), style: { marginTop: '6px' } }),
+          choiceGroup(
+            'timeMode',
+            [
+              { value: 'each', emoji: '🕐', title: t('bTimeEach'), hint: t('bTimeEachHint') },
+              { value: 'all', emoji: '⏱️', title: t('bTimeAll'), hint: t('bTimeAllHint') },
+              { value: 'none', emoji: '∞', title: t('bTimeNone'), hint: t('bTimeNoneHint') },
+            ],
+            () => update()
+          ),
+          draft.settings.timeMode === 'all' ? sharedTimeRow() : null,
           switchRow(
             t('bshowTheCorrectAnswer'),
             'revealAnswer',
@@ -765,6 +784,44 @@
      * الحالات، وحقل حرّ لمن أراد غيرها. ونعرض له فوراً كم سؤالاً يدخل في
      * العلامة — فسؤالٌ علامته صفر أو استطلاعٌ لا يُحاسَب عليه أحد.
      */
+    /** مجموع علامات الأسئلة المحتسبة — يقارنه المعلّم بالعلامة الكاملة */
+    function markSum(d) {
+      return countedQuestions(d).reduce((n, q) => n + (Number(q.mark) || 0), 0);
+    }
+
+    /** الأسئلة التي تدخل في العلامة — استطلاعٌ أو شريحةٌ لا يُحاسَب عليها أحد */
+    function countedQuestions(d) {
+      return d.questions.filter(
+        (q) => Number(q.points) > 0 && q.type !== 'poll' && q.type !== 'word' && q.type !== 'scale' && q.type !== 'slide'
+      );
+    }
+
+    /** ثوانٍ واحدة لكل الأسئلة */
+    function sharedTimeRow() {
+      const box = el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } });
+      [15, 20, 30, 45, 60, 90].forEach((secs) => {
+        const on = Number(draft.settings.timeLimit) === secs;
+        const chip = el('button', { class: 'chip' + (on ? ' on' : ''), type: 'button' }, t('bSeconds', { n: secs }));
+        chip.addEventListener('click', () => {
+          draft.settings.timeLimit = secs;
+          saveDraft(draft);
+          update();
+        });
+        box.append(chip);
+      });
+      const free = el('input', {
+        type: 'number', min: 5, max: 600, step: 5, inputmode: 'numeric',
+        value: String(draft.settings.timeLimit || 30), style: { maxWidth: '110px' },
+      });
+      free.addEventListener('input', () => {
+        const v = Number(free.value);
+        draft.settings.timeLimit = Number.isFinite(v) ? Math.min(600, Math.max(5, Math.round(v))) : 30;
+        saveDraft(draft);
+      });
+      box.append(free);
+      return box;
+    }
+
     function markRow() {
       const box = el('div', { class: 'stack tight' });
 
@@ -824,6 +881,44 @@
             el('label', {}, [el('span', { class: 'small', text: t('bMarkPass') }), pass]),
           ])
         );
+
+        /**
+         * كيف تتوزّع العلامة: بالتساوي على الأسئلة، أو رقمٌ لكل سؤال يكتبه
+         * المعلّم ومجموعه يجب أن يساوي العلامة الكاملة قبل الإطلاق.
+         */
+        const modeRow = el('div', { class: 'chips' });
+        [
+          { value: 'equal', label: t('bMarkEqual') },
+          { value: 'custom', label: t('bMarkPerQuestion') },
+        ].forEach((opt) => {
+          const on = (draft.settings.markMode || 'equal') === opt.value;
+          const chip = el('button', { class: 'chip' + (on ? ' on' : ''), type: 'button' }, opt.label);
+          chip.addEventListener('click', () => {
+            draft.settings.markMode = opt.value;
+            saveDraft(draft);
+            update();
+          });
+          modeRow.append(chip);
+        });
+        box.append(el('span', { class: 'small', text: t('bMarkSplit') }));
+        box.append(modeRow);
+
+        if ((draft.settings.markMode || 'equal') === 'custom') {
+          const sum = Math.round(markSum(draft) * 100) / 100;
+          const okSum = counted > 0 && Math.abs(sum - total) < 0.01;
+          box.append(
+            el('div', { class: 'note ' + (okSum ? 'ok' : 'warn') + ' small', style: { margin: 0 } }, [
+              okSum ? t('bMarkSumOk', { sum, total }) : t('bMarkSumOff', { sum, total }),
+            ])
+          );
+        } else {
+          box.append(
+            el('div', { class: 'muted small' }, [
+              counted ? t('bMarkEach', { each: Math.round((total / counted) * 100) / 100, n: counted }) : t('bMarkNoQuestions'),
+            ])
+          );
+        }
+
         box.append(
           el('div', { class: 'muted small' }, [
             counted
@@ -1348,7 +1443,42 @@
         saveDraft(draft);
       });
 
-      const timeAndPoints = el('div', { class: 'grid two' }, [el('div', {}, [el('label', { text: t('banswerTime') }), timeSelect])]);
+      const timeMode = draft.settings.timeMode || 'each';
+      const reward = draft.settings.reward || 'points';
+      // مؤقّت السؤال لا معنى له حين يكون الوقت واحداً للجميع أو معطّلاً
+      const timeAndPoints = el('div', { class: 'grid two' },
+        timeMode === 'each' ? [el('div', {}, [el('label', { text: t('banswerTime') }), timeSelect])] : []
+      );
+      if (timeMode !== 'each') {
+        timeAndPoints.append(
+          el('div', {}, [
+            el('label', { text: t('banswerTime') }),
+            el('p', { class: 'muted small', style: { margin: 0 },
+              text: timeMode === 'all' ? t('bTimeAllNote', { n: draft.settings.timeLimit || 30 }) : t('bTimeNoneNote') }),
+          ])
+        );
+      }
+
+      /**
+       * علامة السؤال في وضع العلامات بتوزيعٍ مخصّص. بوحدات العلامة لا النقاط:
+       * «هذا السؤال من ٣» لا «١٠٠٠ نقطة» — والمعلّم يرى المجموع في الإعدادات.
+       */
+      if (reward === 'marks' && (draft.settings.markMode || 'equal') === 'custom' && question.points > 0 && !['poll', 'word', 'scale', 'slide'].includes(question.type)) {
+        const markInput = el('input', {
+          type: 'number', min: 0, max: 1000, step: 0.5, inputmode: 'decimal',
+          value: String(question.mark ?? 0),
+        });
+        markInput.addEventListener('input', () => {
+          const v = Number(markInput.value);
+          question.mark = Number.isFinite(v) ? Math.min(1000, Math.max(0, v)) : 0;
+          saveDraft(draft);
+          // المجموع في الإعدادات يجب أن يتحرّك مع كل رقم يكتبه
+          update();
+        });
+        timeAndPoints.append(
+          el('div', {}, [el('label', { text: t('bQuestionMark') }), markInput, el('div', { class: 'muted small', text: t('bQuestionMarkHint') })]),
+        );
+      }
 
       if (question.type === 'open' || question.type === 'blank') {
         // علامة السؤال النصّي: صفر = رأي حرّ بلا تصحيح، وأكبر من صفر = يصحّحه المدرب بنفسه
@@ -1407,7 +1537,8 @@
         );
       }
 
-      if (question.type === 'mc' || question.type === 'truefalse') {
+      // النقاط لغةُ وضع النقاط وحده — وفي وضع العلامات تبقى داخلية لا تُعرض
+      if (reward === 'points' && (question.type === 'mc' || question.type === 'truefalse')) {
         // علامة حرة لكل سؤال — يضع المدرب ما يشاء
         const pointsInput = el('input', {
           type: 'number',

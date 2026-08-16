@@ -40,6 +40,19 @@ const SCORING_MODES = ['speed', 'flat', 'none'];
  * ويربك المعلّم في تقريره. فالمعلّم يختار غرضه، والمنصة تعرض ما يخدمه وحده.
  */
 const REWARD_MODES = ['points', 'marks', 'none'];
+/**
+ * توزيع العلامة على الأسئلة في وضع العلامات:
+ * equal  — العلامة الكاملة ÷ عدد الأسئلة المحتسبة (٣٠ على ١٠ أسئلة = ٣ لكل سؤال)
+ * custom — المعلّم يحدّد علامة كل سؤال، ومجموعها يجب أن يساوي العلامة الكاملة
+ */
+const MARK_MODES = ['equal', 'custom'];
+/**
+ * النافذة الزمنية للإجابة — اختيارية:
+ * none — بلا وقت
+ * all  — ثوانٍ واحدة لكل الأسئلة
+ * each — لكل سؤال وقته (السلوك التاريخي، وهو الافتراضي كي لا تتغيّر أنشطة قائمة)
+ */
+const TIME_MODES = ['none', 'all', 'each'];
 /** مضاعف السلسلة: ١٠٪ لكل إجابة صحيحة متتالية بحد أقصى ٥٠٪ */
 const STREAK_STEP = 0.1;
 const STREAK_MAX = 0.5;
@@ -134,6 +147,16 @@ function clamp(n, min, max, fallback) {
   const v = Number(n);
   if (!Number.isFinite(v)) return fallback;
   return Math.min(max, Math.max(min, Math.round(v)));
+}
+
+/**
+ * مثل clamp لكن بمنزلتين عشريتين. العلامات تحتاجها: «٣٠ على ٤ أسئلة» = ٧٫٥
+ * لكل سؤال، والتقريب إلى صحيحٍ يجعل مجموع الأسئلة يخالف العلامة الكاملة.
+ */
+function clampDecimal(n, min, max, fallback) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(v * 100) / 100));
 }
 
 /** تحويل سؤال قادم من العميل إلى شكل آمن ومُتحقق منه. */
@@ -293,6 +316,12 @@ function normalizeQuestion(raw, index) {
     q.points = 0;
   }
 
+  /**
+   * علامة السؤال بوحدات العلامة (لا النقاط). تُستعمل في وضع العلامات حين
+   * يختار المعلّم توزيعاً مخصّصاً؛ وفي التوزيع بالتساوي تُشتقّ ولا تُقرأ.
+   */
+  q.mark = clampDecimal(raw?.mark, 0, MAX_TOTAL_MARK, 0);
+
   // تصحيح يدوي: المدرب يمنح علامة كاملة أو جزئية بعد قراءة النص
   q.manual = (type === 'open' || type === 'blank') && q.points > 0;
 
@@ -401,6 +430,14 @@ function normalizeSettings(raw) {
        * null = غير محدّدة (جلسة أُنشئت عبر API قديم) فتبقى لغة المتصفح.
        */
       lang: raw?.lang === 'en' || raw?.lang === 'ar' ? raw.lang : null,
+
+      /**
+       * النافذة الزمنية. الافتراضي `each` — وهو ما كانت عليه المنصة قبل
+       * وجود هذا الخيار — فلا تتبدّل مؤقّتات نشاطٍ أُنشئ قبله.
+       */
+      timeMode: TIME_MODES.includes(raw?.timeMode) ? raw.timeMode : 'each',
+      // ثوانٍ واحدة لكل الأسئلة حين يكون timeMode = all
+      timeLimit: clamp(raw?.timeLimit, 5, 600, 30),
       opensAt: futureStamp(raw?.opensAt),
       // مدة الاختبار كاملاً بالدقائق — عند انتهائها يُقفل تلقائياً (صفر = بلا حدّ)
       durationMinutes: clamp(raw?.durationMinutes, 0, MAX_DURATION_MIN, 0),
@@ -415,6 +452,8 @@ function normalizeSettings(raw) {
        */
       // علامةٌ افتراضية معقولة لمن اختار وضع العلامات ولم يحدّد رقماً
       totalMark: marks ? totalMarkRaw || 20 : 0,
+      // التوزيع بالتساوي هو الافتراضي: أكثر الاختبارات كذلك، ولا يطلب من المعلّم شيئاً
+      markMode: marks && MARK_MODES.includes(raw?.markMode) ? raw.markMode : 'equal',
       // نسبة النجاح المئوية — يُبنى عليها «نجح/راسب» في التقرير
       passPercent: clamp(raw?.passPercent, 1, 100, 50),
     };
@@ -622,7 +661,8 @@ class Session {
     }
     participant.phase = 'question';
     participant.openedAt = Date.now();
-    participant.endsAt = q.timeLimit ? participant.openedAt + q.timeLimit * 1000 : null;
+    const secs = this.timeFor(q);
+    participant.endsAt = secs ? participant.openedAt + secs * 1000 : null;
   }
 
   /** انتقال متدرب إلى سؤاله التالي (بعد الإجابة أو انتهاء وقته) */
@@ -682,10 +722,11 @@ class Session {
       p.prevRank = board.find((entry) => entry.id === p.id)?.rank ?? null;
     }
     // الأسئلة المؤقتة تبدأ بعد عدّاد قصير حتى ينطلق الجميع معاً
-    const ready = q.timeLimit && this.settings.countdown ? READY_MS : 0;
+    const secs = this.timeFor(q);
+    const ready = secs && this.settings.countdown ? READY_MS : 0;
     this.questionOpensAt = Date.now() + ready;
     this.questionStartedAt = this.questionOpensAt;
-    this.questionEndsAt = q.timeLimit ? this.questionOpensAt + q.timeLimit * 1000 : null;
+    this.questionEndsAt = secs ? this.questionOpensAt + secs * 1000 : null;
     this.armTimer();
     this.touch();
   }
@@ -936,6 +977,35 @@ class Session {
    * الذي أصاب. والسؤال الذي لم يُصحَّح بعد يُستثنى من البسط والمقام معاً،
    * فلا تُحتسب علامة ناقصة على أنها ضعف.
    */
+  /**
+   * النافذة الزمنية الفعلية لسؤال. كل ما في الجلسة يمرّ من هنا: قراءة
+   * `q.timeLimit` مباشرةً في موضعٍ واحد منسيّ تعني مؤقّتاً يخالف اختيار المعلّم.
+   */
+  timeFor(q) {
+    if (!q) return 0;
+    const mode = this.settings.timeMode;
+    if (mode === 'none') return 0;
+    if (mode === 'all') return this.settings.timeLimit || 0;
+    return q.timeLimit || 0;
+  }
+
+  /**
+   * نصيب السؤال من العلامة الكاملة.
+   *
+   * بالتساوي: العلامة ÷ عدد الأسئلة المحتسبة — «من ٣٠ وفيه ١٠ أسئلة» = ٣ لكل
+   * سؤال. وبالتخصيص: ما كتبه المعلّم لهذا السؤال. ولا دخل للسرعة في أيّهما.
+   */
+  markShare(q) {
+    const counted = this.markedQuestions();
+    if (!counted.length) return 0;
+    if (this.settings.markMode === 'custom') {
+      const sum = counted.reduce((n, x) => n + (Number(x.mark) || 0), 0);
+      // توزيعٌ مخصّص لم تُملأ أرقامه يعني صفراً للجميع — نرجع للتساوي بدل ذلك
+      if (sum > 0) return Number(q.mark) || 0;
+    }
+    return this.settings.totalMark / counted.length;
+  }
+
   markFor(participant) {
     const total = this.settings.totalMark;
     const questions = this.markedQuestions();
@@ -950,8 +1020,9 @@ class Session {
         pending += 1;
         continue; // بانتظار المدرب: خارج الحساب حتى يقرأه
       }
-      outOf += q.points;
-      earned += (a?.merit || 0) * q.points;
+      const share = this.markShare(q);
+      outOf += share;
+      earned += (a?.merit || 0) * share;
     }
     if (!outOf) return { mark: 0, of: total, percent: 0, pending, band: 'none', passed: false };
 
@@ -1073,9 +1144,10 @@ class Session {
     if (mode === 'none' || q.points <= 0) return { points: 0, multiplier: 1 };
 
     let points = q.points;
-    if (mode === 'speed' && q.timeLimit) {
+    const secs = this.timeFor(q);
+    if (mode === 'speed' && secs) {
       // كاملة للإجابة الفورية، وتتناقص حتى نصف القيمة عند آخر ثانية
-      const ratio = Math.max(0, 1 - ms / (q.timeLimit * 1000));
+      const ratio = Math.max(0, 1 - ms / (secs * 1000));
       points = q.points * (0.5 + 0.5 * ratio);
     }
 
@@ -1594,7 +1666,7 @@ class Session {
         maxPoints: scoredQ ? q.points : 0,
         scored: scoredQ,
         manual: !!q.manual,
-        timeLimit: q.timeLimit,
+        timeLimit: this.timeFor(q),
         responses: answers.length,
         pending: answers.filter((a) => a.pending).length,
         correctCount: fullyCorrect,
@@ -1759,7 +1831,7 @@ class Session {
     }
     if (q) {
       // نكشف الإجابة الصحيحة والشرح بعد أن يجيب، إن سمح المدرب بذلك
-      state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer, this.code, this.viewFor(participant));
+      state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer, this.code, this.viewFor(participant), this.timeFor(q));
       if (participant.phase === 'feedback') state.results = this.aggregate(participant.index);
     }
     return state;
@@ -1807,7 +1879,7 @@ class Session {
     if (q && (this.phase === 'question' || this.phase === 'results')) {
       // بعد عرض النتائج تُكشف للجميع؛ وقبلها تُكشف لمن أجاب فقط إن فعّل المدرب الخيار
       const reveal = this.phase === 'results' || (this.settings.revealAnswer && !!answer);
-      state.question = publicQuestion(q, reveal, this.code, this.viewFor(participant));
+      state.question = publicQuestion(q, reveal, this.code, this.viewFor(participant), this.timeFor(q));
     }
     if (this.phase === 'results' && q) {
       state.results = this.aggregate(this.currentIndex);
@@ -1870,7 +1942,7 @@ class Session {
       teams: this.teams,
     };
     if (q) {
-      state.question = publicQuestion(q, true, this.code, null);
+      state.question = publicQuestion(q, true, this.code, null, this.timeFor(q));
       state.results = this.aggregate(this.currentIndex);
     }
     // الترتيب دائماً: شاشة العرض تعرضه بين الأسئلة وبعد النتائج لا في مرحلة الترتيب فقط
@@ -1959,7 +2031,7 @@ function ratioCorrect(q, value) {
  * @param {string} code
  * @param {{shuffleOptions?: boolean, seed?: string}} [view] رؤية هذا الطالب تحديداً
  */
-function publicQuestion(q, revealCorrect, code, view) {
+function publicQuestion(q, revealCorrect, code, view, seconds) {
   // خلط الخيارات لكل طالب على حدة: «ب» عند جاره ليست «ب» عنده، فلا يُجدي النقل
   const shuffle = view?.shuffleOptions && view?.seed;
   const order = shuffle ? seededShuffle(q.options, view.seed + q.id) : q.options;
@@ -1975,7 +2047,8 @@ function publicQuestion(q, revealCorrect, code, view) {
     imageUrl: q.image && code ? `/api/sessions/${code}/questions/${q.id}/image` : null,
     // الشرح لا يُرسل إلا مع كشف الإجابة
     explanation: revealCorrect ? q.explanation || '' : '',
-    timeLimit: q.timeLimit,
+    // الثواني الفعلية بعد تطبيق وضع الوقت — لا حقل السؤال وحده
+    timeLimit: seconds === undefined ? q.timeLimit : seconds,
     points: q.points,
     options: order.map((o) => ({
       id: o.id,
