@@ -37,7 +37,8 @@
   --tap: 48px;
 }
 
-html.stage {
+html.stage,
+html.dark {
   color-scheme: dark;
   --bg: #12102e;
   --bg-2: #1b1840;
@@ -139,11 +140,13 @@ svg {
   display: none;
 }
 
-html.stage .brand .light-only {
+html.stage .brand .light-only,
+html.dark .brand .light-only {
   display: none;
 }
 
-html.stage .brand .dark-only {
+html.stage .brand .dark-only,
+html.dark .brand .dark-only {
   display: block;
 }
 
@@ -1137,15 +1140,39 @@ textarea::placeholder {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  /* صفوفٌ متساوية الارتفاع: عنوانٌ طويل في بطاقة لا يجعل جارتها أقصر */
+  grid-auto-rows: 1fr;
 }
 
-.game-card {
+/**
+ * `.card + .card` تضيف هامشاً علويّاً للإيقاع الرأسي في العمود الواحد —
+ * وداخل الشبكة كانت تدفع كل بطاقةٍ بعد الأولى فتقصّ ارتفاعها ١٤ بكسل،
+ * فيتعرّج الصفّ رغم تساوي الصفوف.
+ */
+.game-grid > .card + .card {
+  margin-top: 0;
+}
+
+.game-card,
+.teacher-card {
   text-decoration: none;
   color: inherit;
+  min-width: 0;
+  align-content: start;
   transition: transform 0.12s ease, border-color 0.15s ease;
 }
 
-.game-card:hover {
+/* وصفٌ مسهب لا يمطّ البطاقة — سطران ثم حذف */
+.game-card .muted.small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.game-card:hover,
+.teacher-card:hover {
   border-color: var(--brand);
   transform: translateY(-2px);
 }
@@ -1160,7 +1187,14 @@ textarea::placeholder {
   background: var(--surface-2);
 }
 
+/**
+ * كل المصغّرات بمقاسٍ واحد على العرض مهما اختلفت الصور المرفوعة: الصندوق
+ * بنسبةٍ ثابتة، والصورة تملؤه قصّاً لا تشويهاً. والرفع نفسه يوحّدها أصلاً
+ * إلى ٦٤٠×٣٦٠ في جهاز المعلّم، فهذه الطبقة الثانية لا الأولى.
+ */
 .game-thumb img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1260,6 +1294,10 @@ body.playing .footer {
   background: rgba(17, 17, 17, 0.8);
 }
 
+/**
+ * خلفية الإطار بيضاء في السِمَتين عمداً: اللعبة محتوى طرفٍ ثالث كُتب على
+ * افتراض خلفيةٍ فاتحة، وقلبُها إلى الداكن يُخفي نصوصها السوداء.
+ */
 .game-frame {
   position: absolute;
   inset: 0;
@@ -1272,6 +1310,20 @@ body.playing .footer {
 .big-cta {
   font-size: 1.15rem;
   padding: 14px;
+}
+
+/* بطاقة المعلّم في الدليل */
+.teacher-face {
+  width: 72px;
+  height: 72px;
+  margin: 4px auto 2px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 800;
 }
 
 /* شرائح اختيار متعدّد — الصفوف في نموذج رفع اللعبة */
