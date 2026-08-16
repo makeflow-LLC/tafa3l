@@ -83,7 +83,7 @@
         // نظام التقييم: نقاط (لعبة) أو علامات (تقييم) أو بلا تقييم
         reward: 'points',
         markMode: 'equal',
-        timeMode: 'each',
+        timeMode: 'none',
         timeLimit: 30,
         scoring: 'speed',
         totalMark: 20,
@@ -403,6 +403,8 @@
   function mount(root, onLaunch, extraActions) {
     const draft = loadDraft();
     let openIndex = 0;
+    // هل لوحة أنواع الأسئلة مفتوحة لإضافة سؤال جديد؟
+    let adding = false;
 
     function update() {
       saveDraft(draft);
@@ -509,9 +511,8 @@
           choiceGroup(
             'timeMode',
             [
-              { value: 'each', emoji: '🕐', title: t('bTimeEach'), hint: t('bTimeEachHint') },
-              { value: 'all', emoji: '⏱️', title: t('bTimeAll'), hint: t('bTimeAllHint') },
               { value: 'none', emoji: '∞', title: t('bTimeNone'), hint: t('bTimeNoneHint') },
+              { value: 'all', emoji: '⏱️', title: t('bTimeAll'), hint: t('bTimeAllHint') },
             ],
             () => update()
           ),
@@ -535,17 +536,67 @@
         ])
       );
 
-      // ---- الأسئلة
-      const list = el('div', { class: 'stack' });
-      draft.questions.forEach((question, index) => list.append(questionCard(question, index)));
+      /**
+       * الأسئلة كمعالج: سؤالٌ واحد على الشاشة، وتنقّلٌ بين الأسئلة.
+       *
+       * كانت كل الأسئلة تُعرض معاً (مطويّةً إلا واحدة)، فصفحةٌ فيها عشرون
+       * سؤالاً تصير جداراً من البطاقات يضيع فيه المعلّم. صار كل سؤال بمنزلة
+       * صفحة: يكتبه، ثم «التالي»، ثم الذي بعده.
+       */
+      const total = draft.questions.length;
+      if (openIndex < 0 || openIndex >= total) openIndex = Math.max(0, Math.min(openIndex, total - 1));
 
-      root.append(
-        el('div', { class: 'card stack' }, [
+      const stage = el('div', { class: 'stack' });
+
+      // شريط التقدّم: أرقام تُنقر للقفز مباشرةً إلى سؤال بعينه
+      const steps = el('div', { class: 'qsteps' });
+      draft.questions.forEach((q, i) => {
+        const dot = el('button', {
+          class: 'qstep' + (i === openIndex ? ' on' : '') + (q.text && q.text.trim() ? ' done' : ''),
+          type: 'button',
+          title: q.text || TYPE_LABELS[q.type],
+        }, String(i + 1));
+        dot.addEventListener('click', () => {
+          openIndex = i;
+          draw();
+        });
+        steps.append(dot);
+      });
+
+      if (total) {
+        stage.append(
           el('div', { class: 'row between' }, [
-            el('h2', { text: t('bQuestionsSection', { count: draft.questions.length }), style: { margin: 0 } }),
-          ]),
-          list,
-          el('label', { text: t('baddANewQuestion'), style: { marginTop: '4px' } }),
+            el('strong', { text: t('bStepOf', { i: openIndex + 1, n: total }) }),
+            el('span', { class: 'muted small', text: TYPE_EMOJI[draft.questions[openIndex].type] + ' ' + TYPE_LABELS[draft.questions[openIndex].type] }),
+          ])
+        );
+        stage.append(steps);
+        stage.append(questionCard(draft.questions[openIndex], openIndex));
+
+        // التنقّل: السابق والتالي، وعلى آخر سؤال يصير «التالي» إضافةَ سؤال
+        const prev = el('button', { class: 'btn ghost', type: 'button' }, t('bStepPrev'));
+        prev.disabled = openIndex === 0;
+        prev.addEventListener('click', () => {
+          openIndex -= 1;
+          draw();
+        });
+        const next = el('button', { class: 'btn primary', type: 'button' }, openIndex + 1 < total ? t('bStepNext') : t('bStepAdd'));
+        next.addEventListener('click', () => {
+          if (openIndex + 1 < total) {
+            openIndex += 1;
+            draw();
+            return;
+          }
+          adding = true;
+          draw();
+        });
+        stage.append(el('div', { class: 'row', style: { gap: '8px', marginTop: '4px' } }, [prev, el('span', { class: 'grow' }), next]));
+      }
+
+      // لوحة الأنواع: تظهر عند طلب سؤال جديد أو حين لا سؤال بعد
+      if (adding || !total) {
+        stage.append(el('label', { text: t('baddANewQuestion'), style: { marginTop: '4px' } }));
+        stage.append(
           el('div', { class: 'types' }, TYPES.map((type) =>
             el(
               'button',
@@ -555,17 +606,39 @@
                 onclick: () => {
                   draft.questions.push(blankQuestion(type));
                   openIndex = draft.questions.length - 1;
+                  adding = false;
                   update();
                 },
               },
               [el('span', { class: 'em', text: TYPE_EMOJI[type] }), el('span', { text: '+ ' + TYPE_LABELS[type] })]
             )
-          )),
-          el('label', { text: t('borAddFromYour'), style: { marginTop: '10px' } }),
-          el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: t('bloading') })),
+          ))
+        );
+        if (total) {
+          stage.append(
+            el('button', {
+              class: 'btn ghost sm', type: 'button',
+              onclick: () => {
+                adding = false;
+                draw();
+              },
+            }, t('bStepCancelAdd'))
+          );
+        }
+        stage.append(el('label', { text: t('borAddFromYour'), style: { marginTop: '10px' } }));
+        stage.append(el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: t('bloading') })));
+      }
+
+      root.append(
+        el('div', { class: 'card stack' }, [
+          el('div', { class: 'row between' }, [
+            el('h2', { text: t('bQuestionsSection', { count: total }), style: { margin: 0 } }),
+            total ? el('button', { class: 'btn ghost sm', type: 'button', onclick: () => { adding = true; draw(); } }, t('bStepAdd')) : null,
+          ]),
+          stage,
         ])
       );
-      loadBank(root.querySelector('#bankRow'));
+      if (root.querySelector('#bankRow')) loadBank(root.querySelector('#bankRow'));
 
       // ---- الإطلاق
       const launch = el('button', { class: 'btn accent block' }, t('bstartTheSessionAnd'));
@@ -1047,10 +1120,8 @@
         el('span', { class: 't', text: question.text || TYPE_LABELS[question.type] }),
         el('span', { class: 'badge', text: TYPE_EMOJI[question.type] }),
       ]);
-      head.addEventListener('click', () => {
-        openIndex = open ? -1 : index;
-        draw();
-      });
+      // في وضع المعالج السؤال المعروض مفتوح دائماً — لا طيّ ولا فراغ
+      head.style.cursor = 'default';
       card.append(head);
       if (!open) return card;
 
@@ -1432,32 +1503,19 @@
         );
       }
 
-      // الوقت والنقاط
-      const timeSelect = el('select', {}, [
-        el('option', { value: '0' }, t('bnoTimer')),
-        ...[10, 15, 20, 30, 45, 60, 90, 120].map((seconds) => el('option', { value: String(seconds) }, seconds + t('bseconds2'))),
-      ]);
-      timeSelect.value = String(question.timeLimit || 0);
-      timeSelect.addEventListener('change', () => {
-        question.timeLimit = Number(timeSelect.value);
-        saveDraft(draft);
-      });
-
-      const timeMode = draft.settings.timeMode || 'each';
+      /**
+       * لا مؤقّت تحت كل سؤال بعد اليوم: الوقت قرارٌ واحد للنشاط كلّه يُتّخذ
+       * في الإعدادات. نكتفي هنا بسطرٍ يذكّر المعلّم بما اختاره.
+       */
+      const timeMode = draft.settings.timeMode === 'all' ? 'all' : 'none';
       const reward = draft.settings.reward || 'points';
-      // مؤقّت السؤال لا معنى له حين يكون الوقت واحداً للجميع أو معطّلاً
-      const timeAndPoints = el('div', { class: 'grid two' },
-        timeMode === 'each' ? [el('div', {}, [el('label', { text: t('banswerTime') }), timeSelect])] : []
-      );
-      if (timeMode !== 'each') {
-        timeAndPoints.append(
-          el('div', {}, [
-            el('label', { text: t('banswerTime') }),
-            el('p', { class: 'muted small', style: { margin: 0 },
-              text: timeMode === 'all' ? t('bTimeAllNote', { n: draft.settings.timeLimit || 30 }) : t('bTimeNoneNote') }),
-          ])
-        );
-      }
+      const timeAndPoints = el('div', { class: 'grid two' }, [
+        el('div', {}, [
+          el('label', { text: t('banswerTime') }),
+          el('p', { class: 'muted small', style: { margin: 0 },
+            text: timeMode === 'all' ? t('bTimeAllNote', { n: draft.settings.timeLimit || 30 }) : t('bTimeNoneNote') }),
+        ]),
+      ]);
 
       /**
        * علامة السؤال في وضع العلامات بتوزيعٍ مخصّص. بوحدات العلامة لا النقاط:

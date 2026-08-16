@@ -314,10 +314,31 @@ test('«بلا وقت» يُلغي كل المؤقّتات مهما كتب ال�
   assert.equal(s.questionEndsAt, null, 'ولا ينتهي السؤال بمهلة');
 });
 
-test('الافتراضي «لكل سؤال وقته» — فأنشطةٌ قائمة لا تتبدّل مؤقّتاتها', () => {
-  const s = new Session('000432', { title: 'ت', settings: settings({}), questions: [{ ...MC(1), timeLimit: 25 }] });
-  assert.equal(s.settings.timeMode, 'each');
-  assert.equal(s.timeFor(s.questions[0]), 25);
+test('الافتراضي بلا وقت — والمؤقّت قرارٌ يتّخذه المعلّم لا شيء يقع عليه', () => {
+  const s = new Session('000432', { title: 'ت', settings: settings({}), questions: [MC(1)] });
+  assert.equal(s.settings.timeMode, 'none');
+  assert.equal(s.timeFor(s.questions[0]), 0);
+});
+
+test('نشاطٌ قديم مؤقّت لا يفقد وقته صامتاً — يُستنتج وضعٌ موحّد بأطول مهلة', () => {
+  // قبل وجود timeMode كان الوقت تحت كل سؤال. إسقاطه يعني اختباراً مؤقّتاً
+  // صار بلا وقت بلا أن يدري صاحبه.
+  const s = new Session('000434', {
+    title: 'ت',
+    settings: settings({}),
+    questions: [{ ...MC(1), timeLimit: 15 }, { ...MC(2), timeLimit: 40 }],
+  });
+  assert.equal(s.settings.timeMode, 'all');
+  assert.equal(s.settings.timeLimit, 40, 'أطول مهلة — فلا يُقصَّر على طالبٍ وقتُه');
+  assert.equal(s.timeFor(s.questions[0]), 40);
+
+  // واختيارٌ صريح يعلو على الاستنتاج دائماً
+  const explicit = new Session('000435', {
+    title: 'ت',
+    settings: settings({ timeMode: 'none' }),
+    questions: [{ ...MC(1), timeLimit: 30 }],
+  });
+  assert.equal(explicit.timeFor(explicit.questions[0]), 0);
 });
 
 test('احتساب السرعة يتبع النافذة الفعلية لا حقل السؤال', () => {
