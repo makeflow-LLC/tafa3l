@@ -1150,6 +1150,46 @@ textarea::placeholder {
   transform: translateY(-2px);
 }
 
+/* الصورة المصغّرة — نسبة ثابتة فلا يقفز التخطيط قبل وصولها */
+.game-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: calc(var(--radius) - 4px);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.game-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.game-thumb.sm {
+  width: 96px;
+  flex: 0 0 96px;
+}
+
+.game-thumb.big {
+  max-height: 300px;
+  margin-bottom: 12px;
+}
+
+/* بديلٌ للألعاب التي رُفعت قبل أن تصير الصورة مطلوبة */
+.game-thumb.blank {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--accent, #f59e0b) 100%);
+}
+
+.game-thumb.blank span {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #fff;
+}
+
 /* مسرح اللعبة: نسبة ثابتة كي لا يقفز التخطيط قبل تحميلها */
 .game-stage {
   position: relative;
@@ -1163,6 +1203,63 @@ textarea::placeholder {
   background: var(--surface-2);
 }
 
+/**
+ * وضع اللعب: اللعبة تملأ الشاشة. الإطار باقٍ لأنه هو العزل، لكنه يختفي
+ * كإطار — لا شريط ولا هوامش ولا تمرير — فيتصرّف في الجوال كتطبيق.
+ * نستعمل dvh لا vh: شريط متصفّح الجوال يتحرّك، وvh يقصّ أسفل اللعبة.
+ */
+.game-stage.immersive {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-height: none;
+  min-height: 0;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  z-index: 80;
+  background: #000;
+}
+
+body.playing {
+  overflow: hidden;
+}
+
+body.playing .topbar,
+body.playing .footer {
+  display: none;
+}
+
+.game-hud {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  inset-inline-end: max(8px, env(safe-area-inset-right));
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+
+.hud-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 0;
+  font-size: 1.05rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(17, 17, 17, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.hud-btn:hover {
+  background: rgba(17, 17, 17, 0.8);
+}
+
 .game-frame {
   position: absolute;
   inset: 0;
@@ -1170,6 +1267,55 @@ textarea::placeholder {
   height: 100%;
   border: 0;
   background: #fff;
+}
+
+.big-cta {
+  font-size: 1.15rem;
+  padding: 14px;
+}
+
+/* شرائح اختيار متعدّد — الصفوف في نموذج رفع اللعبة */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chip.on {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cover-preview img {
+  width: 100%;
+  max-width: 320px;
+  border-radius: calc(var(--radius) - 4px);
+  border: 1px solid var(--border);
+  display: block;
+}
+
+/* رابطٌ يُنسخ: يُعرض كاملاً بلا كسر تخطيط الصفحة */
+.link-box {
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
 }
 
 .star {

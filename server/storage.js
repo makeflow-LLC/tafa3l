@@ -191,12 +191,21 @@ function fileDriver() {
         .sort(sortGames(sort));
       return {
         total: all.length,
-        items: all.slice(offset, offset + limit).map((g) => ({ ...g, authorName: db.users[g.ownerId]?.name || '' })),
+        // القائمة بلا الشفرة ولا الصورة: صفحةٌ من ٢٤ لعبة قد تبلغ عشرات
+        // الميغابايت لو حملناهما، والبطاقة لا تحتاج إلا وجودَ الصورة
+        items: all.slice(offset, offset + limit).map(({ html, cover, ...g }) => ({
+          ...g,
+          hasCover: Boolean(cover),
+          authorName: db.users[g.ownerId]?.name || '',
+        })),
       };
     },
     async getGame(id) {
       const g = db.games[id];
-      return g ? { ...g, authorName: db.users[g.ownerId]?.name || '' } : null;
+      return g ? { ...g, hasCover: Boolean(g.cover), authorName: db.users[g.ownerId]?.name || '' } : null;
+    },
+    async getGameCover(id) {
+      return db.games[id]?.cover || '';
     },
     async saveGame(game) {
       db.games[game.id] = game;
@@ -323,7 +332,9 @@ function postgresDriver(connectionString) {
       subject: r.subject || '',
       grades: Array.isArray(r.grades) ? r.grades : [],
       description: r.description || '',
-      html: r.html,
+      // القوائم لا تختار html ولا cover، فالحقلان قد يغيبان عن الصفّ
+      ...(r.html === undefined ? {} : { html: r.html }),
+      hasCover: r.has_cover === undefined ? Boolean(r.cover) : Boolean(r.has_cover),
       bytes: Number(r.bytes || 0),
       plays: Number(r.plays || 0),
       ratingSum: Number(r.rating_sum || 0),
@@ -400,6 +411,9 @@ function postgresDriver(connectionString) {
         );
         CREATE INDEX IF NOT EXISTS games_owner_idx ON games(owner_id);
         CREATE INDEX IF NOT EXISTS games_plays_idx ON games(plays DESC);
+        -- صورة مصغّرة تدلّ على اللعبة: data URI مصغَّرةٌ في المتصفّح قبل الرفع.
+        -- تُقدَّم عبر مسارها الخاص لا داخل JSON كي تبقى القوائم خفيفة ومخزَّنة.
+        ALTER TABLE games ADD COLUMN IF NOT EXISTS cover TEXT;
         CREATE TABLE IF NOT EXISTS bank_questions (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -520,8 +534,13 @@ function postgresDriver(connectionString) {
             ? '((g.rating_sum + 5 * 3.5) / (g.rating_count + 5)) DESC, g.plays DESC'
             : 'g.plays DESC, g.created_at DESC';
       const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int AS n FROM games g WHERE ${clause}`, params);
+      // نستثني html وcover صراحةً: صفحةٌ من ٢٤ لعبة بحجمها الأقصى تعني
+      // عشرات الميغابايت تُقرأ وتُنقل بلا أن تستعملها البطاقة
       const { rows } = await pool.query(
-        `SELECT g.*, u.name AS author_name FROM games g
+        `SELECT g.id, g.owner_id, g.title, g.subject, g.grades, g.description, g.bytes,
+                g.plays, g.rating_sum, g.rating_count, g.created_at, g.updated_at,
+                (g.cover IS NOT NULL) AS has_cover, u.name AS author_name
+         FROM games g
          LEFT JOIN users u ON u.id = g.owner_id
          WHERE ${clause} ORDER BY ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, Number(limit) || 24, Number(offset) || 0]
@@ -535,13 +554,17 @@ function postgresDriver(connectionString) {
       );
       return rowToGame(rows[0]);
     },
+    async getGameCover(id) {
+      const { rows } = await pool.query('SELECT cover FROM games WHERE id = $1', [id]);
+      return rows[0]?.cover || '';
+    },
     async saveGame(g) {
       await pool.query(
-        `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13`,
+        `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at, cover)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13, cover = $14`,
         [g.id, g.ownerId, g.title, g.subject || null, JSON.stringify(g.grades || []), g.description || null,
-         g.html, g.bytes || 0, g.plays || 0, g.ratingSum || 0, g.ratingCount || 0, g.createdAt, g.updatedAt]
+         g.html, g.bytes || 0, g.plays || 0, g.ratingSum || 0, g.ratingCount || 0, g.createdAt, g.updatedAt, g.cover || null]
       );
       return g;
     },

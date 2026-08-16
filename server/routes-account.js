@@ -568,6 +568,27 @@ function accountRoutes(store) {
     return false;
   }
 
+  /**
+   * الصورة المصغّرة: data URI فقط، وبأنواعٍ نقدر على تقديمها بأمان.
+   * نستبعد SVG عمداً — ملفُّ SVG مستندٌ كامل يحمل نصوصاً، ولا داعي
+   * لفتح ذلك الباب من أجل صورةِ بطاقة.
+   */
+  const COVER_TYPES = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'];
+  const MAX_COVER_BYTES = 400 * 1024;
+
+  function readCover(raw) {
+    const value = String(raw ?? '').trim();
+    if (!value) return '';
+    const match = /^data:([a-z/+-]+);base64,([A-Za-z0-9+/=]+)$/.exec(value);
+    if (!match || !COVER_TYPES.includes(match[1])) {
+      throw Object.assign(new Error('الصورة المصغّرة يجب أن تكون PNG أو JPG أو WebP'), { status: 400 });
+    }
+    if (Buffer.byteLength(match[2], 'base64') > MAX_COVER_BYTES) {
+      throw Object.assign(new Error('الصورة المصغّرة أكبر من ٤٠٠ كيلوبايت'), { status: 413 });
+    }
+    return value;
+  }
+
   /** يقرأ حقول اللعبة من الطلب ويتحقّق منها */
   function readGame(body) {
     const title = clean(body?.title, 120);
@@ -583,7 +604,9 @@ function accountRoutes(store) {
     }
     // مصفوفة فارغة = «كل المراحل»
     const grades = Array.isArray(body?.grades) ? [...new Set(body.grades.map((g) => clean(g, 40)).filter(Boolean))].slice(0, 12) : [];
-    return { title, html, bytes, grades, subject: clean(body?.subject, 40), description: clean(body?.description, 300) };
+    const cover = readCover(body?.cover);
+    if (!cover) throw Object.assign(new Error('أرفق صورةً مصغّرة تدلّ على اللعبة'), { status: 400 });
+    return { title, html, bytes, grades, cover, subject: clean(body?.subject, 40), description: clean(body?.description, 300) };
   }
 
   /** بطاقة اللعبة للمتصفّح — بلا الشفرة، فالقائمة لا تحتاجها ولا تُحمَّل بها */
@@ -597,6 +620,8 @@ function accountRoutes(store) {
     rating: g.ratingCount ? Math.round((g.ratingSum / g.ratingCount) * 10) / 10 : null,
     ratingCount: g.ratingCount || 0,
     bytes: g.bytes || 0,
+    // وجودُ الصورة فقط؛ بايتاتها تأتي من مسارها الخاص القابل للتخزين
+    cover: Boolean(g.hasCover),
     createdAt: g.createdAt,
     author: firstNameOf(g.authorName),
     authorId: g.ownerId,
@@ -634,8 +659,27 @@ function accountRoutes(store) {
   });
 
   /**
-   * مستند اللعبة نفسه. لا يُفتح مباشرةً في تبويب — يُحمَّل داخل الإطار
-   * المعزول في صفحة الألعاب. والترويسات هنا خطّ الدفاع الثاني بعد العزل.
+   * الصورة المصغّرة بمسارٍ مستقلّ: تُخزَّن في المتصفّح والوسائط، ولا تثقل
+   * JSON القائمة. لا تحتاج جلسةً — البطاقة نفسها عامّة.
+   */
+  router.get('/games/:id/cover', async (req, res) => {
+    try {
+      const cover = await storage.get().getGameCover(req.params.id);
+      const match = cover && /^data:([a-z/+-]+);base64,(.+)$/.exec(cover);
+      if (!match) return res.status(404).end();
+      res.setHeader('Content-Type', match[1]);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(Buffer.from(match[2], 'base64'));
+    } catch (err) {
+      res.status(404).end();
+    }
+  });
+
+  /**
+   * مستند اللعبة نفسه — يُقدَّم داخل الإطار المعزول، ويصحّ فتحه في تبويبٍ
+   * مستقلّ أيضاً: ترويسة CSP فيها `sandbox` فيبقى الأصل مبهماً في الحالتين.
    */
   router.get('/games/:id/frame', async (req, res) => {
     try {

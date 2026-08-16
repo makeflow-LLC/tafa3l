@@ -312,6 +312,64 @@
     return () => clearInterval(timer);
   }
 
+  /**
+   * يصغّر صورةً يختارها المستخدم إلى data URI صغيرة قبل رفعها.
+   * التصغير في المتصفّح لا على الخادم: صورةُ الجوال بأربعة ميغابايت
+   * تصير عشراتِ الكيلوبايت، فلا نرفع ما سنرميه.
+   */
+  function shrinkImage(file, { width = 640, height = 360, quality = 0.82 } = {}) {
+    return new Promise((resolve, reject) => {
+      if (!file || !/^image\//.test(file.type)) return reject(new Error('اختر ملف صورة'));
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        // قصٌّ يملأ الإطار بلا تشويهٍ للنِّسَب (مثل object-fit: cover)
+        const scale = Math.max(width / img.width, height / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (width - w) / 2, (height - h) / 2, w, h);
+        let out = canvas.toDataURL('image/webp', quality);
+        // متصفّح لا يعرف webp يعيد PNG صامتاً، وPNG للصور الفوتوغرافية ثقيل
+        if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', quality);
+        resolve(out);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('تعذّرت قراءة الصورة'));
+      };
+      img.src = url;
+    });
+  }
+
+  /** ينسخ رابطاً إلى الحافظة، وإن مُنع ذلك رجع إلى تحديد النص */
+  async function copyLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      return true;
+    } catch {
+      const box = document.createElement('textarea');
+      box.value = url;
+      box.setAttribute('readonly', '');
+      box.style.position = 'fixed';
+      box.style.opacity = '0';
+      document.body.append(box);
+      box.select();
+      let done = false;
+      try {
+        done = document.execCommand('copy');
+      } catch {
+        done = false;
+      }
+      box.remove();
+      return done;
+    }
+  }
+
   function vibrate(pattern) {
     try {
       navigator.vibrate?.(pattern);
@@ -335,6 +393,8 @@
     fmtLeft,
     countdownTo,
     escapeHtml,
+    shrinkImage,
+    copyLink,
     vibrate,
     serverAlive,
     showOfflineBanner,

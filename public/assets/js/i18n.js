@@ -11,6 +11,14 @@
 
   const LANG_KEY = 'tapio:lang';
 
+  /**
+   * تصنيفات ثابتة للمواد والصفوف. تُخزَّن المعرِّفات لا الأسماء، فالبحث
+   * والتصفية يعملان بلغةٍ واحدة بينما يقرأ كلُّ مستخدمٍ اسمَ مادّته بلغته.
+   * قيمةٌ خارج القائمة (من رفعٍ قديم) تُعرض كما كُتبت بلا كسر.
+   */
+  const SUBJECTS = ['math', 'arabic', 'english', 'science', 'tech', 'engineering', 'islamic', 'social', 'art', 'sport', 'other'];
+  const GRADES = ['kg', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g9', 'g10', 'g11', 'g12'];
+
   const DICT = {
     ar: {
       // عام — مشترك بين الصفحات
@@ -671,6 +679,46 @@
       gNoRating: 'لم تُقيَّم بعد — كن أول من يقيّمها',
       gReport: 'أبلغ عن لعبة مخالفة',
       gSafetyNote: 'اللعبة تعمل داخل إطار معزول: لا تصل إلى حسابك ولا إلى أي بيانات في المنصة.',
+      subjMath: 'رياضيات',
+      subjArabic: 'لغة عربية',
+      subjEnglish: 'لغة إنجليزية',
+      subjScience: 'علوم',
+      subjTech: 'تكنولوجيا',
+      subjEngineering: 'هندسة',
+      subjIslamic: 'تربية إسلامية',
+      subjSocial: 'اجتماعيات',
+      subjArt: 'فنون',
+      subjSport: 'رياضة بدنية',
+      subjOther: 'أخرى',
+      gradeKg: 'رياض الأطفال',
+      gradeG1: 'الصف الأول',
+      gradeG2: 'الصف الثاني',
+      gradeG3: 'الصف الثالث',
+      gradeG4: 'الصف الرابع',
+      gradeG5: 'الصف الخامس',
+      gradeG6: 'الصف السادس',
+      gradeG7: 'الصف السابع',
+      gradeG8: 'الصف الثامن',
+      gradeG9: 'الصف التاسع',
+      gradeG10: 'الصف العاشر',
+      gradeG11: 'الصف الحادي عشر',
+      gradeG12: 'الصف الثاني عشر',
+      gFormShot: 'صورة مصغّرة للّعبة',
+      gFormShotHint: 'لقطةُ شاشةٍ من اللعبة تدلّ عليها. تُصغَّر في جهازك قبل الرفع.',
+      gFormShotWorking: 'جارٍ تجهيز الصورة…',
+      gFormShotReady: 'الصورة جاهزة — {kb}KB',
+      gFormShotRequired: 'أرفق صورةً مصغّرة تدلّ على اللعبة',
+      gUnderKb: 'أقل من ١KB',
+      gCopyLink: 'انسخ الرابط',
+      gCopyShelf: 'انسخ رابط الصفحة',
+      gLinkCopied: 'نُسخ الرابط ✅',
+      gShelfTitle: '🔗 رابط ألعابك',
+      gShelfHint: 'ضعه في مجموعة صفّك ليتصفّح طلابك ألعابك وحدها.',
+      gTeacherIntro: 'ألعاب هذا المعلّم. اضغط أيّها لتلعبها ملء الشاشة.',
+      gPlayNow: '▶ العب الآن',
+      gPlayFullNote: 'تفتح اللعبة ملء الشاشة — وتخرج منها بزرّ ✕ أو زرّ الرجوع.',
+      gMoreByTeacher: 'شاهد بقية ألعاب {name}',
+      gExit: 'خروج من اللعبة',
       gMine: '🎮 ألعابي',
       gMineIntro: 'ارفع لعبتك التفاعلية ليجدها المعلّمون والطلاب في قسم الألعاب.',
       gMineCount: 'ألعابي ({n})',
@@ -684,9 +732,9 @@
       gFormName: 'اسم اللعبة',
       gFormTitlePlaceholder: 'مثال: سباق جدول الضرب',
       gFormSubject: 'المادة',
-      gFormSubjectPlaceholder: 'رياضيات، إنجليزي، علوم…',
-      gFormGrades: 'الصفوف (افصل بفاصلة، واتركه فارغاً لكل المراحل)',
-      gFormGradesPlaceholder: 'الثالث، الرابع',
+      gFormPickSubject: '— اختر المادة —',
+      gFormGrades: 'الصفوف',
+      gFormGradesHint: 'اختر صفّاً أو أكثر، أو «كل المراحل» لتناسب الجميع.',
       gFormDesc: 'وصف قصير (اختياري)',
       gFormDescPlaceholder: 'بم تفيد اللعبة وكيف تُلعب؟',
       gFormFile: 'ملف اللعبة',
@@ -1658,6 +1706,46 @@
       gNoRating: 'Not rated yet — be the first',
       gReport: 'Report an inappropriate game',
       gSafetyNote: 'The game runs inside an isolated frame: it cannot reach your account or any data on the platform.',
+      subjMath: 'Mathematics',
+      subjArabic: 'Arabic',
+      subjEnglish: 'English',
+      subjScience: 'Science',
+      subjTech: 'Technology',
+      subjEngineering: 'Engineering',
+      subjIslamic: 'Islamic studies',
+      subjSocial: 'Social studies',
+      subjArt: 'Art',
+      subjSport: 'Physical education',
+      subjOther: 'Other',
+      gradeKg: 'Kindergarten',
+      gradeG1: 'Grade 1',
+      gradeG2: 'Grade 2',
+      gradeG3: 'Grade 3',
+      gradeG4: 'Grade 4',
+      gradeG5: 'Grade 5',
+      gradeG6: 'Grade 6',
+      gradeG7: 'Grade 7',
+      gradeG8: 'Grade 8',
+      gradeG9: 'Grade 9',
+      gradeG10: 'Grade 10',
+      gradeG11: 'Grade 11',
+      gradeG12: 'Grade 12',
+      gFormShot: 'Game thumbnail',
+      gFormShotHint: 'A screenshot of the game that shows what it is. Shrunk on your device before upload.',
+      gFormShotWorking: 'Preparing the image…',
+      gFormShotReady: 'Image ready — {kb}KB',
+      gFormShotRequired: 'Attach a thumbnail that shows the game',
+      gUnderKb: 'under 1KB',
+      gCopyLink: 'Copy link',
+      gCopyShelf: 'Copy page link',
+      gLinkCopied: 'Link copied ✅',
+      gShelfTitle: '🔗 Link to your games',
+      gShelfHint: 'Share it with your class so students browse only your games.',
+      gTeacherIntro: 'This teacher’s games. Tap any of them to play full screen.',
+      gPlayNow: '▶ Play now',
+      gPlayFullNote: 'The game opens full screen — leave it with ✕ or the back button.',
+      gMoreByTeacher: 'See {name}’s other games',
+      gExit: 'Leave the game',
       gMine: '🎮 My games',
       gMineIntro: 'Upload your interactive game so teachers and students find it in the games section.',
       gMineCount: 'My games ({n})',
@@ -1671,9 +1759,9 @@
       gFormName: 'Game name',
       gFormTitlePlaceholder: 'e.g. Times-table race',
       gFormSubject: 'Subject',
-      gFormSubjectPlaceholder: 'Maths, English, Science…',
-      gFormGrades: 'Grades (comma separated; leave empty for all stages)',
-      gFormGradesPlaceholder: 'Year 3, Year 4',
+      gFormPickSubject: '— pick a subject —',
+      gFormGrades: 'Grades',
+      gFormGradesHint: 'Pick one grade or several, or “All stages” to suit everyone.',
       gFormDesc: 'Short description (optional)',
       gFormDescPlaceholder: 'What does the game teach and how is it played?',
       gFormFile: 'Game file',
@@ -2057,5 +2145,16 @@
     return btn;
   }
 
-  global.I18n = { t, getLang, setLang, mountToggle };
+  /**
+   * اسمُ مادةٍ أو صفٍّ من معرِّفه. المعرِّف المجهول — قيمةٌ حرّة من رفعٍ
+   * سابقٍ للقوائم الثابتة — يُعاد كما هو بدل أن يختفي من البطاقة.
+   */
+  function tagLabel(kind, id) {
+    const raw = String(id || '');
+    if (!raw) return '';
+    const key = kind + raw.charAt(0).toUpperCase() + raw.slice(1);
+    return (DICT[current] && DICT[current][key]) || DICT.ar[key] || raw;
+  }
+
+  global.I18n = { t, getLang, setLang, mountToggle, tagLabel, SUBJECTS, GRADES };
 })(window);
