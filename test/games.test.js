@@ -310,3 +310,42 @@ test('الصورة تُقدَّم من مسارها الخاص، والبطاق�
 
   assert.equal((await fetch(`${base}/api/games/g_nope/cover`)).status, 404);
 });
+
+// ------------------------------------------------- دليل المعلّمين والأوفلاين
+
+test('دليل المعلّمين يجمع كل معلّم مع عدد ألعابه ولعِباتها', async () => {
+  const a = client();
+  await login(a, 'هدى الشمري');
+  await a.request('POST', '/api/games', GAME({ title: 'أ١' }));
+  await a.request('POST', '/api/games', GAME({ title: 'أ٢' }));
+  const b = client();
+  await login(b, 'وليد');
+  const only = (await b.request('POST', '/api/games', GAME({ title: 'ب١' }))).data.game.id;
+  await require('../server/storage').get().bumpGamePlays(only);
+
+  const { data } = await client().request('GET', '/api/game-teachers');
+  const huda = data.items.find((x) => x.name === 'هدى');
+  const walid = data.items.find((x) => x.name === 'وليد');
+  assert.ok(huda && huda.games >= 2, 'يعدّ ألعاب كل معلّم');
+  assert.ok(walid && walid.plays >= 1, 'ويجمع لعِباتها');
+  // الاسم الأول فقط — كما في المكتبة، فالمعلّم نشر لعبة لا سيرةً ذاتية
+  assert.equal(data.items.some((x) => /الشمري/.test(x.name)), false);
+  assert.equal(JSON.stringify(data).includes('@'), false, 'ولا بريد أحد');
+});
+
+test('صاحب اللعبة وحده يقرّر السماح بحفظها للّعب بلا إنترنت', async () => {
+  const c = client();
+  await login(c, 'سلمى');
+
+  const open = (await c.request('POST', '/api/games', GAME({ title: 'مسموحة' }))).data.game;
+  assert.equal(open.offlineOk, true, 'والافتراضي مسموح');
+
+  const closed = (await c.request('POST', '/api/games', GAME({ title: 'ممنوعة', offlineOk: false }))).data.game;
+  assert.equal(closed.offlineOk, false);
+
+  // والقرار يبقى مع اللعبة في القائمة كما في بطاقتها المفردة
+  const list = await client().request('GET', '/api/games?q=' + encodeURIComponent('ممنوعة'));
+  assert.equal(list.data.items[0].offlineOk, false);
+  const one = await client().request('GET', '/api/games/' + closed.id);
+  assert.equal(one.data.game.offlineOk, false);
+});

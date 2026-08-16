@@ -411,6 +411,8 @@
     const note = el('div', { class: 'muted small' });
     const submit = el('button', { class: 'btn accent', type: 'button' }, t('gFormSubmit'));
 
+    const offlineOk = el('input', { type: 'checkbox' });
+    offlineOk.checked = true;
     const shot = el('input', { type: 'file', accept: 'image/*' });
     const shotNote = el('div', { class: 'muted small' });
     const preview = el('div', { class: 'cover-preview', hidden: true });
@@ -459,6 +461,7 @@
           // مصفوفة فارغة = «كل المراحل»
           grades: gradePicker.value(),
           cover,
+          offlineOk: offlineOk.checked,
           html,
         };
         const res = await api('/api/games', { method: 'POST', body });
@@ -491,6 +494,13 @@
       ]),
       preview,
       shotNote,
+      el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start' } }, [
+        offlineOk,
+        el('span', { class: 'small' }, [
+          el('strong', { text: t('gFormOffline') }),
+          el('span', { class: 'muted small', style: { display: 'block' }, text: t('gFormOfflineHint') }),
+        ]),
+      ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [submit]),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormSafety') }),
     ]);

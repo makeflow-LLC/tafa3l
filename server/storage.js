@@ -207,6 +207,16 @@ function fileDriver() {
     async getGameCover(id) {
       return db.games[id]?.cover || '';
     },
+    async listGameTeachers() {
+      const by = new Map();
+      for (const g of Object.values(db.games)) {
+        const row = by.get(g.ownerId) || { id: g.ownerId, name: db.users[g.ownerId]?.name || '', games: 0, plays: 0 };
+        row.games += 1;
+        row.plays += g.plays || 0;
+        by.set(g.ownerId, row);
+      }
+      return [...by.values()].sort((a, b) => b.games - a.games || b.plays - a.plays);
+    },
     async saveGame(game) {
       db.games[game.id] = game;
       schedule();
@@ -335,6 +345,7 @@ function postgresDriver(connectionString) {
       // القوائم لا تختار html ولا cover، فالحقلان قد يغيبان عن الصفّ
       ...(r.html === undefined ? {} : { html: r.html }),
       hasCover: r.has_cover === undefined ? Boolean(r.cover) : Boolean(r.has_cover),
+      offlineOk: r.offline_ok !== false,
       bytes: Number(r.bytes || 0),
       plays: Number(r.plays || 0),
       ratingSum: Number(r.rating_sum || 0),
@@ -414,6 +425,9 @@ function postgresDriver(connectionString) {
         -- صورة مصغّرة تدلّ على اللعبة: data URI مصغَّرةٌ في المتصفّح قبل الرفع.
         -- تُقدَّم عبر مسارها الخاص لا داخل JSON كي تبقى القوائم خفيفة ومخزَّنة.
         ALTER TABLE games ADD COLUMN IF NOT EXISTS cover TEXT;
+        -- يسمح صاحب اللعبة بحفظها على جهاز الطالب للّعب بلا إنترنت.
+        -- الافتراضي مسموح، ومن يمنع تبقى لعبته على المنصّة وحدها.
+        ALTER TABLE games ADD COLUMN IF NOT EXISTS offline_ok BOOLEAN NOT NULL DEFAULT TRUE;
         CREATE TABLE IF NOT EXISTS bank_questions (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -538,7 +552,7 @@ function postgresDriver(connectionString) {
       // عشرات الميغابايت تُقرأ وتُنقل بلا أن تستعملها البطاقة
       const { rows } = await pool.query(
         `SELECT g.id, g.owner_id, g.title, g.subject, g.grades, g.description, g.bytes,
-                g.plays, g.rating_sum, g.rating_count, g.created_at, g.updated_at,
+                g.plays, g.rating_sum, g.rating_count, g.created_at, g.updated_at, g.offline_ok,
                 (g.cover IS NOT NULL) AS has_cover, u.name AS author_name
          FROM games g
          LEFT JOIN users u ON u.id = g.owner_id
@@ -558,13 +572,23 @@ function postgresDriver(connectionString) {
       const { rows } = await pool.query('SELECT cover FROM games WHERE id = $1', [id]);
       return rows[0]?.cover || '';
     },
+    async listGameTeachers() {
+      const { rows } = await pool.query(
+        `SELECT g.owner_id AS id, COALESCE(u.name, '') AS name,
+                COUNT(*)::int AS games, COALESCE(SUM(g.plays), 0)::int AS plays
+         FROM games g LEFT JOIN users u ON u.id = g.owner_id
+         GROUP BY g.owner_id, u.name ORDER BY games DESC, plays DESC`
+      );
+      return rows;
+    },
     async saveGame(g) {
       await pool.query(
-        `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at, cover)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-         ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13, cover = $14`,
+        `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at, cover, offline_ok)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13, cover = $14, offline_ok = $15`,
         [g.id, g.ownerId, g.title, g.subject || null, JSON.stringify(g.grades || []), g.description || null,
-         g.html, g.bytes || 0, g.plays || 0, g.ratingSum || 0, g.ratingCount || 0, g.createdAt, g.updatedAt, g.cover || null]
+         g.html, g.bytes || 0, g.plays || 0, g.ratingSum || 0, g.ratingCount || 0, g.createdAt, g.updatedAt, g.cover || null,
+         g.offlineOk !== false]
       );
       return g;
     },

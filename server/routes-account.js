@@ -606,7 +606,17 @@ function accountRoutes(store) {
     const grades = Array.isArray(body?.grades) ? [...new Set(body.grades.map((g) => clean(g, 40)).filter(Boolean))].slice(0, 12) : [];
     const cover = readCover(body?.cover);
     if (!cover) throw Object.assign(new Error('أرفق صورةً مصغّرة تدلّ على اللعبة'), { status: 400 });
-    return { title, html, bytes, grades, cover, subject: clean(body?.subject, 40), description: clean(body?.description, 300) };
+    return {
+      title,
+      html,
+      bytes,
+      grades,
+      cover,
+      // الحفظ للعمل بلا إنترنت مسموحٌ ما لم يمنعه صاحب اللعبة صراحةً
+      offlineOk: body?.offlineOk !== false,
+      subject: clean(body?.subject, 40),
+      description: clean(body?.description, 300),
+    };
   }
 
   /** بطاقة اللعبة للمتصفّح — بلا الشفرة، فالقائمة لا تحتاجها ولا تُحمَّل بها */
@@ -622,9 +632,21 @@ function accountRoutes(store) {
     bytes: g.bytes || 0,
     // وجودُ الصورة فقط؛ بايتاتها تأتي من مسارها الخاص القابل للتخزين
     cover: Boolean(g.hasCover),
+    offlineOk: g.offlineOk !== false,
     createdAt: g.createdAt,
     author: firstNameOf(g.authorName),
     authorId: g.ownerId,
+  });
+
+  /** دليل المعلّمين — كي يتصفّح الطالب حسب معلّمه لا حسب المادة فقط */
+  router.get('/game-teachers', async (req, res) => {
+    try {
+      const rows = await storage.get().listGameTeachers();
+      res.json({ items: rows.filter((r) => r.name).map((r) => ({ id: r.id, name: firstNameOf(r.name), games: r.games, plays: r.plays })) });
+    } catch (err) {
+      console.error('game teachers:', err);
+      res.status(500).json({ error: 'تعذّر جلب المعلّمين' });
+    }
   });
 
   router.get('/games', async (req, res) => {

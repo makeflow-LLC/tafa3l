@@ -14,7 +14,27 @@
   $('#navMine').textContent = t('gMine');
   if (window.I18n) window.I18n.mountToggle($('#langRow'));
 
-  const state = { q: '', subject: '', grade: '', teacher: '', sort: 'popular', page: 0, items: [], total: 0, rated: new Set() };
+  const state = { q: '', subject: '', grade: '', teacher: '', sort: 'popular', page: 0, items: [], total: 0, rated: new Set(), saved: new Set() };
+
+  if (window.Theme) window.Theme.mountToggle($('#themeRow'), { toDark: t('gThemeDark'), toLight: t('gThemeLight') });
+
+  /** الألعاب المحفوظة على هذا الجهاز — الحقيقة في مخبأ عامل الخدمة، وهذه مرآتها للواجهة */
+  const SAVED_KEY = 'tapio:offlineGames';
+  const readSaved = () => {
+    try {
+      return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]');
+    } catch {
+      return [];
+    }
+  };
+  readSaved().forEach((id) => state.saved.add(id));
+  const writeSaved = () => {
+    try {
+      localStorage.setItem(SAVED_KEY, JSON.stringify([...state.saved]));
+    } catch {
+      /* تخزين معطّل */
+    }
+  };
 
   /** التقييم مرة واحدة لكل متصفّح — الخادم يحرس أيضاً بالعنوان */
   const RATED_KEY = 'tapio:ratedGames';
@@ -43,6 +63,7 @@
     if (play) return openGame(play[1], true);
     const one = hash.match(/^\/g\/([\w-]+)$/);
     if (one) return openGame(one[1], false);
+    if (hash === '/teachers') return openTeachers();
     const teacher = hash.match(/^\/t\/([\w-]+)$/);
     if (teacher) {
       if (state.teacher !== teacher[1]) Object.assign(state, { teacher: teacher[1], q: '', subject: '', grade: '', page: 0, items: [] });
@@ -115,6 +136,7 @@
             { value: 'rated', label: t('gSortRated') },
             { value: 'new', label: t('gSortNew') },
           ]),
+          el('a', { class: 'btn ghost sm', href: '#/teachers' }, t('gTeachersNav')),
           el('span', { class: 'grow' }),
           el('span', { class: 'muted small', text: t('gCount', { n: state.total }) }),
         ]),
@@ -151,6 +173,49 @@
       });
       app.append(more);
     }
+  }
+
+  // -------------------------------------------------------- دليل المعلّمين
+
+  /** يتصفّح الطالب حسب معلّمه لا حسب المادة وحدها */
+  async function openTeachers() {
+    exitImmersive();
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+    let items;
+    try {
+      items = (await api('/api/game-teachers')).items;
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('gTeachersTitle') }), el('p', { class: 'muted small', text: err.message })]));
+      return;
+    }
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [el('a', { class: 'btn ghost sm', href: '#/' }, t('gBack')), el('span')])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gTeachersTitle') }));
+    app.append(el('p', { class: 'muted small', text: t('gTeachersIntro') }));
+
+    if (!items.length) {
+      app.append(el('div', { class: 'card stack center' }, [el('div', { style: { fontSize: '2.4rem' }, text: '👩‍🏫' }), el('p', { class: 'muted', text: t('gTeachersEmpty') })]));
+      return;
+    }
+
+    const grid = el('div', { class: 'game-grid' });
+    items.forEach((tch) => {
+      grid.append(
+        el('a', { class: 'card stack tight teacher-card', href: '#/t/' + tch.id }, [
+          el('div', { class: 'teacher-face' }, el('span', { text: (tch.name || '؟').trim().slice(0, 1) })),
+          el('strong', { class: 'center', text: tch.name }),
+          el('div', { class: 'row', style: { gap: '6px', justifyContent: 'center' } }, [
+            el('span', { class: 'badge', text: t('gCount', { n: tch.games }) }),
+            el('span', { class: 'badge', text: t('gPlays', { n: tch.plays }) }),
+          ]),
+        ])
+      );
+    });
+    app.append(grid);
   }
 
   /** صورة اللعبة، وبديلٌ مولَّد لألعابٍ رُفعت قبل أن تصير الصورة مطلوبة */
@@ -243,6 +308,8 @@
     app.append(el('a', { class: 'btn accent block big-cta', href: '#/g/' + game.id + '/play' }, t('gPlayNow')));
     app.append(el('p', { class: 'muted small center', style: { marginTop: '6px' }, text: t('gPlayFullNote') }));
 
+    if (game.offlineOk) app.append(offlineCard(game));
+
     if (game.author) {
       app.append(el('a', { class: 'btn ghost block', href: '#/t/' + game.authorId }, t('gMoreByTeacher', { name: game.author })));
     }
@@ -287,6 +354,71 @@
       ]),
     ]);
     app.append(stage);
+  }
+
+
+  /**
+   * حفظ اللعبة على الجهاز للّعب بلا إنترنت — بلا تنزيل ملفّها.
+   * التنزيل كان سيُخرج اللعبة من عزلنا (تسقط ترويسة CSP، فتصير صفحةً كاملة
+   * الصلاحيات على جهاز الطالب) ويمنع سحبَها لو تبيّن أنها مخالفة. أما هنا
+   * فتبقى داخل الإطار المعزول نفسه: Cache API تحفظ الترويسات معها.
+   */
+  function offlineCard(game) {
+    const box = el('div', { class: 'card stack tight' });
+    const line = el('p', { class: 'muted small', style: { margin: 0 } });
+    const btn = el('button', { class: 'btn ghost block', type: 'button' });
+    const ready = 'serviceWorker' in navigator;
+
+    const paint = () => {
+      const on = state.saved.has(game.id);
+      btn.textContent = on ? t('gOfflineRemove') : t('gOfflineSave');
+      btn.classList.toggle('danger', on);
+      line.textContent = on ? t('gOfflineReady') : t('gOfflineHint');
+    };
+
+    btn.addEventListener('click', async () => {
+      if (!ready) return toast(t('gOfflineUnsupported'), 'bad');
+      btn.disabled = true;
+      const reg = await navigator.serviceWorker.ready;
+      const worker = reg.active;
+      if (!worker) {
+        btn.disabled = false;
+        return toast(t('gOfflineUnsupported'), 'bad');
+      }
+      const on = state.saved.has(game.id);
+      const done = (e) => {
+        const d = e.data || {};
+        if (d.id !== game.id) return;
+        navigator.serviceWorker.removeEventListener('message', done);
+        btn.disabled = false;
+        if (d.type === 'gameSaved' && d.ok) {
+          state.saved.add(game.id);
+          toast(t('gOfflineSaved'), 'ok');
+        } else if (d.type === 'gameSaved') {
+          toast(t('gOfflineFailed'), 'bad');
+        } else if (d.type === 'gameDropped') {
+          state.saved.delete(game.id);
+          toast(t('gOfflineRemoved'), 'ok');
+        }
+        writeSaved();
+        paint();
+      };
+      navigator.serviceWorker.addEventListener('message', done);
+      worker.postMessage({ type: on ? 'dropGame' : 'saveGame', id: game.id });
+      // لو صمت العامل لا نترك الزرّ معطّلاً إلى الأبد
+      setTimeout(() => {
+        if (!btn.disabled) return;
+        navigator.serviceWorker.removeEventListener('message', done);
+        btn.disabled = false;
+        toast(t('gOfflineFailed'), 'bad');
+      }, 15000);
+    });
+
+    box.append(el('strong', { text: t('gOfflineTitle') }));
+    box.append(line);
+    box.append(btn);
+    paint();
+    return box;
   }
 
   function reportNote(game) {
