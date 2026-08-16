@@ -180,6 +180,7 @@
 
   const PACE_KEYS = { host: 'xPaceHost', auto: 'xPaceAuto', self: 'xPaceSelf' };
   const SCORING_KEYS = { speed: 'xScoreSpeed', flat: 'xScoreFlat', none: 'xScoreNone' };
+  const BAND_KEYS = { excellent: 'mBandExcellent', veryGood: 'mBandVeryGood', good: 'mBandGood', fair: 'mBandFair', weak: 'mBandWeak' };
 
   const TYPE_AR = {
     mc: 'typeMc',
@@ -206,6 +207,7 @@
       [t('xStudentCount'), data.participantCount ?? (data.participants || []).length],
       [t('xQuestionCount'), data.questionCount ?? (data.questions || []).length],
       [t('xMaxScore'), data.maxScore || 0],
+      ...((data.totalMark || 0) > 0 ? [[t('mTotalMarkRow'), `${data.totalMark} (${t('mPassAt', { pct: data.passPercent })})`]] : []),
       [t('xPaceLabel'), (PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—')],
       [t('xScoringLabel'), (SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—')],
       [t('xExportedAt'), new Date(data.exportedAt).toLocaleString(loc())],
@@ -214,14 +216,19 @@
 
   /** جدول علامات الطلاب مرتبين تنازلياً — يُستخدم في الملفين الكامل والمختصر */
   function peopleRows(participants, data) {
+    // عمودا العلامة والتقدير يظهران فقط حين فعّل المعلّم نظام العلامات
+    const marked = (data.totalMark || 0) > 0;
     const people = [
-      [t('xRank'), t('aStudent'), t('xTeam'), t('aScore'), t('xMaxScore'), t('xPctCol'), t('xAnswered'), t('xUnanswered'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xPendingCol'), t('xBestStreak'), t('xAvgSecCol')],
+      [t('xRank'), t('aStudent'), t('xTeam'),
+        ...(marked ? [t('mMarkOf', { of: data.totalMark }), t('mBandCol'), t('mResultCol')] : []),
+        t('aScore'), t('xMaxScore'), t('xPctCol'), t('xAnswered'), t('xUnanswered'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xPendingCol'), t('xBestStreak'), t('xAvgSecCol')],
     ];
     participants.forEach((p, i) => {
       people.push([
         p.rank ?? i + 1,
         p.name,
         p.team || '—',
+        ...(marked ? [p.mark ? p.mark.mark : '—', p.mark ? t(BAND_KEYS[p.mark.band] || 'mBandFair') : '—', p.mark ? t(p.mark.passed ? 'mPassed' : 'mFailed') : '—'] : []),
         p.score,
         p.maxScore ?? data.maxScore ?? 0,
         p.percent === null || p.percent === undefined ? '—' : p.percent,
@@ -466,11 +473,15 @@
   function marksHeadBody(data) {
     const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
     const hasTeams = participants.some((p) => p.team);
-    const head = [t('xRank'), t('aStudent'), ...(hasTeams ? [t('xTeam')] : []), t('aScore'), t('xMaxScore'), t('xPctCol'), t('aCorrect'), t('xAnswered')];
+    const marked = (data.totalMark || 0) > 0;
+    const head = [t('xRank'), t('aStudent'), ...(hasTeams ? [t('xTeam')] : []),
+      ...(marked ? [t('mMarkOf', { of: data.totalMark }), t('mBandCol')] : []),
+      t('aScore'), t('xMaxScore'), t('xPctCol'), t('aCorrect'), t('xAnswered')];
     const body = participants.map((p, i) => [
       p.rank ?? i + 1,
       p.name,
       ...(hasTeams ? [p.team || '—'] : []),
+      ...(marked ? [p.mark ? `${p.mark.mark} / ${data.totalMark}` : '—', p.mark ? t(BAND_KEYS[p.mark.band] || 'mBandFair') : '—'] : []),
       p.score,
       p.maxScore ?? data.maxScore ?? 0,
       p.percent === null || p.percent === undefined ? '—' : `${p.percent}${t('pctSuffix')}`,
@@ -685,6 +696,8 @@
   .sign { flex: 1; text-align: center; font-size: 13px; color: #61657d; }
   .sign i { display: block; border-top: 1px solid #16162a; margin-bottom: 8px; }
   .rank-1 td { background: rgba(245, 183, 0, 0.16); font-weight: 700; }
+  /* من لم يبلغ نسبة النجاح: تلوين خفيف يجعل المعلّم يراهم بمسح واحد */
+  tr.failed td { background: rgba(204, 47, 47, 0.07); }
   .rank-2 td { background: rgba(150, 150, 170, 0.14); }
   .rank-3 td { background: rgba(196, 120, 60, 0.14); }
   @media print { body { margin: 12mm; } .hero { break-inside: avoid; } }`;
@@ -725,11 +738,15 @@
   function marksTableHtml(data) {
     const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
     const hasTeams = participants.some((p) => p.team);
+    const marked = (data.totalMark || 0) > 0;
     const rows = participants
       .map((p, i) => {
         const rank = p.rank ?? i + 1;
-        return `<tr class="${rank <= 3 ? 'rank-' + rank : ''}">
-        <td>${rank}</td><td>${esc(p.name)}</td>${hasTeams ? `<td>${esc(p.team || '—')}</td>` : ''}
+        const markCells = marked
+          ? `<td><strong>${p.mark ? p.mark.mark : '—'}</strong> / ${data.totalMark}</td><td>${p.mark ? esc(t(BAND_KEYS[p.mark.band] || 'mBandFair')) : '—'}</td>`
+          : '';
+        return `<tr class="${rank <= 3 ? 'rank-' + rank : ''}${p.mark && !p.mark.passed ? ' failed' : ''}">
+        <td>${rank}</td><td>${esc(p.name)}</td>${hasTeams ? `<td>${esc(p.team || '—')}</td>` : ''}${markCells}
         <td>${p.score}</td><td>${p.maxScore ?? data.maxScore ?? 0}</td>
         <td>${p.percent === null || p.percent === undefined ? '—' : p.percent + t('pctSuffix')}</td>
         <td>${p.correctCount ?? 0}</td>
@@ -739,6 +756,7 @@
       .join('');
     return `<table><thead><tr>
       <th>${t('xRank')}</th><th>${t('aStudent')}</th>${hasTeams ? `<th>${t('xTeam')}</th>` : ''}
+      ${marked ? `<th>${t('mMarkOf', { of: data.totalMark })}</th><th>${t('mBandCol')}</th>` : ''}
       <th>${t('aScore')}</th><th>${t('xMaxScore')}</th><th>${t('xPctCol')}</th>
       <th>${t('aCorrect')}</th><th>${t('xAnswered')}</th>
     </tr></thead><tbody>${rows}</tbody></table>`;

@@ -272,11 +272,16 @@
     ]);
   }
 
+  /** وضع النقاط وحده يعرض النقاط؛ وضع العلامات يُخفيها كي لا يتنافس رقمان على معنى «نتيجتي» */
+  function showsPoints(s) {
+    return (s?.settings?.reward || 'points') === 'points';
+  }
+
   function render(force) {
     const s = state.last;
     if (!s) return;
 
-    scoreBadge.classList.toggle('hidden', !(s.me && s.me.score > 0));
+    scoreBadge.classList.toggle('hidden', !(showsPoints(s) && s.me && s.me.score > 0));
     if (s.me) scoreBadge.textContent = '⭐ ' + s.me.score;
     teamBadge.classList.toggle('hidden', !s.me?.team);
     if (s.me?.team) teamBadge.textContent = `${s.me.team.emoji} ${s.me.team.name}`;
@@ -487,10 +492,10 @@
     return el('div', { class: 'card feedback' }, [
       el('div', { class: 'em', text: emoji }),
       el('div', { class: 'msg', text: msg }),
-      scored && answered?.points ? el('div', { class: 'badge ok' }, t('pPlusPoints', { points: answered.points })) : null,
-      // مضاعف السلسلة إن كان مفعّلاً وأثّر فعلاً
-      scored && answered?.multiplier > 1 ? el('div', { class: 'badge streak' }, t('pStreakX', { x: answered.multiplier })) : null,
-      scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, t('pStreakRow', { n: s.me.streak })) : null,
+      // النقاط والسلسلة لغةُ وضع النقاط وحده — في وضع العلامات يكفي «صحيحة»
+      showsPoints(s) && scored && answered?.points ? el('div', { class: 'badge ok' }, t('pPlusPoints', { points: answered.points })) : null,
+      showsPoints(s) && scored && answered?.multiplier > 1 ? el('div', { class: 'badge streak' }, t('pStreakX', { x: answered.multiplier })) : null,
+      showsPoints(s) && scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, t('pStreakRow', { n: s.me.streak })) : null,
       selfPaced ? null : el('p', { class: 'muted small', text: t('pWaitOthers') }),
     ]);
   }
@@ -1021,7 +1026,7 @@
             el('div', { class: 'k', text: t('pOfParticipants', { of: s.rank.of }) }),
           ]),
           rankDeltaBadge(s.rankDelta),
-          el('div', { class: 'badge ok' }, t('pScoreBadge', { score: s.me.score })),
+          showsPoints(s) ? el('div', { class: 'badge ok' }, t('pScoreBadge', { score: s.me.score })) : null,
         ])
       );
     }
@@ -1031,6 +1036,46 @@
     if (s.rank?.rank === 1) Fx.confetti(80);
     app.append(reactionBar());
     app.append(el('p', { class: 'footer', text: t('pWaitNextQuestion') }));
+  }
+
+  // تقدير كل نطاق: رمزه ومفتاح اسمه — النصّ من القاموس فيتبع لغة النشاط
+  const BANDS = {
+    excellent: { emoji: '🌟', key: 'mBandExcellent' },
+    veryGood: { emoji: '🎯', key: 'mBandVeryGood' },
+    good: { emoji: '👍', key: 'mBandGood' },
+    fair: { emoji: '🙂', key: 'mBandFair' },
+    weak: { emoji: '💪', key: 'mBandWeak' },
+  };
+
+  /**
+   * بطاقة العلامة: «٢٤ من ٣٠» بخطّ ضخم، وشريط ممتلئ بقدرها، وتقدير.
+   *
+   * التقدير الأدنى «يحتاج مراجعة 💪» لا «ضعيف»: الطالب يقرأ هذا وحده على
+   * هاتفه، وكلمةٌ تُحبطه لا تُصلح إجابةً واحدة. والرقم صريح على أي حال.
+   */
+  function markPanel(mark) {
+    if (!mark) return null;
+    const band = BANDS[mark.band] || BANDS.fair;
+    return el('div', { class: 'card stack center mark-card' }, [
+      el('span', { class: 'badge', text: t('mYourMark') }),
+      el('div', { class: 'mark-value' }, [
+        el('strong', { text: fmtNum(mark.mark) }),
+        el('span', { class: 'of', text: ' / ' + fmtNum(mark.of) }),
+      ]),
+      el('div', { class: 'progress' }, el('i', { style: { width: Math.min(100, mark.percent) + '%' } })),
+      el('div', { class: 'row center', style: { gap: '8px', justifyContent: 'center' } }, [
+        el('span', { class: 'badge' + (mark.passed ? ' ok' : ''), text: `${band.emoji} ${t(band.key)}` }),
+        el('span', { class: 'badge', text: fmtNum(mark.percent) + t('pctSuffix') }),
+      ]),
+      mark.pending
+        ? el('p', { class: 'muted small', style: { margin: 0 }, text: t('mPendingNote', { n: mark.pending }) })
+        : null,
+    ]);
+  }
+
+  /** رقم بلا كسر زائد: «٢٤» لا «٢٤٫٠» */
+  function fmtNum(n) {
+    return Number.isInteger(n) ? String(n) : String(n);
   }
 
   function renderFinal(s) {
@@ -1068,9 +1113,13 @@
         s.me ? avatarNode(s.me.avatar, 'lg') : null,
         s.me ? el('h2', { text: s.me.name }) : null,
         s.rank ? el('div', { class: 'badge' }, t('pRankBadge', { rank: s.rank.rank, of: s.rank.of })) : null,
-        s.me && s.me.score ? el('div', { class: 'badge ok' }, t('pScoreBadge', { score: s.me.score })) : null,
+        showsPoints(s) && s.me && s.me.score ? el('div', { class: 'badge ok' }, t('pScoreBadge', { score: s.me.score })) : null,
       ])
     );
+    // العلامة قبل الأوسمة والترتيب: هي ما يسأل عنه الطالب أولاً وما يحمله لبيته
+    const markCard = markPanel(s.mark);
+    if (markCard) app.append(markCard);
+
     const awards = badgeList(s.badges);
     if (awards) app.append(awards);
 
@@ -1119,7 +1168,9 @@
     const title = s.title || state.info?.title || t('pDefaultTitle');
     const theme = cardTheme(s);
     const bits = [];
-    if (s.me?.score) bits.push(t('pScoreBadge', { score: s.me.score }));
+    // العلامة أولاً في نصّ المشاركة: هي المفهومة خارج المنصة
+    if (s.mark) bits.push(`${s.mark.mark}/${s.mark.of}`);
+    if (showsPoints(s) && s.me?.score) bits.push(t('pScoreBadge', { score: s.me.score }));
     if (s.rank) bits.push(theme.banner ? t('pAmongParticipants', { of: s.rank.of }) : t('pRankBadge', { rank: s.rank.rank, of: s.rank.of }));
     const perf = bits.length ? ' — ' + bits.join(' · ') : '';
     // أصحاب المنصة يتصدّر مركزهم النص؛ والبقية بلقب تحفيزي
@@ -1240,10 +1291,13 @@
     }
   }
 
-  /** يرسم بطاقة النتيجة على Canvas ويعيدها (1080×1350 — مناسبة للمنصات والواتس) */
+  /**
+   * يرسم بطاقة النتيجة على Canvas ويعيدها (1080×1350 — مناسبة للمنصات والواتس).
+   * وجود علامة يضيف سطراً بارزاً، فنزيد الطول بدله بدل أن نزحم التذييل.
+   */
   async function drawShareCard(s) {
     const W = 1080;
-    const H = 1350;
+    const H = s.mark ? 1460 : 1350;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
@@ -1391,7 +1445,7 @@
     // النقاط والمركز
     const y = 1050;
     const pills = [];
-    if (s.me.score) pills.push(t('pScoreBadge', { score: s.me.score }));
+    if (showsPoints(s) && s.me.score) pills.push(t('pScoreBadge', { score: s.me.score }));
     if (s.rank) pills.push(theme.banner ? t('pAmongParticipants', { of: s.rank.of }) : t('pRankBadge', { rank: s.rank.rank, of: s.rank.of }));
     if (pills.length === 2) {
       ctx.font = `700 42px ${FONT}`;
@@ -1405,12 +1459,29 @@
       pill(ctx, pills[0], W / 2, y, `700 42px ${FONT}`, 'rgba(34,197,94,0.18)', 'rgba(34,197,94,0.5)');
     }
 
+    /**
+     * العلامة على البطاقة: هي ما يُري الطالبُ أهلَه فعلاً، لا نقاطَ لعبةٍ لا
+     * يعرفون معناها. تُرسم بارزةً تحت النقاط حين يكون للنشاط علامة.
+     */
+    if (s.mark) {
+      const band = BANDS[s.mark.band] || BANDS.fair;
+      pill(
+        ctx,
+        `${s.mark.mark} / ${s.mark.of}  ·  ${band.emoji} ${t(band.key)}`,
+        W / 2,
+        1140,
+        `800 46px ${FONT}`,
+        'rgba(139,115,255,0.22)',
+        'rgba(139,115,255,0.55)'
+      );
+    }
+
     // الأوسمة في سطر واحد
     const badges = (s.badges || []).slice(0, 2);
     if (badges.length) {
       ctx.fillStyle = '#f5f4ff';
       ctx.font = `600 40px ${FONT}`;
-      ctx.fillText(badges.map((b) => `${b.emoji} ${b.label}`).join('   ·   '), W / 2, 1185);
+      ctx.fillText(badges.map((b) => `${b.emoji} ${b.label}`).join('   ·   '), W / 2, s.mark ? 1250 : 1185);
     }
 
     // التذييل
@@ -1517,7 +1588,8 @@
           el('span', { class: 'rank', text: String(entry.rank) }),
           avatarNode(entry.avatar, 'sm'),
           el('span', { class: 'grow', text: entry.name }),
-          el('span', { class: 'score', text: String(entry.score) }),
+          // العلامة إن كان النشاط بعلامة، وإلا فالنقاط — لا الاثنان معاً
+          el('span', { class: 'score', text: entry.mark ? `${entry.mark.mark} / ${entry.mark.of}` : String(entry.score) }),
         ])
       );
     });

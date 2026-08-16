@@ -111,6 +111,11 @@
     ]);
   }
 
+  /** ما يُكتب أمام اسم المتصدّر: علامته إن كان النشاط بعلامة، وإلا نقاطه */
+  function scoreLabel(entry) {
+    return entry.mark ? `${entry.mark.mark} / ${entry.mark.of}` : String(entry.score);
+  }
+
   /** العنوان يُقصّ بسطر واحد في الشريط، فنضع كامله في التلميح لمن أراده */
   function setQuizTitle(title) {
     const node = $('#quizTitle');
@@ -440,7 +445,7 @@
       if (!entry) return;
       wrap.append(
         el('div', { class: 'pod' }, [
-          el('div', { class: 'who' }, [avatarNode(entry.avatar, ''), el('div', { class: 'nm', text: entry.name }), el('div', { class: 'sc', text: String(entry.score) })]),
+          el('div', { class: 'who' }, [avatarNode(entry.avatar, ''), el('div', { class: 'nm', text: entry.name }), el('div', { class: 'sc', text: scoreLabel(entry) })]),
           el('div', { class: 'block', style: { height: heights[slot] } }, [el('span', { class: 'medal', text: medals[index] })]),
         ])
       );
@@ -456,7 +461,7 @@
           el('span', { class: 'rank', text: String(entry.rank) }),
           avatarNode(entry.avatar, 'sm'),
           el('span', { class: 'grow', text: entry.name }),
-          el('span', { class: 'score', text: String(entry.score) }),
+          el('span', { class: 'score', text: scoreLabel(entry) }),
         ])
       );
     });

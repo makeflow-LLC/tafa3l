@@ -28,6 +28,18 @@ const REACTION_COOLDOWN_MS = 600;
 const PACES = ['host', 'auto', 'self'];
 /** طرق احتساب النقاط */
 const SCORING_MODES = ['speed', 'flat', 'none'];
+
+/**
+ * نظام التقييم — اختيارٌ واحد لا خليط.
+ *
+ * points — لعبة: نقاط بالسرعة وسلسلة وترتيب وأوسمة.
+ * marks  — تقييم: علامة من مجموع يحدّده المعلّم، وتقدير، ونسبة نجاح.
+ * none   — بلا تقييم: استطلاعات وعصف ذهني.
+ *
+ * جمعُ النظامين معاً يربك الطالب («عندي ٤٦٠٠ نقطة و٢٤ من ٣٠… أيهما نتيجتي؟»)
+ * ويربك المعلّم في تقريره. فالمعلّم يختار غرضه، والمنصة تعرض ما يخدمه وحده.
+ */
+const REWARD_MODES = ['points', 'marks', 'none'];
 /** مضاعف السلسلة: ١٠٪ لكل إجابة صحيحة متتالية بحد أقصى ٥٠٪ */
 const STREAK_STEP = 0.1;
 const STREAK_MAX = 0.5;
@@ -103,6 +115,8 @@ function clean(value, max) {
  * (≈٢٤.٨ يوماً) إلى ١ms، فكان الاختبار المجدول بعد شهر يفتح فور إنشائه.
  */
 const MAX_DURATION_MIN = 720;
+// سقف العلامة الكاملة — يتّسع لأي نظام مدرسي (من ١٠ إلى ١٠٠٠) بلا أرقام عبثية
+const MAX_TOTAL_MARK = 1000;
 const MAX_SCHEDULE_AHEAD_MS = 20 * 86400000;
 
 /** موعد مستقبلي صالح أو null — نتسامح مع النص ISO كما يرسله المتصفح */
@@ -148,6 +162,18 @@ function cleanVideo(value) {
 }
 
 const t2 = (x) => x;
+
+/**
+ * التقدير من النسبة. الحدود هي المعتمدة في أغلب المدارس العربية، ويترجمها
+ * العميل — الخادم يرسل المفتاح لا النصّ كي يبقى النشاط بلغته أياً كان.
+ */
+function gradeBand(percent) {
+  if (percent >= 90) return 'excellent';
+  if (percent >= 80) return 'veryGood';
+  if (percent >= 70) return 'good';
+  if (percent >= 60) return 'fair';
+  return 'weak';
+}
 
 /** نسخة من اللوحة بلا أسماء المصوّتين — لكل متلقٍّ غير المدرب نفسه */
 function withoutVoters(data) {
@@ -285,16 +311,40 @@ function normalizeQuiz(payload) {
     while (seen.has(q.id)) q.id = id('q_');
     seen.add(q.id);
   }
+  const settings = normalizeSettings(payload?.settings);
   return {
     title: clean(payload?.title, LIMITS.title) || 'نشاط تفاعلي',
     questions,
-    settings: {
+    settings,
+  };
+}
+
+/**
+ * الإعدادات، ومحورها اختيار واحد: نقاط أم علامات أم لا شيء.
+ *
+ * والحقول التابعة تُشتقّ منه لا تُترك للمستخدم: نشاطُ علاماتٍ فيه مضاعف
+ * سلسلة يُنتج علامةً تتجاوز سقفها، ونشاطُ نقاطٍ فيه علامة كاملة يُظهر
+ * رقمين متنافسين على معنى «نتيجتي». فنحسم التبعية هنا مرة واحدة.
+ */
+function normalizeSettings(raw) {
+    const scoring = SCORING_MODES.includes(raw?.scoring) ? raw.scoring : 'speed';
+    const totalMarkRaw = clamp(raw?.totalMark, 0, MAX_TOTAL_MARK, 0);
+    // توافق مع نشاط قديم لا يعرف «reward»: نستنتجه من إعداداته كما كانت
+    const reward = REWARD_MODES.includes(raw?.reward)
+      ? raw.reward
+      : totalMarkRaw > 0
+        ? 'marks'
+        : scoring === 'none'
+          ? 'none'
+          : 'points';
+    const marks = reward === 'marks';
+    return {
       // عندما يكون false يدخل المشاركون دون اسم (وضع الاستطلاع المجهول)
-      requireName: payload?.settings?.requireName !== false,
-      allowLateJoin: payload?.settings?.allowLateJoin !== false,
-      showLeaderboard: payload?.settings?.showLeaderboard !== false,
+      requireName: raw?.requireName !== false,
+      allowLateJoin: raw?.allowLateJoin !== false,
+      showLeaderboard: raw?.showLeaderboard !== false,
       // عدّاد «استعد» قبل الأسئلة المؤقتة
-      countdown: payload?.settings?.countdown !== false,
+      countdown: raw?.countdown !== false,
 
       /**
        * وضع التقدّم بين الأسئلة:
@@ -302,10 +352,10 @@ function normalizeQuiz(payload) {
        * auto — الجميع معاً، والانتقال تلقائي بعد عرض النتائج
        * self — كل متدرب يتقدّم بسرعته الخاصة
        */
-      pace: PACES.includes(payload?.settings?.pace) ? payload.settings.pace : 'host',
-      autoAdvanceSec: clamp(payload?.settings?.autoAdvanceSec, 2, 60, 6),
+      pace: PACES.includes(raw?.pace) ? raw.pace : 'host',
+      autoAdvanceSec: clamp(raw?.autoAdvanceSec, 2, 60, 6),
       // الوضع الحر: يبدأ المتدرب فور دخوله بلا انتظار المدرب
-      autoStart: payload?.settings?.autoStart !== false,
+      autoStart: raw?.autoStart !== false,
 
       /**
        * احتساب النقاط:
@@ -313,19 +363,22 @@ function normalizeQuiz(payload) {
        * flat  — نقاط ثابتة لكل إجابة صحيحة
        * none  — بلا نقاط ولا ترتيب
        */
-      scoring: SCORING_MODES.includes(payload?.settings?.scoring) ? payload.settings.scoring : 'speed',
-      // مضاعف يتصاعد مع الإجابات الصحيحة المتتالية
-      streakBonus: payload?.settings?.streakBonus !== false,
+      reward,
+      // في وضع العلامات: نقاط ثابتة داخلياً كي يوافق الترتيبُ العلامةَ،
+      // وفي «بلا تقييم» لا نقاط أصلاً
+      scoring: marks ? 'flat' : reward === 'none' ? 'none' : scoring,
+      // مضاعف السلسلة لعبة نقاط بحتة — لا مكان له في نشاط بعلامة
+      streakBonus: reward === 'points' && raw?.streakBonus !== false,
       // إظهار الإجابة الصحيحة وشرحها للمتدرب فور إجابته
-      revealAnswer: payload?.settings?.revealAnswer !== false,
+      revealAnswer: raw?.revealAnswer !== false,
       // نزاهة الاختبار: خلط ترتيب الأسئلة مرة عند الإطلاق،
       // وخلط الخيارات لكل طالب على حدة فلا يُجدي النظر في شاشة الجار
-      shuffleQuestions: payload?.settings?.shuffleQuestions === true,
-      shuffleOptions: payload?.settings?.shuffleOptions === true,
+      shuffleQuestions: raw?.shuffleQuestions === true,
+      shuffleOptions: raw?.shuffleOptions === true,
 
       // وضع الفرق: يُقسَّم المشاركون تلقائياً إلى فرق ملوّنة، ونقاطهم تُجمع لترتيب جماعي
-      teamMode: payload?.settings?.teamMode === true,
-      teamCount: clamp(payload?.settings?.teamCount, 2, TEAMS.length, 4),
+      teamMode: raw?.teamMode === true,
+      teamCount: clamp(raw?.teamCount, 2, TEAMS.length, 4),
 
       /**
        * الجدولة: موعد فتح الاختبار (بالمللي ثانية) — الجلسة تبقى في القاعة
@@ -336,12 +389,24 @@ function normalizeQuiz(payload) {
        * كي يرى الطالب النشاط بلغة معلّمه لا بلغة متصفحه.
        * null = غير محدّدة (جلسة أُنشئت عبر API قديم) فتبقى لغة المتصفح.
        */
-      lang: payload?.settings?.lang === 'en' || payload?.settings?.lang === 'ar' ? payload.settings.lang : null,
-      opensAt: futureStamp(payload?.settings?.opensAt),
+      lang: raw?.lang === 'en' || raw?.lang === 'ar' ? raw.lang : null,
+      opensAt: futureStamp(raw?.opensAt),
       // مدة الاختبار كاملاً بالدقائق — عند انتهائها يُقفل تلقائياً (صفر = بلا حدّ)
-      durationMinutes: clamp(payload?.settings?.durationMinutes, 0, MAX_DURATION_MIN, 0),
-    },
-  };
+      durationMinutes: clamp(raw?.durationMinutes, 0, MAX_DURATION_MIN, 0),
+
+      /**
+       * العلامة الكاملة للنشاط: «هذا الاختبار من ٣٠». صفر = بلا علامة.
+       *
+       * وهي شيء آخر غير النقاط: النقاط لعبةٌ تكافئ السرعة والسلسلة، والعلامة
+       * سجلٌّ رسمي يذهب إلى دفتر المعلّم — فتُحسب من نسبة الإتقان وحدها،
+       * لا من الثواني. طالبان أجابا الإجابات نفسها يأخذان العلامة نفسها
+       * وإن سبق أحدهما الآخر، وإلا لصار المرء يُقيَّم على سرعة إصبعه.
+       */
+      // علامةٌ افتراضية معقولة لمن اختار وضع العلامات ولم يحدّد رقماً
+      totalMark: marks ? totalMarkRaw || 20 : 0,
+      // نسبة النجاح المئوية — يُبنى عليها «نجح/راسب» في التقرير
+      passPercent: clamp(raw?.passPercent, 1, 100, 50),
+    };
 }
 
 class Session {
@@ -761,9 +826,13 @@ class Session {
     // هل هو أول من أجاب على هذا السؤال؟
     const isFirst = ![...this.participants.values()].some((p) => p !== participant && p.answers.has(qid));
 
+    // نسبة الإتقان (٠..١) مستقلّةً عن الزمن والسلسلة — عليها وحدها تُبنى العلامة
+    let merit = null;
+
     if (SCORED_TYPES.has(q.type) && q.correct.length > 0) {
       const chosen = Array.isArray(value) ? value : [value];
       correct = chosen.length === q.correct.length && chosen.every((c) => q.correct.includes(c));
+      merit = correct ? 1 : 0;
       if (correct) {
         const scored = this.scorePoints(q, ms, participant);
         points = scored.points;
@@ -778,6 +847,7 @@ class Session {
     } else if (PARTIAL_TYPES.has(q.type) && q.points > 0) {
       // نسبة الصواب تضرب في العلامة: ثلاثة من أربعة ليست كصفر من أربعة
       const ratio = ratioCorrect(q, value);
+      merit = ratio;
       const scored = this.scorePoints(q, ms, participant);
       points = Math.round(scored.points * ratio);
       multiplier = scored.multiplier;
@@ -794,7 +864,8 @@ class Session {
 
     // سؤال مفتوح بعلامة: لا نتيجة قبل أن يقرأه المدرب ويمنح العلامة
     const pending = !!q.manual;
-    participant.answers.set(qid, { value, at: now, ms, correct, points, multiplier, pending, maxPoints: q.manual ? q.points : 0 });
+    // اليدوي: لا إتقان قبل أن يقرأه المدرب — يبقى null فلا يُحسب في العلامة
+    participant.answers.set(qid, { value, at: now, ms, correct, points, multiplier, merit, pending, maxPoints: q.manual ? q.points : 0 });
     if (this.settings.pace === 'self') participant.phase = 'feedback';
     this.touch();
     return { ok: true, correct, points, multiplier, value, pending };
@@ -817,10 +888,73 @@ class Session {
     answer.points = points;
     answer.pending = false;
     answer.gradedAt = Date.now();
+    answer.merit = q.points > 0 ? points / q.points : 0;
     // كاملة = صحيحة، جزئية = 'partial'، صفر = خاطئة
     answer.correct = points >= q.points ? true : points > 0 ? 'partial' : false;
     this.touch();
     return { ok: true, points, correct: answer.correct };
+  }
+
+  /**
+   * الأسئلة التي تدخل في العلامة، ومجموع علاماتها.
+   *
+   * الاستطلاع وسحابة الكلمات والمقياس والشريحة خارجها: لا صواب فيها فلا
+   * يُحاسَب عليها أحد. وسؤالٌ علامته صفر خارجها أيضاً — المعلّم قال بذلك
+   * إنه للإحماء لا للتقييم.
+   */
+  markedQuestions() {
+    return this.questions.filter(
+      (q) => q.points > 0 && ((SCORED_TYPES.has(q.type) && q.correct.length > 0) || PARTIAL_TYPES.has(q.type) || q.manual)
+    );
+  }
+
+  get hasMark() {
+    return this.settings.reward === 'marks' && this.settings.totalMark > 0 && this.markedQuestions().length > 0;
+  }
+
+  /** هل تُعرض النقاط أصلاً؟ في وضع العلامات تبقى داخلية للترتيب وحده */
+  get showsPoints() {
+    return this.settings.reward === 'points';
+  }
+
+  /**
+   * علامة مشارك من العلامة الكاملة للنشاط.
+   *
+   * تُحسب من الإتقان لا من النقاط: النقاط فيها مكافأة السرعة ومضاعف
+   * السلسلة، وكلاهما يجعل علامةً «من ٣٠» تتجاوز الثلاثين أو تظلم البطيء
+   * الذي أصاب. والسؤال الذي لم يُصحَّح بعد يُستثنى من البسط والمقام معاً،
+   * فلا تُحتسب علامة ناقصة على أنها ضعف.
+   */
+  markFor(participant) {
+    const total = this.settings.totalMark;
+    const questions = this.markedQuestions();
+    if (this.settings.reward !== 'marks' || !total || !questions.length) return null;
+
+    let earned = 0;
+    let outOf = 0;
+    let pending = 0;
+    for (const q of questions) {
+      const a = participant.answers.get(q.id);
+      if (a?.pending) {
+        pending += 1;
+        continue; // بانتظار المدرب: خارج الحساب حتى يقرأه
+      }
+      outOf += q.points;
+      earned += (a?.merit || 0) * q.points;
+    }
+    if (!outOf) return { mark: 0, of: total, percent: 0, pending, band: 'none', passed: false };
+
+    const percent = Math.round((earned / outOf) * 1000) / 10;
+    // منزلة عشرية واحدة: «٢٤٫٥ من ٣٠» مقبولة في الدفاتر، وأكثر منها تشويش
+    const mark = Math.round((earned / outOf) * total * 10) / 10;
+    return {
+      mark,
+      of: total,
+      percent,
+      pending,
+      band: gradeBand(percent),
+      passed: percent >= this.settings.passPercent,
+    };
   }
 
   /** رؤية العرض الخاصة بمشارك: بذرته الثابتة وهل يُخلط له الخيارات */
@@ -1155,6 +1289,8 @@ class Session {
         avatar: p.avatar,
         score: p.score,
         streak: p.streak,
+        // في وضع العلامات تُعرض العلامة مكان النقاط في كل لوحة ترتيب
+        mark: this.hasMark ? this.markFor(p) : null,
       }));
   }
 
@@ -1344,6 +1480,7 @@ class Session {
           accuracy: scoredAnswered ? Math.round((correct / scoredAnswered) * 100) : null,
           avgMs: answered.length ? Math.round(answered.reduce((s, a) => s + a.ms, 0) / answered.length) : 0,
           progress: seen ? Math.round((answered.length / seen) * 100) : 0,
+          mark: this.markFor(p),
           answers: this.questions.map((q) => {
             const a = p.answers.get(q.id);
             if (!a) return null;
@@ -1367,7 +1504,12 @@ class Session {
       questionCount: this.questions.length,
       pace: this.settings.pace,
       scoring: this.settings.scoring,
-      hasScores: scored.length > 0 && this.settings.scoring !== 'none',
+      hasScores: this.showsPoints && scored.length > 0,
+      // اختيار المعلّم: نقاط أو علامات — لا يجتمعان في لوحة واحدة
+      reward: this.settings.reward,
+      hasMark: this.hasMark,
+      totalMark: this.settings.totalMark,
+      passPercent: this.settings.passPercent,
       startedAt: this.createdAt,
       summary: {
         participants: participants.length,
@@ -1383,6 +1525,13 @@ class Session {
           const withAcc = askedQuestions.filter((q) => q.accuracy !== null);
           return withAcc.length ? Math.round(withAcc.reduce((s, q) => s + q.accuracy, 0) / withAcc.length) : null;
         })(),
+        // خلاصة العلامات: ما يكتبه المعلّم في تقريره بلا حساب يدوي
+        avgMark: (() => {
+          const marks = rows.map((r) => r.mark).filter(Boolean);
+          if (!marks.length) return null;
+          return Math.round((marks.reduce((n, m) => n + m.mark, 0) / marks.length) * 10) / 10;
+        })(),
+        passed: rows.filter((r) => r.mark?.passed).length,
       },
       perQuestion,
       participants: rows,
@@ -1466,6 +1615,9 @@ class Session {
         scheduledAt: this.settings.opensAt ? new Date(this.settings.opensAt).toISOString() : null,
         durationMinutes: this.settings.durationMinutes || null,
       },
+      // نظام العلامات: صفر يعني أن التقرير يبقى بالنقاط وحدها كما كان
+      totalMark: this.hasMark ? this.settings.totalMark : 0,
+      passPercent: this.settings.passPercent,
       questionCount: this.answerableUpTo(this.questions.length),
       participantCount: participants.length,
       maxScore,
@@ -1492,6 +1644,7 @@ class Session {
           pendingCount: values.filter((a) => a.pending).length,
           bestStreak: p.bestStreak,
           avgSeconds: values.length ? Math.round((totalMs / values.length) / 100) / 10 : 0,
+          mark: this.markFor(p),
           answers: this.questions.map((q) => {
             const a = p.answers.get(q.id);
             if (!a) return null;
@@ -1586,6 +1739,7 @@ class Session {
       // الترتيب بلا معنى في استطلاع: الجميع «أول» لأن لا إجابة صحيحة
       if (this.isAssessed) state.rank = this.rankOf(participant.id);
       state.badges = this.badgesFor(participant.id);
+      state.mark = this.markFor(participant);
       if (this.settings.showLeaderboard) {
         state.leaderboard = this.leaderboard(10);
         state.teamLeaderboard = this.teamLeaderboard();
@@ -1657,6 +1811,8 @@ class Session {
       }
       if (this.phase === 'final') state.badges = this.badgesFor(participant.id);
     }
+    // العلامة تُعرض في نهاية النشاط وحده: منتصفُه ليس موضع حكم
+    if (this.phase === 'final' || this.status === 'ended') state.mark = this.markFor(participant);
     return state;
   }
 
