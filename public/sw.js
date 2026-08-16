@@ -124,7 +124,7 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(async () => {
-          // الصفحة تطلب الأصول ببصمة إصدار (‎?v=1.41.0‎) بينما نخزّنها بلا
+          // الصفحة تطلب الأصول ببصمة إصدار (‎?v=1.42.0‎) بينما نخزّنها بلا
           // بصمة، فبلا ignoreSearch لا يطابق شيءٌ شيئاً ويسقط «بلا إنترنت»
           const hit = await caches.match(request, { ignoreSearch: true });
           if (hit) return hit;

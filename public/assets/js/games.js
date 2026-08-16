@@ -97,9 +97,19 @@
     state.total = data.total;
 
     app.innerHTML = '';
-    const teacherName = state.teacher ? state.items[0]?.author || '' : '';
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: state.teacher ? t('gByTeacher', { name: teacherName }) : t('gTitle') }));
-    app.append(el('p', { class: 'muted small', text: state.teacher ? t('gTeacherIntro') : t('gIntro') }));
+    if (state.teacher) {
+      // البروفايل اختياري: من لم يملأه تظهر صفحته كما كانت بلا نقصان
+      let who = null;
+      try {
+        who = (await api('/api/teachers/' + state.teacher)).teacher;
+      } catch {
+        /* لا بروفايل — نكمل بالاسم المستخرج من البطاقات */
+      }
+      app.append(teacherHeader(who, state.items[0]?.author || ''));
+    } else {
+      app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gTitle') }));
+      app.append(el('p', { class: 'muted small', text: t('gIntro') }));
+    }
 
     const search = el('input', { type: 'search', placeholder: t('gSearchPlaceholder'), value: state.q, maxlength: 80 });
     const run = () => {
@@ -206,7 +216,7 @@
     items.forEach((tch) => {
       grid.append(
         el('a', { class: 'card stack tight teacher-card', href: '#/t/' + tch.id }, [
-          el('div', { class: 'teacher-face' }, el('span', { text: (tch.name || '؟').trim().slice(0, 1) })),
+          faceNode(tch, tch.name),
           el('strong', { class: 'center', text: tch.name }),
           el('div', { class: 'row', style: { gap: '6px', justifyContent: 'center' } }, [
             el('span', { class: 'badge', text: t('gCount', { n: tch.games }) }),
@@ -216,6 +226,40 @@
       );
     });
     app.append(grid);
+  }
+
+  /** ترويسة صفحة المعلّم — الصورة والرقم يظهران فقط إن ملأهما هو */
+  function teacherHeader(who, fallbackName) {
+    const name = who?.name || fallbackName;
+    const box = el('div', { class: 'card row teacher-head', style: { gap: '14px', alignItems: 'center' } });
+    box.append(faceNode(who, name));
+    const side = el('div', { class: 'stack tight grow' }, [
+      el('h1', { style: { margin: 0, fontSize: '1.45rem' }, text: t('gByTeacher', { name }) }),
+      el('span', { class: 'muted small', text: t('gTeacherIntro') }),
+    ]);
+    if (who?.phone) {
+      side.append(
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el(
+            'a',
+            { class: 'btn ghost sm', target: '_blank', rel: 'noopener', href: 'https://wa.me/' + who.phone.replace(/[^\d]/g, '') },
+            t('gTeacherWhatsapp')
+          ),
+          // dir=ltr: الرقم في سياقٍ عربي ينقلب بصريّاً بلا هذا
+          el('a', { class: 'btn ghost sm', dir: 'ltr', href: 'tel:' + who.phone.replace(/[^\d+]/g, '') }, who.phone),
+        ])
+      );
+    }
+    box.append(side);
+    return box;
+  }
+
+  /** صورة المعلّم، وبديلٌ بحرف اسمه لمن لم يرفع صورة */
+  function faceNode(who, name) {
+    const face = el('div', { class: 'teacher-face' });
+    if (who?.photo) face.append(el('img', { src: '/api/teachers/' + who.id + '/photo', alt: name }));
+    else face.append(el('span', { text: (name || '؟').trim().slice(0, 1) }));
+    return face;
   }
 
   /** صورة اللعبة، وبديلٌ مولَّد لألعابٍ رُفعت قبل أن تصير الصورة مطلوبة */

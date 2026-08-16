@@ -1312,6 +1312,36 @@ body.playing .footer {
   padding: 14px;
 }
 
+/* صورة البروفايل في لوحة المعلّم */
+.profile-face {
+  width: 96px;
+  height: 96px;
+  flex: 0 0 96px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  color: #fff;
+  font-size: 2.2rem;
+  font-weight: 800;
+}
+
+.profile-face img,
+.teacher-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.teacher-head .teacher-face {
+  margin: 0;
+  width: 84px;
+  height: 84px;
+  flex: 0 0 84px;
+}
+
 /* بطاقة المعلّم في الدليل */
 .teacher-face {
   width: 72px;
@@ -1324,6 +1354,7 @@ body.playing .footer {
   color: #fff;
   font-size: 1.8rem;
   font-weight: 800;
+  overflow: hidden;
 }
 
 /* شرائح اختيار متعدّد — الصفوف في نموذج رفع اللعبة */

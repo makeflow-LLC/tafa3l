@@ -349,3 +349,61 @@ test('صاحب اللعبة وحده يقرّر السماح بحفظها للّ
   const one = await client().request('GET', '/api/games/' + closed.id);
   assert.equal(one.data.game.offlineOk, false);
 });
+
+// ------------------------------------------------------- بروفايل المعلّم
+
+test('البروفايل اختياري بالكامل، والفارغ يُبقي السلوك القديم', async () => {
+  const c = client();
+  await login(c, 'سلمى القاسم');
+  const id = (await c.request('GET', '/api/profile')).data.profile.id;
+
+  // بلا بروفايل: الاسم الأول وحده كما كان قبل هذه الميزة
+  const before = await client().request('GET', '/api/teachers/' + id);
+  assert.equal(before.data.teacher.name, 'سلمى');
+  assert.equal(before.data.teacher.phone, '');
+  assert.equal(before.data.teacher.photo, false);
+
+  await c.request('PUT', '/api/profile', { displayName: 'أ. سلمى القاسم', phone: '+970 59 123 4567', photo: PNG });
+  const after = (await client().request('GET', '/api/teachers/' + id)).data.teacher;
+  assert.equal(after.name, 'أ. سلمى القاسم', 'الاسم الذي اختاره يعلو على الاسم الأول');
+  assert.equal(after.phone, '+970 59 123 4567');
+  assert.equal(after.photo, true);
+
+  // ويستطيع التراجع عن أيٍّ منها بإفراغه
+  await c.request('PUT', '/api/profile', { displayName: '', phone: '', photo: '' });
+  const cleared = (await client().request('GET', '/api/teachers/' + id)).data.teacher;
+  assert.equal(cleared.name, 'سلمى', 'وإفراغ الاسم يعيد الاسم الأول');
+  assert.equal(cleared.phone, '');
+  assert.equal(cleared.photo, false);
+});
+
+test('البروفايل العلني لا يكشف ما لم يكتبه المعلّم بنفسه', async () => {
+  const c = client();
+  await login(c, 'وليد', 'walid.private@example.com');
+  const id = (await c.request('GET', '/api/profile')).data.profile.id;
+  const body = JSON.stringify((await client().request('GET', '/api/teachers/' + id)).data);
+  assert.equal(body.includes('walid.private@example.com'), false, 'لا بريد');
+  assert.equal(/googleId|google_id/.test(body), false, 'ولا معرّف جوجل');
+  assert.equal(/premium/i.test(body), false, 'ولا حالة اشتراك');
+
+  // ولا يعدّل أحد بروفايل غيره: المسار يعمل على صاحب الجلسة فقط
+  assert.equal((await client().request('PUT', '/api/profile', { displayName: 'منتحل' })).status, 401);
+});
+
+test('الرقم يُتحقَّق منه، والصورة تُتحقَّق كما تُتحقَّق أغلفة الألعاب', async () => {
+  const c = client();
+  await login(c, 'سلمى');
+  assert.equal((await c.request('PUT', '/api/profile', { phone: 'اتصل بي' })).status, 400);
+  assert.equal((await c.request('PUT', '/api/profile', { phone: '<script>x</script>' })).status, 400);
+  assert.equal((await c.request('PUT', '/api/profile', { photo: 'https://x.test/a.png' })).status, 400);
+  const huge = 'data:image/png;base64,' + Buffer.alloc(201 * 1024, 1).toString('base64');
+  assert.equal((await c.request('PUT', '/api/profile', { photo: huge })).status, 413);
+
+  // والصورة تُقدَّم من مسارها بنوعها الصحيح
+  await c.request('PUT', '/api/profile', { photo: PNG });
+  const id = (await c.request('GET', '/api/profile')).data.profile.id;
+  const res = await fetch(`${base}/api/teachers/${id}/photo`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/png');
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+});

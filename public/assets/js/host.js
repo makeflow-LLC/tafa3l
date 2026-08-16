@@ -94,6 +94,7 @@
     if (hash === '/mine') return openMyActivities();
     if (hash === '/library') return openLibrary();
     if (hash === '/games') return openMyGames();
+    if (hash === '/profile') return openProfile();
     const lib = hash.match(/^\/library\/([\w-]+)$/);
     if (lib) return openLibraryItem(lib[1]);
     if (hash === '/ai') return openAiDesigner();
@@ -365,6 +366,7 @@
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/profile' }, t('profNav')),
           el('a', { class: 'btn ghost sm', href: '/games.html' }, t('gNav')),
           el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
         ]),
@@ -505,6 +507,129 @@
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormSafety') }),
     ]);
   }
+
+  /**
+   * بروفايل المعلّم — الحقول الثلاثة اختيارية بالكامل. الحساب يعمل بلا أيٍّ
+   * منها كما كان، وما يُترك فارغاً لا يظهر للطلاب أصلاً.
+   */
+  async function openProfile() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    const user = state.user || (await loadAccount());
+    if (!user) {
+      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/profile');
+      return;
+    }
+
+    let profile;
+    try {
+      profile = (await api('/api/profile')).profile;
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('profTitle') }), el('p', { class: 'muted small', text: err.message })]));
+      return;
+    }
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
+        el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('profTitle') }));
+    app.append(el('p', { class: 'muted small', text: t('profIntro') }));
+
+    const displayName = el('input', { maxlength: 60, placeholder: t('profNamePlaceholder'), value: profile.displayName });
+    const phone = el('input', { type: 'tel', dir: 'ltr', maxlength: 24, placeholder: t('profPhonePlaceholder'), value: profile.phone });
+    const face = el('div', { class: 'profile-face' });
+    const photoInput = el('input', { type: 'file', accept: 'image/*' });
+    const photoNote = el('div', { class: 'muted small' });
+    // undefined = لم تُلمس الصورة، '' = احذفها، data URI = صورة جديدة
+    let photo;
+
+    const paintFace = (src) => {
+      face.innerHTML = '';
+      if (src) face.append(el('img', { src, alt: t('profPhoto') }));
+      else face.append(el('span', { text: (profile.displayName || profile.name || '؟').trim().slice(0, 1) }));
+    };
+    paintFace(profile.photo ? '/api/teachers/' + user.id + '/photo?t=' + Date.now() : '');
+
+    photoInput.addEventListener('change', async () => {
+      const picked = photoInput.files?.[0];
+      if (!picked) return;
+      photoNote.textContent = t('profPhotoWorking');
+      try {
+        // مربّعة: البروفايل يعرضها دائرةً، والمستطيلة تُقصّ بشكل سيّئ
+        photo = await shrinkImage(picked, { width: 256, height: 256, quality: 0.85 });
+        paintFace(photo);
+        photoNote.textContent = t('profPhotoReady');
+      } catch (err) {
+        photo = undefined;
+        photoNote.textContent = err.message;
+      }
+    });
+
+    const clearPhoto = el('button', { class: 'btn ghost sm', type: 'button' }, t('profPhotoRemove'));
+    clearPhoto.addEventListener('click', () => {
+      photo = '';
+      photoInput.value = '';
+      paintFace('');
+      photoNote.textContent = t('profPhotoCleared');
+    });
+
+    const save = el('button', { class: 'btn accent', type: 'button' }, t('profSave'));
+    save.addEventListener('click', async () => {
+      save.disabled = true;
+      try {
+        const body = { displayName: displayName.value, phone: phone.value };
+        if (photo !== undefined) body.photo = photo;
+        const res = await api('/api/profile', { method: 'PUT', body });
+        toast(t('profSaved'), 'ok');
+        state.user = { ...state.user, name: res.profile.publicName };
+        openProfile();
+      } catch (err) {
+        toast(err.message, 'bad');
+        save.disabled = false;
+      }
+    });
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row', style: { gap: '14px', alignItems: 'center' } }, [
+          face,
+          el('div', { class: 'stack tight grow' }, [
+            el('span', { class: 'small', text: t('profPhoto') }),
+            el('span', { class: 'muted small', text: t('profPhotoHint') }),
+            photoInput,
+            el('div', { class: 'row', style: { gap: '6px' } }, [clearPhoto]),
+          ]),
+        ]),
+        photoNote,
+        el('label', {}, [
+          el('span', { class: 'small', text: t('profName') }),
+          el('span', { class: 'muted small', style: { display: 'block' }, text: t('profNameHint', { name: firstNameOf(profile.name) }) }),
+          displayName,
+        ]),
+        el('label', {}, [
+          el('span', { class: 'small', text: t('profPhone') }),
+          el('span', { class: 'muted small', style: { display: 'block' }, text: t('profPhoneHint') }),
+          phone,
+        ]),
+        el('p', { class: 'note warn small', style: { margin: 0 }, text: t('profPublicWarning') }),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          save,
+          el('a', { class: 'btn ghost', href: '/games.html#/t/' + user.id, target: '_blank', rel: 'noopener' }, t('profPreview')),
+        ]),
+      ])
+    );
+  }
+
+  const firstNameOf = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 
   /**
    * اختيار الصفوف: شرائح تُنقر — واحدة أو عدّة، أو «كل المراحل» فتلغي الباقي.

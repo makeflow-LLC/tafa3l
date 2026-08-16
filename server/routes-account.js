@@ -50,6 +50,24 @@ function firstNameOf(name) {
   return String(name || '').trim().split(/\s+/)[0] || '';
 }
 
+/**
+ * ما يراه الطلاب. الأصل الاسم الأول وحده — المعلّم نشر درساً لا سيرةً — لكنّ
+ * من ملأ بروفايله اختار بنفسه ما يُعرض، فاختياره يعلو على القاعدة.
+ */
+function publicNameOf(user) {
+  return clean(user?.displayName, 60) || firstNameOf(user?.name);
+}
+
+/** رقم تواصل: أرقامٌ وعلامةُ زائد وفواصل شكلية فقط */
+function cleanPhone(value) {
+  const raw = clean(value, 24);
+  if (!raw) return '';
+  if (!/^\+?[\d\s()-]{6,24}$/.test(raw)) {
+    throw Object.assign(new Error('رقم التواصل غير صالح — أرقامٌ فقط مع + إن أردت'), { status: 400 });
+  }
+  return raw;
+}
+
 function accountRoutes(store) {
   const router = express.Router();
 
@@ -576,15 +594,15 @@ function accountRoutes(store) {
   const COVER_TYPES = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'];
   const MAX_COVER_BYTES = 400 * 1024;
 
-  function readCover(raw) {
+  function readCover(raw, max = MAX_COVER_BYTES) {
     const value = String(raw ?? '').trim();
     if (!value) return '';
     const match = /^data:([a-z/+-]+);base64,([A-Za-z0-9+/=]+)$/.exec(value);
     if (!match || !COVER_TYPES.includes(match[1])) {
       throw Object.assign(new Error('الصورة المصغّرة يجب أن تكون PNG أو JPG أو WebP'), { status: 400 });
     }
-    if (Buffer.byteLength(match[2], 'base64') > MAX_COVER_BYTES) {
-      throw Object.assign(new Error('الصورة المصغّرة أكبر من ٤٠٠ كيلوبايت'), { status: 413 });
+    if (Buffer.byteLength(match[2], 'base64') > max) {
+      throw Object.assign(new Error(`الصورة أكبر من ${Math.round(max / 1024)} كيلوبايت`), { status: 413 });
     }
     return value;
   }
@@ -634,15 +652,91 @@ function accountRoutes(store) {
     cover: Boolean(g.hasCover),
     offlineOk: g.offlineOk !== false,
     createdAt: g.createdAt,
-    author: firstNameOf(g.authorName),
+    author: publicNameOf({ displayName: g.authorDisplayName, name: g.authorName }),
     authorId: g.ownerId,
+  });
+
+  // ------------------------------------------------------ بروفايل المعلّم
+
+  const MAX_PHOTO_BYTES = 200 * 1024;
+
+  /** ما يراه صاحب الحساب عن نفسه */
+  const myProfile = (u) => ({
+    id: u.id,
+    name: u.name,
+    displayName: u.displayName || '',
+    phone: u.phone || '',
+    photo: Boolean(u.hasPhoto),
+    publicName: publicNameOf(u),
+  });
+
+  router.get('/profile', auth.requireUser, async (req, res) => {
+    try {
+      const me = await storage.get().findUserById(req.user.id);
+      if (!me) return res.status(404).json({ error: 'الحساب غير موجود' });
+      res.json({ profile: myProfile(me) });
+    } catch (err) {
+      res.status(500).json({ error: 'تعذّر جلب البروفايل' });
+    }
+  });
+
+  /**
+   * تحديث البروفايل. الحقول الثلاثة اختيارية: ما لم يُرسَل يبقى كما هو،
+   * وما أُرسل فارغاً يُمسح — فيستطيع المعلّم التراجع عن أيٍّ منها.
+   */
+  router.put('/profile', auth.requireUser, async (req, res) => {
+    try {
+      const patch = {};
+      const body = req.body || {};
+      if (body.displayName !== undefined) patch.displayName = clean(body.displayName, 60);
+      if (body.phone !== undefined) patch.phone = cleanPhone(body.phone);
+      if (body.photo !== undefined) patch.photo = body.photo ? readCover(body.photo, MAX_PHOTO_BYTES) : '';
+      const updated = await storage.get().updateProfile(req.user.id, patch);
+      if (!updated) return res.status(404).json({ error: 'الحساب غير موجود' });
+      res.json({ profile: myProfile(updated) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر حفظ البروفايل' });
+    }
+  });
+
+  /**
+   * البروفايل العلني. لا بريد ولا معرّف جوجل ولا شيء لم يكتبه المعلّم بنفسه:
+   * الاسم الظاهر دائماً، والصورة والرقم إن ملأهما — والفارغ لا يُذكر أصلاً.
+   */
+  router.get('/teachers/:id', async (req, res) => {
+    try {
+      const u = await storage.get().findUserById(req.params.id);
+      if (!u) return res.status(404).json({ error: 'المعلّم غير موجود' });
+      res.json({ teacher: { id: u.id, name: publicNameOf(u), photo: Boolean(u.hasPhoto), phone: u.phone || '' } });
+    } catch (err) {
+      res.status(500).json({ error: 'تعذّر جلب البروفايل' });
+    }
+  });
+
+  router.get('/teachers/:id/photo', async (req, res) => {
+    try {
+      const photo = await storage.get().getUserPhoto(req.params.id);
+      const match = photo && /^data:([a-z/+-]+);base64,(.+)$/.exec(photo);
+      if (!match) return res.status(404).end();
+      res.setHeader('Content-Type', match[1]);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(Buffer.from(match[2], 'base64'));
+    } catch (err) {
+      res.status(404).end();
+    }
   });
 
   /** دليل المعلّمين — كي يتصفّح الطالب حسب معلّمه لا حسب المادة فقط */
   router.get('/game-teachers', async (req, res) => {
     try {
       const rows = await storage.get().listGameTeachers();
-      res.json({ items: rows.filter((r) => r.name).map((r) => ({ id: r.id, name: firstNameOf(r.name), games: r.games, plays: r.plays })) });
+      res.json({
+        items: rows
+          .filter((r) => r.name || r.displayName)
+          .map((r) => ({ id: r.id, name: publicNameOf(r), photo: Boolean(r.hasPhoto), games: r.games, plays: r.plays })),
+      });
     } catch (err) {
       console.error('game teachers:', err);
       res.status(500).json({ error: 'تعذّر جلب المعلّمين' });
