@@ -47,12 +47,14 @@ const REWARD_MODES = ['points', 'marks', 'none'];
  */
 const MARK_MODES = ['equal', 'custom'];
 /**
- * النافذة الزمنية للإجابة — اختيارية:
- * none — بلا وقت
- * all  — ثوانٍ واحدة لكل الأسئلة
- * each — لكل سؤال وقته (السلوك التاريخي، وهو الافتراضي كي لا تتغيّر أنشطة قائمة)
+ * النافذة الزمنية للإجابة — وضعان لا ثلاثة:
+ * none — بلا وقت (الافتراضي)
+ * all  — ثوانٍ واحدة تسري على كل الأسئلة
+ *
+ * ولا مؤقّت لكل سؤال على حدة: كان يُثقل المحرّر برقمٍ تحت كل سؤال مقابل
+ * فائدةٍ نادرة، والاختبار الذي يحتاج وقتاً يحتاجه لأسئلته كلها.
  */
-const TIME_MODES = ['none', 'all', 'each'];
+const TIME_MODES = ['none', 'all'];
 /** مضاعف السلسلة: ١٠٪ لكل إجابة صحيحة متتالية بحد أقصى ٥٠٪ */
 const STREAK_STEP = 0.1;
 const STREAK_MAX = 0.5;
@@ -340,7 +342,7 @@ function normalizeQuiz(payload) {
     while (seen.has(q.id)) q.id = id('q_');
     seen.add(q.id);
   }
-  const settings = normalizeSettings(payload?.settings);
+  const settings = normalizeSettings(payload?.settings, questions);
   return {
     title: clean(payload?.title, LIMITS.title) || 'نشاط تفاعلي',
     questions,
@@ -355,7 +357,19 @@ function normalizeQuiz(payload) {
  * سلسلة يُنتج علامةً تتجاوز سقفها، ونشاطُ نقاطٍ فيه علامة كاملة يُظهر
  * رقمين متنافسين على معنى «نتيجتي». فنحسم التبعية هنا مرة واحدة.
  */
-function normalizeSettings(raw) {
+/**
+ * نشاطٌ أُنشئ قبل وجود `timeMode` يحمل مؤقّتاً تحت كل سؤال. إسقاطه صامتاً
+ * يعني اختباراً مؤقّتاً صار بلا وقت بلا أن يدري صاحبه، فنستنتج منه وضعاً
+ * موحّداً — وبأطول مهلةٍ كانت فيه، كي لا يُقصَّر على طالبٍ وقتُه.
+ */
+function inferLegacyTime(questions) {
+  const times = (questions || []).map((q) => Number(q?.timeLimit) || 0).filter((n) => n > 0);
+  if (!times.length) return { mode: 'none', seconds: 30 };
+  return { mode: 'all', seconds: Math.max(...times) };
+}
+
+function normalizeSettings(raw, questions) {
+    const legacyTime = inferLegacyTime(questions);
     const scoring = SCORING_MODES.includes(raw?.scoring) ? raw.scoring : 'speed';
     const totalMarkRaw = clamp(raw?.totalMark, 0, MAX_TOTAL_MARK, 0);
     // توافق مع نشاط قديم لا يعرف «reward»: نستنتجه من إعداداته كما كانت
@@ -432,12 +446,13 @@ function normalizeSettings(raw) {
       lang: raw?.lang === 'en' || raw?.lang === 'ar' ? raw.lang : null,
 
       /**
-       * النافذة الزمنية. الافتراضي `each` — وهو ما كانت عليه المنصة قبل
-       * وجود هذا الخيار — فلا تتبدّل مؤقّتات نشاطٍ أُنشئ قبله.
+       * النافذة الزمنية. الافتراضي «بلا وقت»: أكثر استعمالات المنصة واجبٌ
+       * يُحلّ على مهل، والمؤقّت قرارٌ يتّخذه المعلّم لا شيء يقع عليه.
+       * والاستنتاج أدناه يحفظ أنشطةً قديمة كانت مؤقّتة قبل هذا الوضع.
        */
-      timeMode: TIME_MODES.includes(raw?.timeMode) ? raw.timeMode : 'each',
+      timeMode: TIME_MODES.includes(raw?.timeMode) ? raw.timeMode : legacyTime.mode,
       // ثوانٍ واحدة لكل الأسئلة حين يكون timeMode = all
-      timeLimit: clamp(raw?.timeLimit, 5, 600, 30),
+      timeLimit: clamp(raw?.timeLimit, 5, 600, legacyTime.seconds),
       opensAt: futureStamp(raw?.opensAt),
       // مدة الاختبار كاملاً بالدقائق — عند انتهائها يُقفل تلقائياً (صفر = بلا حدّ)
       durationMinutes: clamp(raw?.durationMinutes, 0, MAX_DURATION_MIN, 0),
@@ -983,10 +998,7 @@ class Session {
    */
   timeFor(q) {
     if (!q) return 0;
-    const mode = this.settings.timeMode;
-    if (mode === 'none') return 0;
-    if (mode === 'all') return this.settings.timeLimit || 0;
-    return q.timeLimit || 0;
+    return this.settings.timeMode === 'all' ? this.settings.timeLimit || 0 : 0;
   }
 
   /**

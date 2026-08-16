@@ -12,7 +12,7 @@
       description: 'أسئلة اختيار من متعدد مع إجابات صحيحة ونقاط وترتيب',
       descriptionEn: 'Multiple-choice questions with correct answers, points and ranking',
       title: 'اختبار سريع',
-      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'host', scoring: 'speed', streakBonus: true },
+      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'self', scoring: 'speed', streakBonus: true },
       questions: [
         {
           type: 'mc',
@@ -56,7 +56,7 @@
       description: 'بلا أسماء وبلا نقاط — مناسب للآراء والتغذية الراجعة',
       descriptionEn: 'No names and no points — good for opinions and feedback',
       title: 'استطلاع رأي',
-      settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false, pace: 'host', scoring: 'none' },
+      settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false, pace: 'self', scoring: 'none' },
       questions: [
         {
           type: 'poll',
