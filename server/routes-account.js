@@ -530,6 +530,214 @@ function accountRoutes(store) {
     }
   });
 
+  // ---------------------------------------------------- الألعاب التفاعلية
+
+  /**
+   * قسم الألعاب: المعلّم يرفع ملف HTML يعمل بذاته، والطلاب يلعبونه.
+   *
+   * **نموذج الأمان.** هذا الملف شفرةٌ كتبها شخصٌ آخر، وتشغيلها على نطاقنا
+   * يعني — لو تُركت — أن تقرأ كوكي جلسة كل من يفتحها وتنتحل شخصيته على
+   * المنصة. لذلك:
+   *
+   *  ١) لا تُقدَّم داخل صفحة، بل في **إطار معزول بلا `allow-same-origin`**،
+   *     فأصلها «مبهم»: لا كوكي، ولا `localStorage`، ولا وصول إلى صفحة الأب،
+   *     ولا طلبات مُعتمَدة إلى `/api`.
+   *  ٢) وسياسة محتوى على المستند نفسه تمنع `connect-src` و`form-action`،
+   *     فلا تستطيع اللعبة إرسال ما يكتبه الطالب فيها إلى أي جهة.
+   *  ٣) ولا نُنقّي الشفرة إطلاقاً — تنقيةُ HTML عامٍّ وهمُ أمانٍ يكسر الألعاب
+   *     ولا يمنع محترفاً. العزل هو الضمانة، لا التنقية.
+   *  ٤) والمالك يستطيع حذف أي لعبة، وفي كل صفحة رابط إبلاغ.
+   */
+  const MAX_GAME_BYTES = 2 * 1024 * 1024; // ٢ ميغابايت: تكفي لعبةً مكتفيةً بذاتها
+  const MAX_GAMES_PER_USER = 60;
+
+  /**
+   * عدّادات الزيارة والتقييم بلا حساب: نمنع التكرار بالعنوان في الذاكرة.
+   * هذا يضبط النقر العابر لا المتلاعب المصرّ — وهو ما تحتمله عدّادات شعبية،
+   * ولا نبني عليها علامةً ولا قراراً.
+   */
+  const gameSeen = new Map(); // "ip|id|kind" -> وقت الانتهاء
+  const GAME_SEEN_MS = 60 * 60 * 1000;
+
+  function seenRecently(req, id, kind) {
+    const key = `${req.ip || 'x'}|${id}|${kind}`;
+    const now = Date.now();
+    if (gameSeen.size > 20000) for (const [k, at] of gameSeen) if (at < now) gameSeen.delete(k);
+    if ((gameSeen.get(key) || 0) > now) return true;
+    gameSeen.set(key, now + GAME_SEEN_MS);
+    return false;
+  }
+
+  /** يقرأ حقول اللعبة من الطلب ويتحقّق منها */
+  function readGame(body) {
+    const title = clean(body?.title, 120);
+    if (!title) throw Object.assign(new Error('اكتب اسم اللعبة'), { status: 400 });
+    const html = String(body?.html ?? '');
+    const bytes = Buffer.byteLength(html, 'utf8');
+    if (!html.trim()) throw Object.assign(new Error('ارفع ملف اللعبة أو الصق شفرتها'), { status: 400 });
+    if (bytes > MAX_GAME_BYTES) {
+      throw Object.assign(new Error('حجم اللعبة أكبر من ٢ ميغابايت — اجعلها ملفاً واحداً أخفّ'), { status: 413 });
+    }
+    if (!/<[a-z!]/i.test(html)) {
+      throw Object.assign(new Error('هذا لا يبدو ملف HTML — ارفع ملفاً يبدأ بوسوم صفحة'), { status: 400 });
+    }
+    // مصفوفة فارغة = «كل المراحل»
+    const grades = Array.isArray(body?.grades) ? [...new Set(body.grades.map((g) => clean(g, 40)).filter(Boolean))].slice(0, 12) : [];
+    return { title, html, bytes, grades, subject: clean(body?.subject, 40), description: clean(body?.description, 300) };
+  }
+
+  /** بطاقة اللعبة للمتصفّح — بلا الشفرة، فالقائمة لا تحتاجها ولا تُحمَّل بها */
+  const gameCard = (g) => ({
+    id: g.id,
+    title: g.title,
+    subject: g.subject || '',
+    grades: g.grades || [],
+    description: g.description || '',
+    plays: g.plays || 0,
+    rating: g.ratingCount ? Math.round((g.ratingSum / g.ratingCount) * 10) / 10 : null,
+    ratingCount: g.ratingCount || 0,
+    bytes: g.bytes || 0,
+    createdAt: g.createdAt,
+    author: firstNameOf(g.authorName),
+    authorId: g.ownerId,
+  });
+
+  router.get('/games', async (req, res) => {
+    try {
+      const limit = Math.min(48, Math.max(1, Number(req.query.limit) || 24));
+      const page = Math.max(0, Number(req.query.page) || 0);
+      const sort = ['popular', 'rated', 'new'].includes(req.query.sort) ? req.query.sort : 'popular';
+      const { items, total } = await storage.get().listGames({
+        q: clean(req.query.q, 80),
+        subject: clean(req.query.subject, 40),
+        grade: clean(req.query.grade, 40),
+        ownerId: clean(req.query.teacher, 60),
+        sort,
+        limit,
+        offset: page * limit,
+      });
+      res.json({ total, page, limit, sort, items: items.map(gameCard) });
+    } catch (err) {
+      console.error('games list:', err);
+      res.status(500).json({ error: 'تعذّر جلب الألعاب' });
+    }
+  });
+
+  router.get('/games/:id', async (req, res) => {
+    try {
+      const game = await storage.get().getGame(req.params.id);
+      if (!game) return res.status(404).json({ error: 'اللعبة غير موجودة' });
+      res.json({ game: gameCard(game) });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر جلب اللعبة' });
+    }
+  });
+
+  /**
+   * مستند اللعبة نفسه. لا يُفتح مباشرةً في تبويب — يُحمَّل داخل الإطار
+   * المعزول في صفحة الألعاب. والترويسات هنا خطّ الدفاع الثاني بعد العزل.
+   */
+  router.get('/games/:id/frame', async (req, res) => {
+    try {
+      const game = await storage.get().getGame(req.params.id);
+      if (!game) return res.status(404).type('text/plain; charset=utf-8').send('اللعبة غير موجودة');
+      if (!seenRecently(req, game.id, 'play')) storage.get().bumpGamePlays(game.id).catch(() => {});
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      // sandbox في الترويسة يجعل الأصل مبهماً حتى لو فُتح المستند خارج إطارنا
+      res.setHeader(
+        'Content-Security-Policy',
+        [
+          "sandbox allow-scripts allow-forms allow-modals allow-pointer-lock",
+          "default-src 'none'",
+          "script-src 'unsafe-inline' 'unsafe-eval' https: blob: data:",
+          "style-src 'unsafe-inline' https: data:",
+          "img-src https: data: blob:",
+          "media-src https: data: blob:",
+          "font-src https: data:",
+          // لا اتصال ولا إرسال نموذج: ما يكتبه الطالب داخل اللعبة لا يغادرها
+          "connect-src 'none'",
+          "form-action 'none'",
+          "base-uri 'none'",
+          "frame-src 'none'",
+          "object-src 'none'",
+        ].join('; ')
+      );
+      res.send(game.html);
+    } catch (err) {
+      res.status(500).type('text/plain; charset=utf-8').send('تعذّر تشغيل اللعبة');
+    }
+  });
+
+  router.post('/games/:id/rate', async (req, res) => {
+    try {
+      const stars = Math.round(Number(req.body?.stars));
+      if (!Number.isFinite(stars) || stars < 1 || stars > 5) return res.status(400).json({ error: 'التقييم من ١ إلى ٥' });
+      const game = await storage.get().getGame(req.params.id);
+      if (!game) return res.status(404).json({ error: 'اللعبة غير موجودة' });
+      if (seenRecently(req, game.id, 'rate')) return res.status(429).json({ error: 'قيّمت هذه اللعبة قبل قليل' });
+      await storage.get().rateGame(game.id, stars);
+      const fresh = await storage.get().getGame(game.id);
+      res.json({ rating: gameCard(fresh).rating, ratingCount: fresh.ratingCount });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر التقييم' });
+    }
+  });
+
+  router.post('/games', auth.requireUser, async (req, res) => {
+    try {
+      const mine = await storage.get().listGames({ ownerId: req.user.id, limit: 1 });
+      if (mine.total >= MAX_GAMES_PER_USER) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_GAMES_PER_USER} لعبة) — احذف لعبة قديمة` });
+      }
+      const fields = readGame(req.body);
+      const now = Date.now();
+      const game = {
+        id: storage.newId('g_'),
+        ownerId: req.user.id,
+        ...fields,
+        plays: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await storage.get().saveGame(game);
+      res.status(201).json({ game: gameCard({ ...game, authorName: req.user.name }) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر رفع اللعبة' });
+    }
+  });
+
+  router.put('/games/:id', auth.requireUser, async (req, res) => {
+    try {
+      const existing = await storage.get().getGame(req.params.id);
+      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'اللعبة غير موجودة' });
+      const fields = readGame(req.body);
+      const updated = { ...existing, ...fields, updatedAt: Date.now() };
+      delete updated.authorName;
+      await storage.get().saveGame(updated);
+      res.json({ game: gameCard({ ...updated, authorName: req.user.name }) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر تحديث اللعبة' });
+    }
+  });
+
+  router.delete('/games/:id', auth.requireUser, async (req, res) => {
+    try {
+      const game = await storage.get().getGame(req.params.id);
+      // المالك يحذف أي لعبة — الإشراف شرطُ فتح البابِ للرفع أصلاً
+      const allowed = game && (game.ownerId === req.user.id || premium.isAdmin(req.user));
+      if (!allowed) return res.status(404).json({ error: 'اللعبة غير موجودة' });
+      await storage.get().deleteGame(game.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر حذف اللعبة' });
+    }
+  });
+
   router.delete('/bank/:id', auth.requireUser, async (req, res) => {
     try {
       const existing = await storage.get().getBankQuestion(req.params.id);

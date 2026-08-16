@@ -23,11 +23,32 @@ function newId(prefix) {
   return prefix + crypto.randomBytes(9).toString('base64url');
 }
 
+/** متوسّط التقييم — صفرٌ لمن لم يُقيَّم بعد */
+function gameRating(g) {
+  return g.ratingCount ? g.ratingSum / g.ratingCount : 0;
+}
+
+/**
+ * ترتيب الألعاب. «الأعلى تقييماً» لا يعني أعلى متوسّط: لعبةٌ قيّمها واحد
+ * بخمس نجوم ليست أفضل من لعبةٍ قيّمها مئةٌ بأربع ونصف. فنستعمل ترجيحاً
+ * بايزياً بسيطاً يسحب المتوسّط نحو ٣٫٥ حتى تتراكم التقييمات.
+ */
+function sortGames(sort) {
+  if (sort === 'new') return (a, b) => b.createdAt - a.createdAt;
+  if (sort === 'rated') {
+    const PRIOR = 5; // كم تقييماً «افتراضياً» نضيفه قبل أن نصدّق المتوسّط
+    const MEAN = 3.5;
+    const score = (g) => ((g.ratingSum || 0) + PRIOR * MEAN) / ((g.ratingCount || 0) + PRIOR);
+    return (a, b) => score(b) - score(a) || (b.plays || 0) - (a.plays || 0);
+  }
+  return (a, b) => (b.plays || 0) - (a.plays || 0) || b.createdAt - a.createdAt;
+}
+
 // ------------------------------------------------------------- سائق الملف
 
 function fileDriver() {
-  /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object}} */
-  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {} };
+  /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object}} */
+  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -75,6 +96,7 @@ function fileDriver() {
         db = {
           users: parsed.users || {},
           activities: parsed.activities || {},
+          games: parsed.games || {},
           authSessions: parsed.authSessions || {},
           bankQuestions: parsed.bankQuestions || {},
         };
@@ -153,6 +175,51 @@ function fileDriver() {
       if (!a) return;
       a.copies = (a.copies || 0) + 1;
       schedule();
+    },
+
+
+    // ------------------------------------------------------------- الألعاب
+
+    async listGames({ q = '', subject = '', grade = '', ownerId = '', sort = 'popular', limit = 24, offset = 0 } = {}) {
+      const needle = q.trim().toLowerCase();
+      const all = Object.values(db.games)
+        .filter((g) => !ownerId || g.ownerId === ownerId)
+        .filter((g) => !subject || g.subject === subject)
+        // الصفوف مصفوفة: «كل المراحل» = مصفوفة فارغة فتطابق أي بحث
+        .filter((g) => !grade || !g.grades.length || g.grades.includes(grade))
+        .filter((g) => !needle || String(g.title).toLowerCase().includes(needle))
+        .sort(sortGames(sort));
+      return {
+        total: all.length,
+        items: all.slice(offset, offset + limit).map((g) => ({ ...g, authorName: db.users[g.ownerId]?.name || '' })),
+      };
+    },
+    async getGame(id) {
+      const g = db.games[id];
+      return g ? { ...g, authorName: db.users[g.ownerId]?.name || '' } : null;
+    },
+    async saveGame(game) {
+      db.games[game.id] = game;
+      schedule();
+      return game;
+    },
+    async deleteGame(id) {
+      delete db.games[id];
+      schedule();
+    },
+    async bumpGamePlays(id) {
+      const g = db.games[id];
+      if (!g) return;
+      g.plays = (g.plays || 0) + 1;
+      schedule();
+    },
+    async rateGame(id, stars) {
+      const g = db.games[id];
+      if (!g) return null;
+      g.ratingSum = (g.ratingSum || 0) + stars;
+      g.ratingCount = (g.ratingCount || 0) + 1;
+      schedule();
+      return g;
     },
 
     async listBankQuestions(ownerId) {
@@ -248,6 +315,24 @@ function postgresDriver(connectionString) {
       ...(r.author_name === undefined ? {} : { authorName: r.author_name || '' }),
     };
 
+  const rowToGame = (r) =>
+    r && {
+      id: r.id,
+      ownerId: r.owner_id,
+      title: r.title,
+      subject: r.subject || '',
+      grades: Array.isArray(r.grades) ? r.grades : [],
+      description: r.description || '',
+      html: r.html,
+      bytes: Number(r.bytes || 0),
+      plays: Number(r.plays || 0),
+      ratingSum: Number(r.rating_sum || 0),
+      ratingCount: Number(r.rating_count || 0),
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+      ...(r.author_name === undefined ? {} : { authorName: r.author_name || '' }),
+    };
+
   const rowToBankQuestion = (r) =>
     r && {
       id: r.id,
@@ -296,6 +381,25 @@ function postgresDriver(connectionString) {
         ALTER TABLE activities ADD COLUMN IF NOT EXISTS copies INTEGER NOT NULL DEFAULT 0;
         -- فهرس جزئي: صفوف المكتبة قليلة بين كل الأنشطة، فلا داعي لفهرسة الباقي
         CREATE INDEX IF NOT EXISTS activities_published_idx ON activities(published, copies DESC) WHERE published;
+        CREATE TABLE IF NOT EXISTS games (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          subject TEXT,
+          grades JSONB NOT NULL DEFAULT '[]'::jsonb,
+          description TEXT,
+          -- ملف اللعبة كما رفعه المعلّم. يُقدَّم دائماً داخل إطار معزول
+          -- بأصل مبهم، فلا يرى حسابات المنصة ولا بيانات الطلاب مهما فعل.
+          html TEXT NOT NULL,
+          bytes INTEGER NOT NULL DEFAULT 0,
+          plays INTEGER NOT NULL DEFAULT 0,
+          rating_sum INTEGER NOT NULL DEFAULT 0,
+          rating_count INTEGER NOT NULL DEFAULT 0,
+          created_at BIGINT NOT NULL,
+          updated_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS games_owner_idx ON games(owner_id);
+        CREATE INDEX IF NOT EXISTS games_plays_idx ON games(plays DESC);
         CREATE TABLE IF NOT EXISTS bank_questions (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -393,6 +497,66 @@ function postgresDriver(connectionString) {
     },
     async bumpCopies(id) {
       await pool.query('UPDATE activities SET copies = copies + 1 WHERE id = $1', [id]);
+    },
+
+
+    // ------------------------------------------------------------- الألعاب
+
+    async listGames({ q = '', subject = '', grade = '', ownerId = '', sort = 'popular', limit = 24, offset = 0 } = {}) {
+      const where = ['TRUE'];
+      const params = [];
+      const add = (sql, value) => { params.push(value); where.push(sql.replace('$?', '$' + params.length)); };
+      if (ownerId) add('g.owner_id = $?', ownerId);
+      if (q.trim()) add('g.title ILIKE $?', '%' + q.trim() + '%');
+      if (subject) add('g.subject = $?', subject);
+      // «كل المراحل» تُخزَّن مصفوفةً فارغة فتطابق أي صفّ يبحث عنه الطالب
+      if (grade) add("(jsonb_array_length(g.grades) = 0 OR g.grades ? $?)", grade);
+      const clause = where.join(' AND ');
+      // الترجيح البايزي نفسه المستعمل في سائق الملف — كي يتطابق الترتيب
+      const order =
+        sort === 'new'
+          ? 'g.created_at DESC'
+          : sort === 'rated'
+            ? '((g.rating_sum + 5 * 3.5) / (g.rating_count + 5)) DESC, g.plays DESC'
+            : 'g.plays DESC, g.created_at DESC';
+      const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int AS n FROM games g WHERE ${clause}`, params);
+      const { rows } = await pool.query(
+        `SELECT g.*, u.name AS author_name FROM games g
+         LEFT JOIN users u ON u.id = g.owner_id
+         WHERE ${clause} ORDER BY ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, Number(limit) || 24, Number(offset) || 0]
+      );
+      return { total: countRows[0]?.n || 0, items: rows.map(rowToGame) };
+    },
+    async getGame(id) {
+      const { rows } = await pool.query(
+        'SELECT g.*, u.name AS author_name FROM games g LEFT JOIN users u ON u.id = g.owner_id WHERE g.id = $1',
+        [id]
+      );
+      return rowToGame(rows[0]);
+    },
+    async saveGame(g) {
+      await pool.query(
+        `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13`,
+        [g.id, g.ownerId, g.title, g.subject || null, JSON.stringify(g.grades || []), g.description || null,
+         g.html, g.bytes || 0, g.plays || 0, g.ratingSum || 0, g.ratingCount || 0, g.createdAt, g.updatedAt]
+      );
+      return g;
+    },
+    async deleteGame(id) {
+      await pool.query('DELETE FROM games WHERE id = $1', [id]);
+    },
+    async bumpGamePlays(id) {
+      await pool.query('UPDATE games SET plays = plays + 1 WHERE id = $1', [id]);
+    },
+    async rateGame(id, stars) {
+      const { rows } = await pool.query(
+        'UPDATE games SET rating_sum = rating_sum + $2, rating_count = rating_count + 1 WHERE id = $1 RETURNING *',
+        [id, stars]
+      );
+      return rowToGame(rows[0]);
     },
 
     async listBankQuestions(ownerId) {
