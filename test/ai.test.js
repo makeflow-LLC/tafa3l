@@ -17,7 +17,7 @@ process.env.GOOGLE_CLIENT_ID = 'test-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 process.env.AZURE_OPENAI_KEY = 'test-azure-key';
 const { server, ready } = require('../server/index');
-const { splitDraft, sanitizeMessages, systemFor, dropManual } = require('../server/routes-ai');
+const { splitDraft, sanitizeMessages, systemFor, dropManual, fixMarks } = require('../server/routes-ai');
 const ai = require('../server/ai');
 const storage = require('../server/storage');
 
@@ -375,4 +375,28 @@ test('المسار يحذف أسئلة التصحيح اليدوي ويُبلّ�
   } finally {
     m2.restore();
   }
+});
+
+test('حارس العلامات: توزيعٌ مخصّص لا يجمع العلامة الكاملة يرجع للتساوي', () => {
+  const bad = {
+    settings: { reward: 'marks', totalMark: 30, markMode: 'custom' },
+    questions: [{ type: 'mc', text: 'س١', mark: 5 }, { type: 'mc', text: 'س٢', mark: 5 }],
+  };
+  const fixed = fixMarks(bad);
+  assert.equal(fixed.fixed, true);
+  assert.equal(fixed.draft.settings.markMode, 'equal', 'توزيعٌ لا يجمع العلامة لا يصل المعلّم');
+  assert.equal(fixed.draft.questions.every((q) => q.mark === undefined), true, 'وتُنزع الأرقام المضلّلة');
+  assert.equal(fixed.sum, 10);
+
+  // ومجموعٌ مطابق يمرّ كما هو
+  const good = {
+    settings: { reward: 'marks', totalMark: 10, markMode: 'custom' },
+    questions: [{ type: 'mc', text: 'س١', mark: 7.5 }, { type: 'mc', text: 'س٢', mark: 2.5 }],
+  };
+  const kept = fixMarks(good);
+  assert.equal(kept.fixed, false);
+  assert.equal(kept.draft.questions[0].mark, 7.5);
+
+  // ووضع النقاط لا شأن له بهذا الحارس
+  assert.equal(fixMarks({ settings: { reward: 'points' }, questions: [] }).fixed, false);
 });

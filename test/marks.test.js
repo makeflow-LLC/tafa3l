@@ -119,19 +119,53 @@ test('العلامة الكاملة سقفٌ لا يُتجاوز', () => {
   assert.equal(m.band, 'excellent');
 });
 
-test('علامات الأسئلة تزن العلامة النهائية', () => {
+test('التوزيع بالتساوي: النقاط لا تزن العلامة — ٣٠ على ١٠ أسئلة = ٣ لكل سؤال', () => {
   const s = new Session('000403', {
     title: 'اختبار',
-    settings: settings({ totalMark: 10, scoring: 'flat' }),
-    // سؤال بثلاثة أضعاف وزن الآخر: الصواب في الثقيل وحده = ٧٫٥ من ١٠
-    questions: [MC(1, 300), MC(2, 100)],
+    settings: settings({ totalMark: 30, scoring: 'flat' }),
+    questions: Array.from({ length: 10 }, (_, i) => MC(i + 1, i === 0 ? 5000 : 100)),
+  });
+  assert.equal(s.settings.markMode, 'equal', 'وهو الافتراضي');
+  // السؤال الأول نقاطه خمسون ضعفاً — ومع ذلك نصيبه من العلامة ٣ كغيره
+  assert.equal(Math.round(s.markShare(s.questions[0]) * 100) / 100, 3);
+  assert.equal(Math.round(s.markShare(s.questions[9]) * 100) / 100, 3);
+
+  const p = s.addParticipant({ name: 'رنا' });
+  s.start();
+  s.questions.forEach((q, i) => {
+    s.goTo(i);
+    s.submitAnswer(p, q.id, i < 7 ? 'a' : 'b');
+  });
+  assert.equal(s.markFor(p).mark, 21, 'سبعٌ صحيحة × ٣ = ٢١ مهما تفاوتت النقاط');
+});
+
+test('التوزيع المخصّص: علامة كل سؤال كما كتبها المعلّم', () => {
+  const s = new Session('000413', {
+    title: 'اختبار',
+    settings: settings({ totalMark: 10, scoring: 'flat', markMode: 'custom' }),
+    // سؤالٌ من ٧٫٥ وآخر من ٢٫٥ — والمجموع ١٠
+    questions: [{ ...MC(1), mark: 7.5 }, { ...MC(2), mark: 2.5 }],
   });
   const p = s.addParticipant({ name: 'رنا' });
   s.start();
   s.submitAnswer(p, s.questions[0].id, 'a');
   s.goTo(1);
   s.submitAnswer(p, s.questions[1].id, 'b');
-  assert.equal(s.markFor(p).mark, 7.5);
+  assert.equal(s.markFor(p).mark, 7.5, 'الثقيل وحده صحيح');
+});
+
+test('توزيعٌ مخصّص لم تُملأ أرقامه يرجع للتساوي لا يصفّر الجميع', () => {
+  const s = new Session('000423', {
+    title: 'اختبار',
+    settings: settings({ totalMark: 10, scoring: 'flat', markMode: 'custom' }),
+    questions: [MC(1), MC(2)], // بلا mark إطلاقاً
+  });
+  const p = s.addParticipant({ name: 'سلمى' });
+  s.start();
+  s.submitAnswer(p, s.questions[0].id, 'a');
+  s.goTo(1);
+  s.submitAnswer(p, s.questions[1].id, 'b');
+  assert.equal(s.markFor(p).mark, 5, 'واحدة من اثنتين = نصف العلامة');
 });
 
 test('السؤال المتروك صفرٌ في العلامة لا استثناءٌ منها', () => {
@@ -254,4 +288,49 @@ test('لوحة المدرب تحمل علامة كل طالب ومتوسط ال�
   assert.equal(d.participants.find((r) => r.name === 'راسب').mark.mark, 0);
   assert.equal(d.summary.avgMark, 5);
   assert.equal(d.summary.passed, 1);
+});
+
+// ------------------------------------------- النافذة الزمنية: اختيارية
+
+test('وقتٌ واحد لكل الأسئلة يعلو على مؤقّت السؤال', () => {
+  const s = new Session('000430', {
+    title: 'ت',
+    settings: settings({ timeMode: 'all', timeLimit: 45 }),
+    questions: [{ ...MC(1), timeLimit: 10 }, { ...MC(2), timeLimit: 0 }],
+  });
+  assert.equal(s.timeFor(s.questions[0]), 45);
+  assert.equal(s.timeFor(s.questions[1]), 45, 'حتى السؤال الذي كان بلا مؤقّت');
+});
+
+test('«بلا وقت» يُلغي كل المؤقّتات مهما كتب المعلّم تحت الأسئلة', () => {
+  const s = new Session('000431', {
+    title: 'ت',
+    settings: settings({ timeMode: 'none' }),
+    questions: [{ ...MC(1), timeLimit: 30 }],
+  });
+  assert.equal(s.timeFor(s.questions[0]), 0);
+  s.addParticipant({ name: 'ن' });
+  s.start();
+  assert.equal(s.questionEndsAt, null, 'ولا ينتهي السؤال بمهلة');
+});
+
+test('الافتراضي «لكل سؤال وقته» — فأنشطةٌ قائمة لا تتبدّل مؤقّتاتها', () => {
+  const s = new Session('000432', { title: 'ت', settings: settings({}), questions: [{ ...MC(1), timeLimit: 25 }] });
+  assert.equal(s.settings.timeMode, 'each');
+  assert.equal(s.timeFor(s.questions[0]), 25);
+});
+
+test('احتساب السرعة يتبع النافذة الفعلية لا حقل السؤال', () => {
+  // مؤقّت السؤال ١٠ ثوانٍ، والوضع يفرض ١٠٠ — فإجابةٌ بعد ٢٠ ثانية ما زالت مبكّرة
+  const s = new Session('000433', {
+    title: 'ت',
+    settings: settings({ reward: 'points', scoring: 'speed', timeMode: 'all', timeLimit: 100, streakBonus: false }),
+    questions: [{ ...MC(1), timeLimit: 10 }],
+  });
+  const p = s.addParticipant({ name: 'ن' });
+  s.start();
+  s.questionStartedAt -= 20000;
+  s.submitAnswer(p, s.questions[0].id, 'a');
+  // ٨٠٪ من الوقت باقٍ ⇒ 0.5 + 0.5×0.8 = 0.9 من النقاط
+  assert.ok(p.score > 850 && p.score < 950, 'النقاط تُحسب على ١٠٠ ثانية لا على ١٠: ' + p.score);
 });

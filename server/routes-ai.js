@@ -67,8 +67,11 @@ const SYSTEM_PROMPT = [
   '',
   'قواعد الحوار:',
   '- تحدّث بلغة المعلّم نفسها (عربية أو إنجليزية) وبأسلوب ودود ومختصر.',
-  '- إن كان طلبه غامضاً اسأله أسئلة قصيرة مرقّمة (٤ كحدّ أقصى) عن: الموضوع، المستوى/العمر، عدد الأسئلة، والهدف (تقييم، مراجعة، كسر جمود، استطلاع رأي).',
-  '- إن كان طلبه واضحاً أو قال «صمّم مباشرة» فلا تسأل، صمّم فوراً.',
+  '- **قبل أن تصمّم اسأله عن نظام التقييم** إن لم يذكره: هل يريد **علاماتٍ** (اختبارٌ من ١٠ أو ٢٠ أو ٣٠…) أم **نقاطاً** (لعبةٌ تكافئ سرعة الإجابة) أم **بلا تقييم**؟',
+  '  وإن اختار العلامات فاسأله: العلامة من كم؟ وهل تُوزَّع بالتساوي على الأسئلة أم يحدّد علامة كل سؤال؟',
+  '  واسأله أيضاً عن الوقت: بلا مؤقّت، أم ثوانٍ واحدة لكل الأسئلة (كم ثانية؟)، أم وقتٌ لكل سؤال؟',
+  '- وإن كان طلبه غامضاً اسأله كذلك عن: الموضوع، المستوى/العمر، وعدد الأسئلة. ولا تتجاوز ٤ أسئلة في الرسالة الواحدة.',
+  '- إن قال «صمّم مباشرة» فلا تسأل: خذ الافتراضات (نقاط، وقتٌ لكل سؤال) وصمّم فوراً، واذكر في سطرٍ ما افترضتَه ليصحّحه.',
   '- لا تكتب فقرات طويلة: ملخّص من سطرين ثم المسودة.',
   '',
   'أنواع الأسئلة المدعومة فقط:',
@@ -91,7 +94,7 @@ const SYSTEM_PROMPT = [
   '```json',
   '{',
   '  "title": "عنوان النشاط",',
-  '  "settings": { "pace": "host", "scoring": "speed", "showLeaderboard": true, "countdown": true },',
+  '  "settings": { "pace": "self", "reward": "points", "scoring": "speed", "timeMode": "each", "showLeaderboard": true, "countdown": true },',
   '  "questions": [',
   '    { "type": "mc", "text": "نص السؤال", "options": ["خيار ١", "خيار ٢", "خيار ٣", "خيار ٤"], "correct": ["خيار ١"], "points": 1000, "timeLimit": 20, "explanation": "سبب مختصر" },',
   '    { "type": "truefalse", "text": "عبارة", "correct": true, "points": 500, "timeLimit": 15 },',
@@ -109,15 +112,43 @@ const SYSTEM_PROMPT = [
   '',
   'ملاحظات مهمّة:',
   '- "correct" تُكتب بنصّ الخيار حرفياً كما في options.',
-  '- pace: "host" (المدرب ينقل الشرائح) أو "self" (كل متدرب بسرعته) أو "auto" (انتقال تلقائي).',
-  '- scoring: "speed" (النقاط تتناقص مع الوقت) أو "flat" (نقاط ثابتة) أو "none" (بلا نقاط).',
-  '- الاستطلاع وسحابة الكلمات والمقياس والمفتوح بلا نقاط ولا إجابة صحيحة.',
+  '- pace: "host" (المدرب ينقل الشرائح) أو "self" (كل متدرب بسرعته — الافتراضي) أو "auto" (انتقال تلقائي).',
+  '',
+  'نظام التقييم — واحدٌ لا اثنان، اكتبه في "reward":',
+  '- "points": لعبةُ نقاط. تُكتب "points" تحت كل سؤال (١٠٠٠ قيمة معقولة)، و"scoring": "speed"',
+  '  فتتناقص النقاط مع ثواني الإجابة. ولا تكتب "totalMark" ولا "mark" إطلاقاً.',
+  '- "marks": علاماتٌ للدفتر. تُكتب "totalMark" (١٠، ٢٠، ٣٠…) و"markMode":',
+  '  · "equal" — العلامة تُقسَّم بالتساوي على الأسئلة، فلا تكتب "mark" تحت أي سؤال.',
+  '  · "custom" — تكتب "mark" تحت كل سؤال، و**مجموعها يجب أن يساوي totalMark بالضبط**.',
+  '  والعلامات ثابتة لا تتأثر بسرعة الإجابة إطلاقاً.',
+  '- "none": بلا نقاط ولا علامات.',
+  '',
+  'النافذة الزمنية — اختيارية، اكتبها في "timeMode":',
+  '- "each": لكل سؤال مؤقّته، فاكتب "timeLimit" تحت كل سؤال.',
+  '- "all": ثوانٍ واحدة للجميع، فاكتب "timeLimit" في settings ولا تكتبه تحت الأسئلة.',
+  '- "none": بلا مؤقّت، فلا تكتب "timeLimit" في أي موضع.',
+  '- الاستطلاع وسحابة الكلمات والمقياس بلا نقاط ولا إجابة صحيحة، فلا تدخل في العلامة.',
   `- لا تتجاوز ${MAX_QUESTIONS} سؤالاً في النشاط الواحد.`,
   '- إن لم يوافق المعلّم على شيء، عدّله وأعد إرسال المسودة كاملة.',
 ].join('\n');
 
 /** تعليمات النظام حسب إذن المعلّم بالتصحيح اليدوي */
 const systemFor = (allowManual) => SYSTEM_PROMPT + (allowManual ? MANUAL_OK_RULE : AUTO_ONLY_RULE);
+
+/**
+ * حارسُ العلامات. المسودة التي تدّعي توزيعاً مخصّصاً ومجموعُ علاماتها يخالف
+ * العلامة الكاملة حالةٌ لا يصحّ أن تصل المعلّم — فهي بالضبط ما اشترط ألّا
+ * يكون قبل الإطلاق. نرجع بها إلى التوزيع بالتساوي ونقول ما فعلنا.
+ */
+function fixMarks(draft) {
+  const st = draft?.settings;
+  if (!draft || !st || st.reward !== 'marks' || st.markMode !== 'custom') return { draft, fixed: false };
+  const total = Number(st.totalMark) || 0;
+  const sum = (draft.questions || []).reduce((n, q) => n + (Number(q?.mark) || 0), 0);
+  if (total > 0 && Math.abs(sum - total) < 0.01) return { draft, fixed: false };
+  const questions = (draft.questions || []).map(({ mark, ...q }) => q);
+  return { draft: { ...draft, settings: { ...st, markMode: 'equal' }, questions }, fixed: true, sum, total };
+}
 
 /**
  * حارسٌ خلف التعليمات. النموذج يخالف أحياناً مهما وُضّحت له القاعدة، ولا
@@ -223,11 +254,20 @@ function aiRoutes() {
 
       let out = draft;
       let note = '';
-      if (!allowManual && draft) {
-        const guarded = dropManual(draft);
+      if (draft) {
+        const marks = fixMarks(draft);
+        out = marks.draft;
+        if (marks.fixed) {
+          note +=
+            `\n\nℹ️ مجموع علامات الأسئلة (${Math.round(marks.sum * 100) / 100}) لم يطابق العلامة الكاملة ` +
+            `(${marks.total})، فجعلتُ التوزيع بالتساوي. عدّله من إعدادات النشاط إن أردت علامةً لكل سؤال.`;
+        }
+      }
+      if (!allowManual && out) {
+        const guarded = dropManual(out);
         out = guarded.draft;
         if (guarded.dropped.length) {
-          note =
+          note +=
             `\n\nℹ️ أسقطتُ ${guarded.dropped.length} سؤالاً يحتاج تصحيحاً يدويّاً منك ` +
             '(جواب حرّ أو أكمل الفراغ). فعّل «اسمح بأسئلة تحتاج تصحيحاً يدوياً» تحت المحادثة إن أردتها.';
         }
@@ -243,4 +283,4 @@ function aiRoutes() {
   return router;
 }
 
-module.exports = { aiRoutes, splitDraft, sanitizeMessages, SYSTEM_PROMPT, systemFor, dropManual, MANUAL_TYPES };
+module.exports = { aiRoutes, splitDraft, sanitizeMessages, SYSTEM_PROMPT, systemFor, dropManual, fixMarks, MANUAL_TYPES };

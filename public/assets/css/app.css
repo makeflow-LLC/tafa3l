@@ -2095,6 +2095,11 @@ input[type='range'].slider::-moz-range-thumb {
 
 /* ---------------------------------------------------------------- تنبيه */
 
+/**
+ * الإشعار خلفيّته داكنة **دائماً** في السِمَتين، فلونُ نصّه لا يصحّ أن يأتي
+ * من رمز `--text`: في السِمَة الفاتحة هو أسودُ تقريباً، فيصير النص غير مقروء
+ * على الكحلي. لونٌ فاتح صريح هو الجواب ما دامت الخلفية صريحةً داكنة.
+ */
 .toast {
   position: fixed;
   inset-inline: 12px;
@@ -2103,8 +2108,8 @@ input[type='range'].slider::-moz-range-thumb {
   width: fit-content;
   max-width: calc(100% - 24px);
   background: #1c2545;
-  border: 1px solid var(--border);
-  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #f5f4ff;
   padding: 12px 18px;
   border-radius: 999px;
   box-shadow: var(--shadow);
@@ -2124,12 +2129,14 @@ input[type='range'].slider::-moz-range-thumb {
   border-color: rgba(34, 197, 94, 0.5);
 }
 
+/* والعلّة نفسها كانت هنا: نصٌّ أصفر فاتح على خلفية عنبرية شاحبة في السِمَة
+   الفاتحة. الرمز `--warn` داكنٌ في الفاتحة وفاتحٌ في الداكنة، فيصحّ فيهما. */
 .banner {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(245, 158, 11, 0.14);
+  background: var(--warn-soft);
   border: 1px solid rgba(245, 158, 11, 0.35);
-  color: #fde68a;
+  color: var(--warn);
   font-size: 0.9rem;
 }
 
