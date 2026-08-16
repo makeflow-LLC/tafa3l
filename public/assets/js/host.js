@@ -1840,6 +1840,86 @@
     app.append(box);
   }
 
+  // أنواع لا دقّة لها بطبيعتها — نسمّي السبب بدل شرطة صامتة
+  const UNSCORED = { poll: 'typePoll', word: 'typeWord', scale: 'typeScale', open: 'typeOpen', slide: 'typeSlide' };
+
+  /**
+   * لوحة استطلاع واحد: الرأي الأعلى أولاً وبأكبر خطّ، ثم البقية بأعمدة
+   * متناسبة. الترتيب بحسب الأصوات لا بحسب ترتيب الخيارات في المحرّر: المعلّم
+   * ينظر ليعرف أين يقف صفّه، لا ليقرأ قائمته كما كتبها.
+   */
+  function pollPanel(question, data) {
+    const results = question.results;
+    const total = results.total;
+    const ranked = results.options
+      .map((option, index) => ({ ...option, index }))
+      .sort((a, b) => b.count - a.count || a.index - b.index);
+    const top = ranked[0];
+    // تعادل الصدارة: لا نتوّج أحداً، فتاجٌ على رأي متعادل مع غيره يضلّل
+    const tied = ranked.filter((o) => o.count === top.count).length > 1 || top.count === 0;
+
+    const bars = el('div', { class: 'poll-bars' });
+    ranked.forEach((option) => {
+      bars.append(
+        el('div', { class: 'poll-bar c' + (option.index % 8) + (!tied && option === top ? ' lead' : '') }, [
+          el('i', { class: 'fill', style: { width: Math.max(option.percent, 1.5) + '%' } }),
+          el('span', { class: 'grow', text: option.text }),
+          el('span', { class: 'pct', text: option.percent + t('pctSuffix') }),
+          el('span', { class: 'n', text: t('hPollVotes', { n: option.count }) }),
+        ])
+      );
+    });
+
+    const detail = el('div', { class: 'stack tight', hidden: true });
+    const toggle = el('button', { class: 'btn ghost sm', type: 'button' }, t('hPollWhoChose'));
+    toggle.addEventListener('click', () => {
+      detail.hidden = !detail.hidden;
+      toggle.textContent = detail.hidden ? t('hPollWhoChose') : t('hPollHideWho');
+      if (detail.hidden || detail.firstChild) return;
+
+      const voters = question.voters;
+      if (!voters) {
+        detail.append(el('p', { class: 'muted small', style: { margin: 0 }, text: t('hPollNoDetail') }));
+        return;
+      }
+      const byId = new Map(voters.options.map((o) => [o.id, o.names]));
+      ranked.forEach((option) => {
+        const names = byId.get(option.id) || [];
+        detail.append(
+          el('div', { class: 'poll-who' }, [
+            el('strong', { class: 'small', text: `${option.text} · ${names.length}` }),
+            names.length
+              ? el('div', { class: 'row', style: { gap: '4px' } }, names.map((name) => el('span', { class: 'badge', text: name })))
+              : el('span', { class: 'muted small', text: t('hPollNobody') }),
+          ])
+        );
+      });
+      if (voters.silent.length) {
+        detail.append(
+          el('div', { class: 'poll-who' }, [
+            el('strong', { class: 'small', text: `${t('hPollSilent')} · ${voters.silent.length}` }),
+            el('div', { class: 'row', style: { gap: '4px' } }, voters.silent.map((name) => el('span', { class: 'badge bad', text: name }))),
+          ])
+        );
+      }
+      detail.append(el('p', { class: 'muted small', style: { margin: 0 }, text: t('hPollPrivacyNote') }));
+    });
+
+    return el('div', { class: 'poll-panel stack tight' }, [
+      el('div', { class: 'row between' }, [
+        el('strong', { text: `${question.index + 1}. ${question.text}` }),
+        el('span', { class: 'badge', text: t('hPollAnswered', { n: total, of: question.reached }) }),
+      ]),
+      bars,
+      el('div', { class: 'row' }, [
+        tied ? el('span', { class: 'muted small', text: t('hPollTied') }) : el('span', { class: 'small', text: t('hPollLead', { text: top.text, pct: top.percent }) }),
+        el('span', { class: 'grow' }),
+        data.participants.length ? toggle : null,
+      ]),
+      detail,
+    ]);
+  }
+
   function renderDashboard() {
     const data = state.dashboard;
     if (!data) {
@@ -1863,6 +1943,23 @@
     // ---- تصحيح الإجابات النصّية: أول ما يحتاجه المدرب، فنضعه أعلى اللوحة
     (data.grading || []).forEach((item) => app.append(gradingCard(item)));
 
+    /**
+     * ---- الاستطلاعات: نتيجتها مقروءة فوراً بلا نقر.
+     * الاستطلاع لا يُصحَّح، فصفّه في جدول الأداء كله شُرَط «—»: لا دقّة ولا
+     * صواب. وما يريده المعلّم منه سؤال واحد — «ماذا قال الصف؟» — فنجيب عنه
+     * هنا مباشرة، ونترك التفصيل (من اختار ماذا) خلف زرّ لمن أراده.
+     */
+    const polls = data.perQuestion.filter((q) => q.type === 'poll' && q.asked && q.results?.total > 0);
+    if (polls.length) {
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('h2', { text: t('hPollsTitle'), style: { margin: 0 } }),
+          el('p', { class: 'muted small', style: { margin: 0 }, text: t('hPollsIntro') }),
+          ...polls.map((question) => pollPanel(question, data)),
+        ])
+      );
+    }
+
     // جدول الأسئلة — النقر على سؤال يفتح نتائجه الكاملة (سحابة الكلمات، الأعمدة…)
     const qRows = [];
     data.perQuestion.forEach((question) => {
@@ -1874,7 +1971,8 @@
           el('span', { class: 'muted small', text: open ? '▲' : t('hresults') }),
         ]),
         el('td', {}, question.asked ? t('hResponsesRate', { n: question.responses, rate: question.responseRate }) : '—'),
-        el('td', {}, question.accuracy === null ? '—' : question.accuracy + t('pctSuffix')),
+        // «—» في خانة الدقّة تبدو بياناً ناقصاً؛ والسبب الحقيقي أن السؤال لا يُصحَّح أصلاً
+        el('td', {}, question.accuracy === null ? el('span', { class: 'muted small', text: UNSCORED[question.type] ? t(UNSCORED[question.type]) : '—' }) : question.accuracy + t('pctSuffix')),
         el('td', {}, question.responses ? fmtMs(question.avgMs) : '—'),
       ]);
       row.addEventListener('click', () => {

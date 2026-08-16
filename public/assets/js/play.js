@@ -131,7 +131,7 @@
       // لغة النشاط تسبق لغة المتصفح: يرى الطالب النشاط بلغة معلّمه
       applyActivityLang(state.info.lang);
       document.title = state.info.title + ' — Tapio';
-      $('#quizTitle').textContent = state.info.title;
+      setQuizTitle(state.info.title);
       if (!store.get(SESSION_KEY, null)) renderJoin();
     } catch (err) {
       renderMessage('❓', t('pSessionNotFound'), err.message);
@@ -244,6 +244,13 @@
     );
   }
 
+  /** العنوان يُقصّ بسطر واحد في الشريط، فنضع كامله في التلميح لمن أراده */
+  function setQuizTitle(title) {
+    const node = $('#quizTitle');
+    node.textContent = title;
+    node.title = title;
+  }
+
   // ----------------------------------------------------------- العرض العام
 
 
@@ -273,7 +280,7 @@
     if (s.me) scoreBadge.textContent = '⭐ ' + s.me.score;
     teamBadge.classList.toggle('hidden', !s.me?.team);
     if (s.me?.team) teamBadge.textContent = `${s.me.team.emoji} ${s.me.team.name}`;
-    if (s.title) $('#quizTitle').textContent = s.title;
+    if (s.title) setQuizTitle(s.title);
 
     // مفتاح لتفادي إعادة البناء غير الضرورية أثناء المؤقّت
     // العلامة اليدوية تصل بعد الإجابة بلا تغيّر في المرحلة، فلا بد أن تدخل المفتاح
@@ -517,7 +524,9 @@
     const box = el('div', { class: 'stack' });
 
     if (q.type === 'mc' || q.type === 'poll' || q.type === 'truefalse') {
-      const options = el('div', { class: 'options' });
+      // «fill» هنا وحدها: شاشة الإجابة تملأ الطول، أما شاشتا النتيجة والمراجعة
+      // فتتبعهما قوائم أخرى تحتهما، فتمدّدُ الخيارات فيهما يدفعها خارج النظر.
+      const options = el('div', { class: 'options fill' });
       q.options.forEach((option, index) => {
         const button = el('button', { class: `opt c${index % 8}`, type: 'button' }, [
           el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),

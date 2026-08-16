@@ -8,7 +8,7 @@ const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 
 const store = require('./store');
-const { normalizeQuiz } = require('./session');
+const { normalizeQuiz, withoutVoters } = require('./session');
 const templates = require('./templates');
 const { startKeepAlive, keepAliveUrl } = require('./keepalive');
 const storage = require('./storage');
@@ -22,7 +22,7 @@ const premium = require('./premium');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -419,7 +419,8 @@ function handleMessage(socket, msg) {
     session.screenSockets.add(socket);
     session.touch();
     sendTo(socket, session.hostState());
-    sendTo(socket, { t: 'dashboard', data: session.dashboard() });
+    // بلا أسماء المصوّتين: البروجكتر أمام الصف كله
+    sendTo(socket, { t: 'dashboard', data: withoutVoters(session.dashboard()) });
     return;
   }
 
@@ -604,13 +605,14 @@ function pushHostNow(session) {
   if (!session.hostSockets.size && !session.screenSockets.size) return;
   const state = session.hostState();
   const dashboard = { t: 'dashboard', data: session.dashboard() };
+  const forScreen = session.screenSockets.size ? { t: 'dashboard', data: withoutVoters(dashboard.data) } : null;
   for (const socket of session.hostSockets) {
     sendTo(socket, state);
     sendTo(socket, dashboard);
   }
   for (const socket of session.screenSockets) {
     sendTo(socket, state);
-    sendTo(socket, dashboard);
+    sendTo(socket, forScreen);
   }
 }
 
