@@ -97,11 +97,22 @@ async function complete({ system, messages, maxOutputTokens = 2000, temperature 
     throw err;
   }
 
-  // نقاط Foundry تتحقق بصرامة من حقل type لكل عنصر ولكل جزء محتوى
+  /**
+   * نقاط Foundry تتحقق بصرامة من شكل كل عنصر وكل جزء محتوى:
+   *  - `type` على العنصر وعلى الجزء (وإلا: Invalid value: '').
+   *  - وجزء `output_text` — أي دورٌ سابق للمساعد نُعيده في السياق — يلزمه
+   *    حقل `annotations` ولو فارغاً (وإلا: Required property 'annotations'
+   *    is missing). لذلك كان المساعد يعمل في أول رسالة ويسقط في الثانية:
+   *    الثانية وحدها هي التي تحمل ردّاً سابقاً في تاريخها.
+   */
   const item = (role, text) => ({
     type: 'message',
     role,
-    content: [{ type: role === 'assistant' ? 'output_text' : 'input_text', text: String(text ?? '') }],
+    content: [
+      role === 'assistant'
+        ? { type: 'output_text', text: String(text ?? ''), annotations: [] }
+        : { type: 'input_text', text: String(text ?? '') },
+    ],
   });
   const input = [];
   if (system) input.push(item('system', system));

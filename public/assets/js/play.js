@@ -47,6 +47,7 @@
     lastFeedback: '', // لمنع تكرار الصوت/القصاصات عند إعادة الرسم
     shareBlob: null, // بطاقة النتيجة المولّدة — تُرسم مرة واحدة
     review: null, // مراجعة الطالب لأدائه بعد النشاط
+    autoNextTimer: null, // الانتقال التلقائي بعد الإجابة في الوضع الحرّ
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
   };
 
@@ -302,6 +303,7 @@
     if (!force && key === state.renderedKey && s.phase !== 'lobby') return;
     state.renderedKey = key;
     clearTick();
+    cancelAutoNext();
     app.innerHTML = '';
 
     // عدّاد «استعد» متزامن مع الخادم قبل فتح السؤال المؤقّت
@@ -318,6 +320,12 @@
     if (s.phase === 'feedback') return renderSelfFeedback(s);
     if (s.phase === 'results') return renderResults(s);
     return renderQuestion(s);
+  }
+
+  /** يُبطل الانتقال التلقائي المعلّق — عند إعادة الرسم أو عند تقدّم الطالب بنفسه */
+  function cancelAutoNext() {
+    if (state.autoNextTimer) clearTimeout(state.autoNextTimer);
+    state.autoNextTimer = null;
   }
 
   /** كم بقي على فتح السؤال (بتوقيت الخادم) */
@@ -799,12 +807,30 @@
     // زر «التالي» في مقدمة الصفحة: يتقدّم الطالب فوراً دون التمرير عبر النتائج
     const lastQ = s.index + 1 >= s.total;
     const topNext = el('button', { class: 'btn primary block' }, lastQ ? t('pFinishBtn') : t('pNextQuestion'));
-    topNext.addEventListener('click', () => {
+    const goNext = () => {
+      if (topNext.disabled) return;
       topNext.disabled = true;
+      cancelAutoNext();
       socket.send({ t: 'next' });
       setTimeout(() => (topNext.disabled = false), 1500);
-    });
+    };
+    topNext.addEventListener('click', goNext);
     app.append(topNext);
+
+    /**
+     * الانتقال التلقائي: الطالب يجيب فينتقل، بلا ضغطة زرّ في كل سؤال.
+     * والمهلة ليست تأخيراً بلا سبب: هي اللحظة التي يقرأ فيها «صحيحة» وشرحها.
+     * فإن كان الكشف مطفأً لم يعد لها معنى، فتقصر. وأي نقرة على «التالي»
+     * تُلغيها فوراً — الانتظار خيار لا فرض.
+     */
+    cancelAutoNext();
+    if (s.settings?.autoNext !== false && !lastQ) {
+      const reveals = !!(s.settings?.revealAnswer && (q.scored || q.explanation));
+      const wait = reveals ? 2600 : 700;
+      const bar = el('i', { style: { animationDuration: wait + 'ms' } });
+      app.append(el('div', { class: 'autonext' }, [el('span', { class: 'small muted', text: t('pAutoNextHint') }), el('div', { class: 'autonext-bar' }, bar)]));
+      state.autoNextTimer = setTimeout(goNext, wait);
+    }
 
     app.append(questionCard(q));
     app.append(waitingCard(s, q, true));
