@@ -109,7 +109,11 @@ function fileDriver() {
       return Object.values(db.users).find((u) => u.email === email) || null;
     },
     async findUserById(id) {
-      return db.users[id] || null;
+      const u = db.users[id];
+      // بلا الصورة: هذه الدالة تُنادى مع كل طلبٍ مُصادق، والصورة data URI ثقيلة
+      if (!u) return null;
+      const { photo, ...rest } = u;
+      return { ...rest, hasPhoto: Boolean(photo) };
     },
     /** كل المدربين — للوحة المالك فقط */
     async listUsers() {
@@ -123,6 +127,21 @@ function fileDriver() {
       schedule();
       return user;
     },
+    /** بروفايل المعلّم الاختياري — يكتبه هو، ولا يمسّه دخول جوجل */
+    async updateProfile(userId, patch) {
+      const u = db.users[userId];
+      if (!u) return null;
+      // undefined = «لم يُرسَل هذا الحقل»؛ السلسلة الفارغة = «امسحه»
+      for (const key of ['displayName', 'phone', 'photo']) {
+        if (patch[key] !== undefined) u[key] = patch[key] || '';
+      }
+      schedule();
+      const { photo, ...rest } = u;
+      return { ...rest, hasPhoto: Boolean(photo) };
+    },
+    async getUserPhoto(id) {
+      return db.users[id]?.photo || '';
+    },
     /** إنشاء أو تحديث بحسب البريد — بريد جوجل مُتحقَّق منه فهو المفتاح الطبيعي للحساب */
     async upsertUser({ email, name, googleId }) {
       const existing = Object.values(db.users).find((u) => u.email === email);
@@ -132,7 +151,7 @@ function fileDriver() {
         schedule();
         return existing;
       }
-      const user = { id: newId('u_'), email, name, googleId, premiumUntil: null, createdAt: Date.now() };
+      const user = { id: newId('u_'), email, name, googleId, displayName: '', phone: '', photo: '', premiumUntil: null, createdAt: Date.now() };
       db.users[user.id] = user;
       schedule();
       return user;
@@ -197,12 +216,20 @@ function fileDriver() {
           ...g,
           hasCover: Boolean(cover),
           authorName: db.users[g.ownerId]?.name || '',
+          authorDisplayName: db.users[g.ownerId]?.displayName || '',
         })),
       };
     },
     async getGame(id) {
       const g = db.games[id];
-      return g ? { ...g, hasCover: Boolean(g.cover), authorName: db.users[g.ownerId]?.name || '' } : null;
+      return g
+        ? {
+            ...g,
+            hasCover: Boolean(g.cover),
+            authorName: db.users[g.ownerId]?.name || '',
+            authorDisplayName: db.users[g.ownerId]?.displayName || '',
+          }
+        : null;
     },
     async getGameCover(id) {
       return db.games[id]?.cover || '';
@@ -210,7 +237,15 @@ function fileDriver() {
     async listGameTeachers() {
       const by = new Map();
       for (const g of Object.values(db.games)) {
-        const row = by.get(g.ownerId) || { id: g.ownerId, name: db.users[g.ownerId]?.name || '', games: 0, plays: 0 };
+        const owner = db.users[g.ownerId];
+        const row = by.get(g.ownerId) || {
+          id: g.ownerId,
+          name: owner?.name || '',
+          displayName: owner?.displayName || '',
+          hasPhoto: Boolean(owner?.photo),
+          games: 0,
+          plays: 0,
+        };
         row.games += 1;
         row.plays += g.plays || 0;
         by.set(g.ownerId, row);
@@ -312,6 +347,9 @@ function postgresDriver(connectionString) {
     id: r.id,
     email: r.email,
     name: r.name,
+    displayName: r.display_name || '',
+    phone: r.phone || '',
+    hasPhoto: r.has_photo === undefined ? Boolean(r.photo) : Boolean(r.has_photo),
     googleId: r.google_id,
     premiumUntil: r.premium_until == null ? null : Number(r.premium_until),
     createdAt: Number(r.created_at),
@@ -352,7 +390,7 @@ function postgresDriver(connectionString) {
       ratingCount: Number(r.rating_count || 0),
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at),
-      ...(r.author_name === undefined ? {} : { authorName: r.author_name || '' }),
+      ...(r.author_name === undefined ? {} : { authorName: r.author_name || '', authorDisplayName: r.author_display_name || '' }),
     };
 
   const rowToBankQuestion = (r) =>
@@ -385,6 +423,11 @@ function postgresDriver(connectionString) {
         ALTER TABLE users DROP COLUMN IF EXISTS salt;
         -- اشتراك بريميوم: تاريخ الانتهاء بالمللي ثانية، وnull يعني حساباً مجانياً
         ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until BIGINT;
+        -- بروفايل اختياري يملؤه المعلّم: اسمٌ يظهر للطلاب بدل اسم حساب جوجل،
+        -- وصورة، ورقمٌ للتواصل. الثلاثة اختيارية، وفارغُها لا يُعرض.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS photo TEXT;
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -450,7 +493,13 @@ function postgresDriver(connectionString) {
       return r ? userRow(r) : null;
     },
     async findUserById(id) {
-      const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+      // أعمدةٌ مسمّاة لا * : الصورة data URI ثقيلة وهذه الدالة تُنادى مع كل طلبٍ مُصادق
+      const { rows } = await pool.query(
+        `SELECT id, email, name, display_name, phone, google_id, premium_until, created_at,
+                (photo IS NOT NULL AND photo <> '') AS has_photo
+         FROM users WHERE id = $1`,
+        [id]
+      );
       const r = rows[0];
       return r ? userRow(r) : null;
     },
@@ -464,6 +513,27 @@ function postgresDriver(connectionString) {
       return rows[0] ? userRow(rows[0]) : null;
     },
 
+    async updateProfile(userId, patch) {
+      const sets = [];
+      const params = [userId];
+      for (const [key, col] of [['displayName', 'display_name'], ['phone', 'phone'], ['photo', 'photo']]) {
+        if (patch[key] === undefined) continue;
+        params.push(patch[key] || null);
+        sets.push(`${col} = $${params.length}`);
+      }
+      if (!sets.length) return this.findUserById(userId);
+      const { rows } = await pool.query(
+        `UPDATE users SET ${sets.join(', ')} WHERE id = $1
+         RETURNING id, email, name, display_name, phone, google_id, premium_until, created_at,
+                   (photo IS NOT NULL AND photo <> '') AS has_photo`,
+        params
+      );
+      return rows[0] ? userRow(rows[0]) : null;
+    },
+    async getUserPhoto(id) {
+      const { rows } = await pool.query('SELECT photo FROM users WHERE id = $1', [id]);
+      return rows[0]?.photo || '';
+    },
     async upsertUser({ email, name, googleId }) {
       const { rows } = await pool.query(
         `INSERT INTO users (id, email, name, google_id, created_at)
@@ -553,7 +623,7 @@ function postgresDriver(connectionString) {
       const { rows } = await pool.query(
         `SELECT g.id, g.owner_id, g.title, g.subject, g.grades, g.description, g.bytes,
                 g.plays, g.rating_sum, g.rating_count, g.created_at, g.updated_at, g.offline_ok,
-                (g.cover IS NOT NULL) AS has_cover, u.name AS author_name
+                (g.cover IS NOT NULL) AS has_cover, u.name AS author_name, u.display_name AS author_display_name
          FROM games g
          LEFT JOIN users u ON u.id = g.owner_id
          WHERE ${clause} ORDER BY ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -563,7 +633,8 @@ function postgresDriver(connectionString) {
     },
     async getGame(id) {
       const { rows } = await pool.query(
-        'SELECT g.*, u.name AS author_name FROM games g LEFT JOIN users u ON u.id = g.owner_id WHERE g.id = $1',
+        `SELECT g.*, u.name AS author_name, u.display_name AS author_display_name
+         FROM games g LEFT JOIN users u ON u.id = g.owner_id WHERE g.id = $1`,
         [id]
       );
       return rowToGame(rows[0]);
@@ -575,9 +646,11 @@ function postgresDriver(connectionString) {
     async listGameTeachers() {
       const { rows } = await pool.query(
         `SELECT g.owner_id AS id, COALESCE(u.name, '') AS name,
+                COALESCE(u.display_name, '') AS "displayName",
+                (u.photo IS NOT NULL AND u.photo <> '') AS "hasPhoto",
                 COUNT(*)::int AS games, COALESCE(SUM(g.plays), 0)::int AS plays
          FROM games g LEFT JOIN users u ON u.id = g.owner_id
-         GROUP BY g.owner_id, u.name ORDER BY games DESC, plays DESC`
+         GROUP BY g.owner_id, u.name, u.display_name, u.photo ORDER BY games DESC, plays DESC`
       );
       return rows;
     },
