@@ -222,6 +222,30 @@ html.stage .brand .dark-only {
   width: auto;
 }
 
+/*
+ * عنوان النشاط قد يكون جملة كاملة. على شاشة الطالب كان يلتفّ ثلاثة أسطر
+ * فيبتلع ثلث الشاشة في كل سؤال — والطالب لا يقرأ العنوان، يقرأ السؤال.
+ * سطر واحد بحذفٍ في آخره، والعنوان كاملاً في التلميح.
+ */
+/* أساس صفري: العنوان يأخذ ما يفضل عن الأزرار لا العكس، وإلا دفَعها — وهو
+   نصّ طويل — إلى سطر ثانٍ يبتلع ثلث شاشة الجوال. */
+.topbar .brand {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.topbar-actions {
+  flex: 0 1 auto;
+}
+
+.title-line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 @media (max-width: 720px) {
   .topbar {
     padding: 10px 12px;
@@ -335,12 +359,6 @@ html.stage .brand .dark-only {
   gap: 6px;
   padding-top: 8px;
   border-top: 1px dashed var(--border);
-}
-
-/* `display` هنا أقوى تخصيصاً من `[hidden]`، فلولا هذا السطر لظهر الجواب
-   قبل أن يحاول الطالب تذكّره — وهو نقض لغرض البطاقة كلها. */
-.review-card .review-answer[hidden] {
-  display: none;
 }
 
 .ok-text {
@@ -533,6 +551,48 @@ p {
   display: none !important;
 }
 
+/**
+ * سمة `hidden` أضعف تخصيصاً من أي صنف يضبط `display` — و`display: grid` على
+ * `.stack` كان يُظهر لوحاتٍ نبنيها مخفيّة. القاعدة الافتراضية في المتصفح لا
+ * تكفي هنا، فنجعل السمة قاطعة كما هو متوقّع منها.
+ */
+[hidden] {
+  display: none !important;
+}
+
+/*
+ * حلقة تركيز واحدة لكل ما يُنقر أو يُكتب فيه. من يتنقّل بلوحة المفاتيح — وهو
+ * حال قارئ الشاشة وحال المعلّم الذي يدير جلسته من الكيبورد — كان يفقد موضعه
+ * تماماً. و`:focus-visible` لا `:focus` كي لا تظهر الحلقة لمن ينقر بالفأرة.
+ */
+:where(a, button, [role='button'], input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* حركة أقلّ لمن طلبها من نظامه — قرارُ راحةٍ لا تفضيلَ ذوق */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::selection {
+  background: var(--brand-soft);
+  color: var(--text);
+}
+
+/* الشريط العلوي ملتصق، فقفزةُ رابطٍ داخلي (فهرس الدليل) كانت تُخفي العنوان تحته */
+[id] {
+  scroll-margin-top: 84px;
+}
+
 /* ------------------------------------------------------------------ أزرار */
 
 .btn {
@@ -560,8 +620,15 @@ p {
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  /* زرّ «بانتظار المشاركين» كان يبدو جاهزاً للضغط: الشفافية وحدها لا تكفي
+     على زرّ ملوّن، فنُذهب لونه أيضاً حتى يُقرأ «ليس الآن» بلا تجربة. */
+  opacity: 0.5;
+  filter: saturate(0.25);
   cursor: not-allowed;
+}
+
+.btn:disabled:active {
+  transform: none;
 }
 
 /* مسطّحة تماماً: لون واحد صريح لكل زر، بلا تدرّجات ولا ظلال */
@@ -900,6 +967,22 @@ textarea::placeholder {
   gap: 10px;
 }
 
+/*
+ * أزرار الإجابة تملأ ما تبقى من الشاشة بدل أن تتكوّم في أعلاها ويبقى نصفها
+ * السفلي فارغاً. هدفٌ أكبر = ضغطة أدقّ وأسرع، وهي اللحظة الوحيدة التي
+ * يتنافس فيها الصفّ على الثواني. مقيّدة بشاشة طويلة كي لا تنضغط القصيرة.
+ */
+@media (min-height: 620px) {
+  .options.fill {
+    display: flex;
+    flex-direction: column;
+    min-height: min(54vh, 480px);
+  }
+  .options.fill .opt {
+    flex: 1 1 0;
+  }
+}
+
 .opt {
   display: flex;
   align-items: center;
@@ -1000,6 +1083,83 @@ textarea::placeholder {
   font-size: 0.9rem;
 }
 
+/* ------------------------------------------------- نتائج الاستطلاع للمدرب */
+
+.poll-panel {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+
+.poll-bars {
+  display: grid;
+  gap: 6px;
+}
+
+.poll-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  font-weight: 600;
+}
+
+/* العمود لا يُلوَّن كاملاً: النسبة تُقرأ من طول التعبئة لا من لون البطاقة */
+.poll-bar .fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 0;
+  opacity: 0.22;
+  transition: width 0.45s ease;
+}
+
+.poll-bar > *:not(.fill) {
+  position: relative;
+  z-index: 1;
+}
+
+.poll-bar .pct {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-bar .n {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-bar.lead {
+  border-color: var(--brand);
+}
+
+.poll-bar.lead .pct {
+  color: var(--brand);
+}
+
+.poll-bar.c0 .fill { background: #f472b6; }
+.poll-bar.c1 .fill { background: #60a5fa; }
+.poll-bar.c2 .fill { background: #fbbf24; }
+.poll-bar.c3 .fill { background: #34d399; }
+.poll-bar.c4 .fill { background: #a78bfa; }
+.poll-bar.c5 .fill { background: #fb923c; }
+.poll-bar.c6 .fill { background: #22d3ee; }
+.poll-bar.c7 .fill { background: #f87171; }
+
+.poll-who {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--border);
+}
+
 /* --------------------------------------------------------------- المؤقّت */
 
 .timer {
@@ -1066,8 +1226,23 @@ th {
   background: var(--bg-2);
 }
 
+/* تخطيط متناوب: العين تتبع الصفّ الصحيح في جدول من ثلاثين طالباً بلا مسطرة */
+tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+
 tbody tr:hover {
   background: var(--surface-2);
+}
+
+/* أرقام بعرض ثابت: الأعمدة الرقمية تصطفّ فتُقارَن بنظرة لا بقراءة */
+td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* آخر عمود بلا خطّ سفلي زائد تحت آخر صفّ */
+tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .dots {

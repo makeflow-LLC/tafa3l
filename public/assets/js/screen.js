@@ -111,11 +111,18 @@
     ]);
   }
 
+  /** العنوان يُقصّ بسطر واحد في الشريط، فنضع كامله في التلميح لمن أراده */
+  function setQuizTitle(title) {
+    const node = $('#quizTitle');
+    node.textContent = title;
+    node.title = title;
+  }
+
   function render() {
     clearTick();
     const s = state.live;
     if (!s) return;
-    if (s.title) $('#quizTitle').textContent = s.title;
+    if (s.title) setQuizTitle(s.title);
     app.innerHTML = '';
 
     if (s.status === 'ended' || s.phase === 'final') return renderFinal(s);

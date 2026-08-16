@@ -149,6 +149,11 @@ function cleanVideo(value) {
 
 const t2 = (x) => x;
 
+/** نسخة من اللوحة بلا أسماء المصوّتين — لكل متلقٍّ غير المدرب نفسه */
+function withoutVoters(data) {
+  return { ...data, perQuestion: data.perQuestion.map((q) => (q.voters ? { ...q, voters: null } : q)) };
+}
+
 function normalizeQuestion(raw, index) {
   const type = QUESTION_TYPES.includes(raw?.type) ? raw.type : 'mc';
   const q = {
@@ -1254,6 +1259,30 @@ class Session {
     return n;
   }
 
+  /**
+   * من اختار كل خيار في سؤال استطلاع، ومن لم يشارك.
+   *
+   * الاستطلاع لا يُصحَّح، فجدول العلامات لا يقول للمعلّم شيئاً عنه؛ ما يفيده
+   * أن يعرف من يقف أين ليتابع معه. وهذه بيانات **للمدرب وحده**: تُنزع قبل
+   * إرسال اللوحة إلى شاشة العرض، فلا تظهر أسماء الآراء على بروجكتر الصف.
+   */
+  votersFor(q) {
+    const byOption = new Map(q.options.map((o) => [o.id, []]));
+    const silent = [];
+    for (const p of this.participants.values()) {
+      const a = p.answers.get(q.id);
+      if (!a) {
+        silent.push(p.name);
+        continue;
+      }
+      for (const v of a.value || []) byOption.get(v)?.push(p.name);
+    }
+    return {
+      options: q.options.map((o) => ({ id: o.id, names: byOption.get(o.id) || [] })),
+      silent,
+    };
+  }
+
   /** إحصاءات كاملة للوحة تحكم المدرب */
   dashboard() {
     const participants = [...this.participants.values()];
@@ -1289,6 +1318,8 @@ class Session {
         avgMs: answers.length ? Math.round(answers.reduce((s, a) => s + a.ms, 0) / answers.length) : 0,
         // النتائج المجمّعة (سحابة الكلمات، أعمدة المقياس…) لعرضها في لوحة التحكم والوضع الحر
         results: answers.length ? this.aggregate(i) : null,
+        // من اختار ماذا — للاستطلاع وحده، وللمدرب وحده (تُنزع قبل شاشة العرض)
+        voters: q.type === 'poll' ? this.votersFor(q) : null,
       };
     });
 
@@ -1692,13 +1723,15 @@ class Session {
     // شاشة العرض تحتاج لوحة الإحصاءات أيضاً — نتائج كل سؤال في الوضع الحر تأتي منها
     const dashboard =
       this.hostSockets.size || this.screenSockets.size ? { t: 'dashboard', data: this.dashboard() } : null;
+    // شاشة العرض معلّقة أمام الصف كله: أسماء من صوّت لكل رأي لا تُعرض هناك
+    const forScreen = dashboard && this.screenSockets.size ? { t: 'dashboard', data: withoutVoters(dashboard.data) } : null;
     for (const socket of this.hostSockets) {
       this.send(socket, state);
       if (dashboard) this.send(socket, dashboard);
     }
     for (const socket of this.screenSockets) {
       this.send(socket, state);
-      if (dashboard) this.send(socket, dashboard);
+      if (forScreen) this.send(socket, forScreen);
     }
     for (const p of this.participants.values()) {
       const payload = this.participantState(p);
@@ -1814,4 +1847,4 @@ function normalizeAvatar(avatar) {
   };
 }
 
-module.exports = { Session, normalizeQuiz, normalizeQuestion, QUESTION_TYPES, LIMITS, REACTIONS, READY_MS, publicQuestion };
+module.exports = { Session, normalizeQuiz, normalizeQuestion, QUESTION_TYPES, LIMITS, REACTIONS, READY_MS, publicQuestion, withoutVoters };
