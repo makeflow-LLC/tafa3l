@@ -79,7 +79,11 @@
         // الجدولة: موعد الفتح (نص محلي من حقل datetime-local) ومدة الاختبار بالدقائق
         opensAt: '',
         durationMinutes: 0,
+        // نظام التقييم: نقاط (لعبة) أو علامات (تقييم) أو بلا تقييم
+        reward: 'points',
         scoring: 'speed',
+        totalMark: 20,
+        passPercent: 50,
         streakBonus: true,
         revealAnswer: true,
         shuffleQuestions: false,
@@ -456,19 +460,38 @@
             ? el('p', { class: 'muted small', style: { margin: 0 }, text: t('binSelfPacedMode') })
             : null,
 
-          el('label', { text: t('bscoring'), style: { marginTop: '6px' } }),
+          /*
+           * اختيار واحد لا نظامان متوازيان. طالبٌ يرى «٤٦٠٠ نقطة» و«٢٤ من ٣٠»
+           * معاً لا يعرف أيّهما نتيجته، ومعلّمٌ يرى العمودين لا يعرف أيّهما
+           * ينقل إلى دفتره. فيختار المعلّم غرضه، وتُعرض له لغةُ ذلك الغرض وحدها.
+           */
+          el('label', { text: t('bRewardTitle'), style: { marginTop: '6px' } }),
           choiceGroup(
-            'scoring',
+            'reward',
             [
-              { value: 'speed', emoji: '⚡', title: t('bbySpeed'), hint: t('bfullPointsForThe') },
-              { value: 'flat', emoji: '🎯', title: t('bflat'), hint: t('btheSamePointsFor') },
-              { value: 'none', emoji: '🕊️', title: t('bnoPoints'), hint: t('blearningWithoutCompetitionOr') },
+              { value: 'points', emoji: '🎮', title: t('bRewardPoints'), hint: t('bRewardPointsHint') },
+              { value: 'marks', emoji: '📝', title: t('bRewardMarks'), hint: t('bRewardMarksHint') },
+              { value: 'none', emoji: '🕊️', title: t('bRewardNone'), hint: t('bRewardNoneHint') },
             ],
             () => update()
           ),
-          draft.settings.scoring !== 'none'
-            ? switchRow(t('bstreakMultiplier'), 'streakBonus', t('beachConsecutiveCorrectAnswer'))
+
+          // ---- تفاصيل الوضع المختار وحده
+          draft.settings.reward === 'points'
+            ? el('div', { class: 'stack tight' }, [
+                el('label', { text: t('bscoring') }),
+                choiceGroup(
+                  'scoring',
+                  [
+                    { value: 'speed', emoji: '⚡', title: t('bbySpeed'), hint: t('bfullPointsForThe') },
+                    { value: 'flat', emoji: '🎯', title: t('bflat'), hint: t('btheSamePointsFor') },
+                  ],
+                  () => update()
+                ),
+                switchRow(t('bstreakMultiplier'), 'streakBonus', t('beachConsecutiveCorrectAnswer')),
+              ])
             : null,
+          draft.settings.reward === 'marks' ? markRow() : null,
           switchRow(
             t('bshowTheCorrectAnswer'),
             'revealAnswer',
@@ -728,6 +751,85 @@
         saveDraft(draft);
       });
       return el('div', {}, [el('label', { text: t('bnumberOfTeams') }), select]);
+    }
+
+    /**
+     * العلامة الكاملة: «هذا الاختبار من ٣٠».
+     *
+     * أزرار سريعة للقيم الشائعة لأن المعلّم يختار واحدة منها في ٩٥٪ من
+     * الحالات، وحقل حرّ لمن أراد غيرها. ونعرض له فوراً كم سؤالاً يدخل في
+     * العلامة — فسؤالٌ علامته صفر أو استطلاعٌ لا يُحاسَب عليه أحد.
+     */
+    function markRow() {
+      const box = el('div', { class: 'stack tight' });
+
+      const draw = () => {
+        box.innerHTML = '';
+        const total = Number(draft.settings.totalMark) || 0;
+        const counted = draft.questions.filter(
+          (q) => Number(q.points) > 0 && q.type !== 'poll' && q.type !== 'word' && q.type !== 'scale' && q.type !== 'slide'
+        ).length;
+
+        const chips = el('div', { class: 'row', style: { gap: '6px' } });
+        [5, 10, 20, 30, 50, 100].forEach((value) => {
+          const btn = el('button', { class: 'btn sm' + (total === value ? ' primary' : ' ghost'), type: 'button' }, String(value));
+          btn.addEventListener('click', () => {
+            draft.settings.totalMark = value;
+            saveDraft(draft);
+            draw();
+          });
+          chips.append(btn);
+        });
+
+        const custom = el('input', {
+          type: 'number',
+          min: 1,
+          max: 1000,
+          step: 1,
+          inputmode: 'numeric',
+          value: String(total),
+          style: { maxWidth: '110px' },
+        });
+        custom.addEventListener('input', () => {
+          const value = Number(custom.value);
+          draft.settings.totalMark = Number.isFinite(value) ? Math.min(1000, Math.max(1, Math.round(value))) : 20;
+          saveDraft(draft);
+        });
+        custom.addEventListener('change', draw);
+
+        const pass = el('input', {
+          type: 'number',
+          min: 1,
+          max: 100,
+          step: 5,
+          inputmode: 'numeric',
+          value: String(draft.settings.passPercent ?? 50),
+          style: { maxWidth: '110px' },
+        });
+        pass.addEventListener('input', () => {
+          const value = Number(pass.value);
+          draft.settings.passPercent = Number.isFinite(value) ? Math.min(100, Math.max(1, Math.round(value))) : 50;
+          saveDraft(draft);
+        });
+
+        box.append(chips);
+        box.append(
+          el('div', { class: 'row', style: { gap: '10px' } }, [
+            el('label', {}, [el('span', { class: 'small', text: t('bMarkCustom') }), custom]),
+            el('label', {}, [el('span', { class: 'small', text: t('bMarkPass') }), pass]),
+          ])
+        );
+        box.append(
+          el('div', { class: 'muted small' }, [
+            counted
+              ? t('bMarkHint', { total, n: counted, pass: Math.round(((total * (draft.settings.passPercent ?? 50)) / 100) * 10) / 10 })
+              : t('bMarkNoQuestions'),
+          ])
+        );
+      };
+
+      draw();
+      return box;
     }
 
     /**

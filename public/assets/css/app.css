@@ -1083,6 +1083,45 @@ textarea::placeholder {
   font-size: 0.9rem;
 }
 
+/* ---------------------------------------------------- بطاقة علامة الطالب */
+
+.mark-card {
+  border: 2px solid var(--brand);
+  background: var(--brand-soft);
+}
+
+/* `.stack` شبكةٌ تمدّ أبناءها، والشارة تبدو شريطاً فارغاً حين تُمدّ */
+.mark-card > .badge {
+  justify-self: center;
+  width: auto;
+}
+
+/* الرقم هو رسالة البطاقة كلها، فيأخذ حجماً لا يُنازَع عليه */
+.mark-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.mark-value strong {
+  font-size: clamp(2.8rem, 14vw, 4rem);
+  font-weight: 800;
+}
+
+.mark-value .of {
+  font-size: clamp(1.2rem, 6vw, 1.6rem);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.mark-card .progress {
+  width: 100%;
+}
+
 /* ------------------------------------------------- نتائج الاستطلاع للمدرب */
 
 .poll-panel {

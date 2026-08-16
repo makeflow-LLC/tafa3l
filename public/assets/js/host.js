@@ -1840,6 +1840,18 @@
     app.append(box);
   }
 
+  /**
+   * خلية العلامة في جدول التقدّم: الرقم أولاً لأنه المقصود، ولون واحد
+   * يفصل الناجح من غيره — المعلّم يمسح ثلاثين صفاً بعينه لا يقرؤها.
+   */
+  function markCell(mark, of) {
+    return el('span', { class: 'row', style: { gap: '6px', flexWrap: 'nowrap' } }, [
+      el('strong', { text: `${mark.mark} / ${of}` }),
+      el('span', { class: 'badge' + (mark.passed ? ' ok' : ' bad'), text: mark.percent + t('pctSuffix') }),
+      mark.pending ? el('span', { class: 'badge', title: t('mPendingNote', { n: mark.pending }), text: '⏳' }) : null,
+    ]);
+  }
+
   // أنواع لا دقّة لها بطبيعتها — نسمّي السبب بدل شرطة صامتة
   const UNSCORED = { poll: 'typePoll', word: 'typeWord', scale: 'typeScale', open: 'typeOpen', slide: 'typeSlide' };
 
@@ -1937,6 +1949,9 @@
         stat(summary.participation + t('pctSuffix'), t('hparticipationRate')),
         data.hasScores ? stat(summary.avgScore, t('haveragePoints')) : null,
         data.hasScores && summary.avgAccuracy !== null ? stat(summary.avgAccuracy + t('pctSuffix'), t('haverageAccuracy')) : null,
+        // العلامات: ما ينقله المعلّم إلى دفتره بلا حساب يدوي
+        data.hasMark && summary.avgMark !== null ? stat(`${summary.avgMark} / ${data.totalMark}`, t('mAvgMark')) : null,
+        data.hasMark ? stat(`${summary.passed} / ${data.participants.length}`, t('mPassedCount', { pct: data.passPercent })) : null,
       ].filter(Boolean))
     );
 
@@ -2030,6 +2045,9 @@
             el('span', { class: 'small muted', text: `${participant.answered}/${participant.asked}` }),
           ]),
         ]),
+        data.hasMark
+          ? el('td', {}, participant.mark ? markCell(participant.mark, data.totalMark) : '—')
+          : null,
         data.hasScores ? el('td', {}, participant.accuracy === null ? '—' : participant.accuracy + t('pctSuffix')) : null,
         data.hasScores ? el('td', {}, String(participant.score)) : null,
         el('td', {}, fmtMs(participant.avgMs)),
@@ -2060,6 +2078,7 @@
                     el('th', {}, '#'),
                     el('th', {}, t('hparticipant')),
                     el('th', {}, t('hprogress')),
+                    data.hasMark ? el('th', {}, t('mMarkOf', { of: data.totalMark })) : null,
                     data.hasScores ? el('th', {}, t('haccuracy')) : null,
                     data.hasScores ? el('th', {}, t('hpoints')) : null,
                     el('th', {}, t('haverageTime')),
