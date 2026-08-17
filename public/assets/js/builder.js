@@ -405,14 +405,52 @@
     let openIndex = 0;
     // هل لوحة أنواع الأسئلة مفتوحة لإضافة سؤال جديد؟
     let adding = false;
+    /** مرحلة المعالج: الإعدادات ← الأسئلة ← المراجعة */
+    let stage = 'settings';
 
     function update() {
       saveDraft(draft);
       draw();
     }
 
+    /**
+     * المحرّر معالجٌ من ثلاث مراحل: الإعدادات، ثم الأسئلة سؤالاً سؤالاً، ثم
+     * مراجعةٌ وإطلاق. الغرض واحد: ألّا يرى المعلّم في الشاشة إلا ما يقرّره
+     * الآن. كانت الصفحة تعرض كل شيء دفعةً واحدة فتصير جداراً يُربك لا يُعين.
+     */
     function draw() {
       root.innerHTML = '';
+      root.append(stageBar());
+      if (stage === 'settings') return drawSettings();
+      if (stage === 'review') return drawReview();
+      return drawQuestions();
+    }
+
+    /** شريط المراحل الثلاث — يبيّن أين هو، ويسمح بالرجوع لما أنجزه */
+    function stageBar() {
+      const bar2 = el('div', { class: 'wizbar' });
+      const stages = [
+        { id: 'settings', label: t('bStageSettings') },
+        { id: 'questions', label: t('bStageQuestions') },
+        { id: 'review', label: t('bStageReview') },
+      ];
+      stages.forEach((sg, i) => {
+        const btn = el('button', { class: 'wizstep' + (sg.id === stage ? ' on' : ''), type: 'button' }, [
+          el('span', { class: 'num', text: String(i + 1) }),
+          el('span', { text: sg.label }),
+        ]);
+        btn.addEventListener('click', () => {
+          // لا مراجعةَ ولا أسئلةَ بلا سؤال واحد على الأقل
+          if (sg.id !== 'settings' && !draft.questions.length) return toast(t('bStageNeedQuestion'), 'bad');
+          stage = sg.id;
+          draw();
+        });
+        bar2.append(btn);
+      });
+      return bar2;
+    }
+
+    function drawSettings() {
 
       // ---- القوالب أولاً: اختيار قالب يستبدل الإعدادات، فيجب أن يسبقها
       const templatesBox = el('div', { class: 'card stack' }, [
@@ -536,6 +574,24 @@
         ])
       );
 
+
+      root.append(
+        el('div', { class: 'card row', style: { gap: '8px' } }, [
+          el('span', { class: 'grow' }),
+          el('button', {
+            class: 'btn primary', type: 'button',
+            onclick: () => {
+              if (!draft.questions.length) draft.questions.push(blankQuestion('mc'));
+              openIndex = 0;
+              stage = 'questions';
+              update();
+            },
+          }, t('bStageToQuestions')),
+        ])
+      );
+    }
+
+    function drawQuestions() {
       /**
        * الأسئلة كمعالج: سؤالٌ واحد على الشاشة، وتنقّلٌ بين الأسئلة.
        *
@@ -546,7 +602,7 @@
       const total = draft.questions.length;
       if (openIndex < 0 || openIndex >= total) openIndex = Math.max(0, Math.min(openIndex, total - 1));
 
-      const stage = el('div', { class: 'stack' });
+      const page = el('div', { class: 'stack' });
 
       // شريط التقدّم: أرقام تُنقر للقفز مباشرةً إلى سؤال بعينه
       const steps = el('div', { class: 'qsteps' });
@@ -564,39 +620,59 @@
       });
 
       if (total) {
-        stage.append(
+        page.append(
           el('div', { class: 'row between' }, [
             el('strong', { text: t('bStepOf', { i: openIndex + 1, n: total }) }),
             el('span', { class: 'muted small', text: TYPE_EMOJI[draft.questions[openIndex].type] + ' ' + TYPE_LABELS[draft.questions[openIndex].type] }),
           ])
         );
-        stage.append(steps);
-        stage.append(questionCard(draft.questions[openIndex], openIndex));
+        page.append(steps);
+        page.append(questionCard(draft.questions[openIndex], openIndex));
 
         // التنقّل: السابق والتالي، وعلى آخر سؤال يصير «التالي» إضافةَ سؤال
-        const prev = el('button', { class: 'btn ghost', type: 'button' }, t('bStepPrev'));
-        prev.disabled = openIndex === 0;
+        // «السابق» من أول سؤال يرجع إلى الإعدادات لا إلى فراغ
+        const prev = el('button', { class: 'btn ghost', type: 'button' }, openIndex === 0 ? t('bStageBackSettings') : t('bStepPrev'));
         prev.addEventListener('click', () => {
+          if (openIndex === 0) {
+            stage = 'settings';
+            draw();
+            return;
+          }
           openIndex -= 1;
           draw();
         });
-        const next = el('button', { class: 'btn primary', type: 'button' }, openIndex + 1 < total ? t('bStepNext') : t('bStepAdd'));
+
+        const addBtn = el('button', { class: 'btn ghost', type: 'button' }, t('bStepAdd'));
+        addBtn.addEventListener('click', () => {
+          adding = true;
+          draw();
+        });
+
+        // على آخر سؤال: إمّا سؤالٌ جديد وإمّا المراجعة والإطلاق
+        const next = el('button', { class: 'btn primary', type: 'button' }, openIndex + 1 < total ? t('bStepNext') : t('bStageToReview'));
         next.addEventListener('click', () => {
           if (openIndex + 1 < total) {
             openIndex += 1;
             draw();
             return;
           }
-          adding = true;
+          stage = 'review';
           draw();
         });
-        stage.append(el('div', { class: 'row', style: { gap: '8px', marginTop: '4px' } }, [prev, el('span', { class: 'grow' }), next]));
+        page.append(
+          el('div', { class: 'row', style: { gap: '8px', marginTop: '4px' } }, [
+            prev,
+            el('span', { class: 'grow' }),
+            openIndex + 1 === total ? addBtn : null,
+            next,
+          ].filter(Boolean))
+        );
       }
 
       // لوحة الأنواع: تظهر عند طلب سؤال جديد أو حين لا سؤال بعد
       if (adding || !total) {
-        stage.append(el('label', { text: t('baddANewQuestion'), style: { marginTop: '4px' } }));
-        stage.append(
+        page.append(el('label', { text: t('baddANewQuestion'), style: { marginTop: '4px' } }));
+        page.append(
           el('div', { class: 'types' }, TYPES.map((type) =>
             el(
               'button',
@@ -615,7 +691,7 @@
           ))
         );
         if (total) {
-          stage.append(
+          page.append(
             el('button', {
               class: 'btn ghost sm', type: 'button',
               onclick: () => {
@@ -625,8 +701,8 @@
             }, t('bStepCancelAdd'))
           );
         }
-        stage.append(el('label', { text: t('borAddFromYour'), style: { marginTop: '10px' } }));
-        stage.append(el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: t('bloading') })));
+        page.append(el('label', { text: t('borAddFromYour'), style: { marginTop: '10px' } }));
+        page.append(el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: t('bloading') })));
       }
 
       root.append(
@@ -635,10 +711,62 @@
             el('h2', { text: t('bQuestionsSection', { count: total }), style: { margin: 0 } }),
             total ? el('button', { class: 'btn ghost sm', type: 'button', onclick: () => { adding = true; draw(); } }, t('bStepAdd')) : null,
           ]),
-          stage,
+          page,
         ])
       );
       if (root.querySelector('#bankRow')) loadBank(root.querySelector('#bankRow'));
+
+    }
+
+    /**
+     * المراجعة: كل الأسئلة في نظرة واحدة قبل الإطلاق — والنقر على أيٍّ منها
+     * يعيد المعلّم إلى صفحته لتعديله.
+     */
+    function drawReview() {
+      const rows = el('div', { class: 'stack tight' });
+      draft.questions.forEach((q, i) => {
+        const row = el('button', { class: 'review-row', type: 'button' }, [
+          el('span', { class: 'n', text: String(i + 1) }),
+          el('span', { class: 'grow stack tight', style: { textAlign: 'start' } }, [
+            el('strong', { text: q.text || t('bStageEmptyQuestion') }),
+            el('span', { class: 'muted small', text: TYPE_EMOJI[q.type] + ' ' + TYPE_LABELS[q.type] }),
+          ]),
+          el('span', { class: 'badge', text: t('bStageEdit') }),
+        ]);
+        if (!q.text || !q.text.trim()) row.classList.add('warn');
+        row.addEventListener('click', () => {
+          openIndex = i;
+          stage = 'questions';
+          draw();
+        });
+        rows.append(row);
+      });
+
+      const counted = countedQuestions(draft);
+      const sum = Math.round(markSum(draft) * 100) / 100;
+      const total = Number(draft.settings.totalMark) || 0;
+      const markOff =
+        draft.settings.reward === 'marks' && (draft.settings.markMode || 'equal') === 'custom' && counted.length && Math.abs(sum - total) >= 0.01;
+
+      root.append(
+        el('div', { class: 'card stack' }, [
+          el('div', { class: 'row between' }, [
+            el('h2', { text: t('bStageReviewTitle', { n: draft.questions.length }), style: { margin: 0 } }),
+            el('button', { class: 'btn ghost sm', type: 'button', onclick: () => { stage = 'settings'; draw(); } }, t('bStageBackSettings')),
+          ]),
+          rows,
+          markOff ? el('div', { class: 'note warn small', style: { margin: 0 } }, t('bMarkSumOff', { sum, total })) : null,
+          el('button', {
+            class: 'btn ghost block', type: 'button',
+            onclick: () => {
+              openIndex = Math.max(0, draft.questions.length - 1);
+              adding = true;
+              stage = 'questions';
+              draw();
+            },
+          }, t('bStepAdd')),
+        ])
+      );
 
       // ---- الإطلاق
       const launch = el('button', { class: 'btn accent block' }, t('bstartTheSessionAnd'));

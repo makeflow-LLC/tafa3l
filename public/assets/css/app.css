@@ -1357,6 +1357,92 @@ body.playing .footer {
   overflow: hidden;
 }
 
+/* شريط مراحل المعالج: الإعدادات ← الأسئلة ← المراجعة */
+.wizbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.wizstep {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.wizstep .num {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.78rem;
+}
+
+.wizstep.on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--text);
+}
+
+.wizstep.on .num {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+/* صفّ المراجعة: سؤالٌ في سطر، يُنقر فيُفتح للتعديل */
+.review-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: start;
+}
+
+.review-row:hover {
+  border-color: var(--brand);
+}
+
+/* سؤالٌ بلا نص — لا يصحّ أن يمرّ إلى الإطلاق دون أن يُرى */
+.review-row.warn {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+  background: var(--warn-soft);
+}
+
+.review-row .n {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* شريط خطوات المعالج: رقمٌ لكل سؤال يُنقر للقفز إليه */
 .qsteps {
   display: flex;
