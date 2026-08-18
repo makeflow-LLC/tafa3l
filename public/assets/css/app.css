@@ -2334,6 +2334,56 @@ input[type='range'].slider::-moz-range-thumb {
   font-size: 0.9rem;
 }
 
+
+/* ------------------------------------------------- دليل الخطوات الأولى */
+
+.guide-steps {
+  display: grid;
+  gap: 2px;
+}
+
+.guide-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+}
+
+/* الخطوة الجارية وحدها ملوّنة: أربعُ بطاقاتٍ متساوية لا تقول «ابدأ من هنا» */
+.guide-step.now {
+  background: var(--brand-soft);
+}
+
+.guide-step.done .gs-n {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--on-brand);
+}
+
+.guide-step.done > .stack strong {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.gs-n {
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 800;
+  margin-top: 1px;
+}
+
+.guide-step.now .gs-n {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
+}
+
 /* ------------------------------------------------------------- شاشة كبيرة */
 
 .big-q {

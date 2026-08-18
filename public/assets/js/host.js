@@ -145,8 +145,96 @@
   }
 
   /** الاسم الأول فقط — الترحيب بالاسم الكامل يبدو رسمياً وطويلاً */
+  // ------------------------------------------------------ البداية الموجّهة
+
+  const GUIDE_OFF = 'tafa3l:guide:off';
+  const SAW_RESULTS = 'tafa3l:sawResults';
+
+  /** يُعلَّم حين يفتح المعلّم نتائج جلسة فعلاً — آخر خطوةٍ في الدليل */
+  function markSawResults() {
+    if (!store.local.get(SAW_RESULTS, false)) store.local.set(SAW_RESULTS, true);
+  }
+
+  /**
+   * دليل الخطوات الأربع لمن دخل أول مرة.
+   *
+   * ليس جولةً تعليمية تُعرض ثم تُنسى: كل خطوة **تُقاس من حالة الحساب**
+   * الحقيقية (له نشاط؟ أطلق جلسة؟ فتح نتائج؟)، فتُشطب وحدها حين تتم،
+   * وتختفي البطاقة كلها عند اكتمالها. والمعلّم الذي يعرف طريقه يُخفيها
+   * بضغطة، فلا تلاحقه.
+   *
+   * @returns {HTMLElement|null} null إن اكتملت أو أُخفيت
+   */
+  function onboardingCard(activityCount) {
+    if (store.local.get(GUIDE_OFF, false)) return null;
+    const launched = Object.keys(store.local.get(HOSTS_KEY, {})).length > 0;
+    const sawResults = store.local.get(SAW_RESULTS, false);
+
+    const steps = [
+      { done: true, title: t('gdAccount'), hint: t('gdAccountHint') },
+      {
+        done: activityCount > 0,
+        title: t('gdDesign'),
+        hint: t('gdDesignHint'),
+        actions: [
+          el('a', { class: 'btn accent sm', href: '#/ai' }, t('gdByAi')),
+          el('a', { class: 'btn ghost sm', href: '#/' }, t('gdByHand')),
+        ],
+      },
+      {
+        done: launched,
+        title: t('gdLaunch'),
+        hint: t('gdLaunchHint'),
+        actions: activityCount ? [el('a', { class: 'btn primary sm', href: '#/mine' }, t('gdLaunchNow'))] : null,
+      },
+      { done: sawResults, title: t('gdResults'), hint: t('gdResultsHint') },
+    ];
+
+    if (steps.every((s) => s.done)) return null;
+    const at = steps.findIndex((s) => !s.done);
+
+    const list = el('div', { class: 'guide-steps' });
+    steps.forEach((step, i) => {
+      const current = i === at;
+      list.append(
+        el('div', { class: 'guide-step' + (step.done ? ' done' : '') + (current ? ' now' : '') }, [
+          el('span', { class: 'gs-n', text: step.done ? '✓' : String(i + 1) }),
+          el('div', { class: 'stack tight grow' }, [
+            el('strong', { text: step.title }),
+            // الشرح للخطوة الجارية وحدها: أربعةُ شروحٍ معاً تصير جداراً من نصّ
+            current ? el('span', { class: 'muted small', text: step.hint }) : null,
+            current && step.actions ? el('div', { class: 'row', style: { gap: '8px', marginTop: '4px' } }, step.actions) : null,
+          ]),
+        ])
+      );
+    });
+
+    const hide = el('button', { class: 'btn ghost sm', type: 'button' }, t('gdHide'));
+    hide.addEventListener('click', () => {
+      store.local.set(GUIDE_OFF, true);
+      openMyActivities();
+    });
+
+    return el('div', { class: 'card stack', style: { marginBottom: '12px' } }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 }, text: t('gdTitle') }),
+        hide,
+      ]),
+      list,
+    ]);
+  }
+
+  /**
+   * ألقابٌ تسبق الاسم. «أول كلمة» في «أ. سلمى» هي «أ.» لا «سلمى»، فكانت
+   * المنصة تحيّي معلّمتها بـ«أهلاً أ.». والبروفايل نفسه يدعو المعلّم إلى
+   * كتابة «أ. فلان»، فالحالة هي القاعدة لا الشذوذ.
+   */
+  const TITLES = /^(أ|د|م|ا|الأستاذ|الأستاذة|الاستاذ|الاستاذة|الدكتور|الدكتورة|المعلم|المعلمة|المعلّم|المعلّمة|مس|مستر|mr|mrs|ms|dr|prof|miss)\.?$/i;
+
   function firstName(name) {
-    return String(name || '').trim().split(/\s+/)[0] || t('hthere');
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    while (parts.length > 1 && TITLES.test(parts[0])) parts.shift();
+    return parts[0] || t('hthere');
   }
 
   /** تسجيل الخروج من أي صفحة */
@@ -213,15 +301,21 @@
       );
     }
 
+    const guide = onboardingCard(activities.length);
+    if (guide) app.append(guide);
+
     if (!activities.length) {
-      app.append(
-        el('div', { class: 'card stack center' }, [
-          el('div', { style: { fontSize: '2.4rem' }, text: '📭' }),
-          el('h2', { text: t('hnoSavedActivitiesYet') }),
-          el('p', { class: 'muted small', text: t('hcreateAnActivityThen') }),
-          el('a', { class: 'btn primary', href: '#/' }, t('hcreateAnActivity')),
-        ])
-      );
+      // البطاقة الفارغة تكفي وحدها إن كان الدليل ظاهراً فوقها — ولا تُكرَّر معه
+      if (!guide) {
+        app.append(
+          el('div', { class: 'card stack center' }, [
+            el('div', { style: { fontSize: '2.4rem' }, text: '📭' }),
+            el('h2', { text: t('hnoSavedActivitiesYet') }),
+            el('p', { class: 'muted small', text: t('hcreateAnActivityThen') }),
+            el('a', { class: 'btn primary', href: '#/' }, t('hcreateAnActivity')),
+          ])
+        );
+      }
     } else {
       const list = el('div', { class: 'stack' });
       activities.forEach((activity) => list.append(activityCard(activity)));
@@ -286,6 +380,24 @@
       }
     });
 
+    /**
+     * نسخة ورقية من نشاطٍ محفوظ. لا تُفتح إلا بجلب أسئلته: البطاقة تحمل
+     * عددها لا نصّها، ولو حمّلنا كل الأسئلة مع كل بطاقة لصارت صفحةُ عشرين
+     * نشاطاً بميغابايتات لا يقرؤها أحد.
+     */
+    const paper = el('button', { class: 'icon-btn', type: 'button', title: t('bPaperPrint') }, '🖨');
+    paper.addEventListener('click', async () => {
+      paper.disabled = true;
+      try {
+        const { activity: full } = await api('/api/activities/' + activity.id);
+        if (!window.Exporter.toPaper(full, { teacher: state.user?.name || '' })) toast(t('bPaperBlocked'), 'warn');
+      } catch (err) {
+        toast(err.message, 'bad');
+      } finally {
+        paper.disabled = false;
+      }
+    });
+
     // النشر في المكتبة: زرّ واحد يفتح نموذجاً في البطاقة، وسحبٌ فوري إن كان منشوراً
     const slot = el('div', { class: 'stack tight' });
     const share = el('button', { class: 'btn ghost sm', type: 'button' }, activity.published ? t('lUnpublish') : t('lPublish'));
@@ -325,6 +437,7 @@
         el('a', { class: 'btn ghost sm', href: '#/edit/' + activity.id }, t('hopenAndEdit')),
         duplicate,
         share,
+        paper,
         el('span', { class: 'grow' }),
         remove,
       ]),
@@ -1351,7 +1464,7 @@
     try {
       const startStage = state.builderStage;
       state.builderStage = null;
-      window.Builder.mount(root, onLaunch, saveAction, { startStage });
+      window.Builder.mount(root, onLaunch, saveAction, { startStage, teacherName: state.user?.name || '' });
       return;
     } catch (err) {
       // السبب الأشيع: مسودة محفوظة من نسخة قديمة — نمسحها ونعيد المحاولة
@@ -1591,7 +1704,11 @@
     app.append(tabs);
 
     if (state.tab === 'stage') renderStage(s);
-    else if (state.tab === 'dashboard') renderDashboard();
+    else if (state.tab === 'dashboard') {
+      // فتحُ لوحة النتائج هو الخطوة الرابعة في الدليل — نعلّمها هنا لا نفترضها
+      markSawResults();
+      renderDashboard();
+    }
     else if (state.tab === 'analytics') renderAnalytics();
     else renderShare(s);
 
