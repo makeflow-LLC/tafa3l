@@ -16,6 +16,9 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tafa3l-ai-'));
 process.env.GOOGLE_CLIENT_ID = 'test-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 process.env.AZURE_OPENAI_KEY = 'test-azure-key';
+// هذا الملف يختبر بوابة الاشتراك نفسها، فنُطفئ منحة التسجيل كي يكون «الحساب
+// المجاني» هنا مجانياً فعلاً. منح التسجيل مُختبَرٌ في premium.test.js.
+process.env.PREMIUM_SIGNUP_TRIAL_DAYS = '0';
 const { server, ready } = require('../server/index');
 const { splitDraft, sanitizeMessages, systemFor, dropManual, fixMarks } = require('../server/routes-ai');
 const ai = require('../server/ai');

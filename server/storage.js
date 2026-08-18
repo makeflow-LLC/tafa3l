@@ -15,6 +15,8 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
+// منحة التسجيل تُقرأ من إعدادات الاشتراك — premium.js بلا تبعيات فلا دورة هنا
+const premium = require('./premium');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'tafa3l.json');
@@ -151,12 +153,21 @@ function fileDriver() {
         existing.name = name;
         existing.googleId = googleId;
         schedule();
-        return existing;
+        return { ...existing, isNew: false };
       }
-      const user = { id: newId('u_'), email, name, googleId, displayName: '', phone: '', photo: '', premiumUntil: null, createdAt: Date.now() };
+      // منحة التسجيل تُكتب مع الحساب لحظة إنشائه — لا مسار آخر يمنحها،
+      // فلا يستطيع أحد تجديدها بتسجيل دخولٍ جديد بالبريد نفسه
+      const now = Date.now();
+      const trial = premium.signupTrialMs();
+      const user = {
+        id: newId('u_'), email, name, googleId, displayName: '', phone: '', photo: '',
+        premiumUntil: trial ? now + trial : null,
+        trialGrantedAt: trial ? now : null,
+        createdAt: now,
+      };
       db.users[user.id] = user;
       schedule();
-      return user;
+      return { ...user, isNew: true };
     },
 
     async listActivities(ownerId) {
@@ -399,6 +410,7 @@ function postgresDriver(connectionString) {
     hasPhoto: r.has_photo === undefined ? Boolean(r.photo) : Boolean(r.has_photo),
     googleId: r.google_id,
     premiumUntil: r.premium_until == null ? null : Number(r.premium_until),
+    trialGrantedAt: r.trial_granted_at == null ? null : Number(r.trial_granted_at),
     createdAt: Number(r.created_at),
   });
 
@@ -485,6 +497,9 @@ function postgresDriver(connectionString) {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS photo TEXT;
+        -- منحة التسجيل: لحظة منحها. وجودها يميّز التجربة المجانية عن اشتراكٍ
+        -- مدفوع، ويمنع منحها مرتين لو أُعيد تشغيل الترقية على حسابٍ قائم.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_granted_at BIGINT;
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -614,15 +629,20 @@ function postgresDriver(connectionString) {
       return rows[0]?.photo || '';
     },
     async upsertUser({ email, name, googleId }) {
+      const now = Date.now();
+      const trial = premium.signupTrialMs();
+      // المنحة داخل الـINSERT وحده: فرع DO UPDATE لا يمسّ premium_until، فالحساب
+      // القائم لا يُمنح شيئاً مهما تكرّر دخوله. و«xmax = 0» تكشف الإدراج الجديد
+      // من التحديث، فنعرف متى نُهنّئ المعلّم ومتى نصمت.
       const { rows } = await pool.query(
-        `INSERT INTO users (id, email, name, google_id, created_at)
-         VALUES ($1,$2,$3,$4,$5)
+        `INSERT INTO users (id, email, name, google_id, created_at, premium_until, trial_granted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (email) DO UPDATE SET name = $3, google_id = $4
-         RETURNING *`,
-        [newId('u_'), email, name, googleId, Date.now()]
+         RETURNING *, (xmax = 0) AS inserted`,
+        [newId('u_'), email, name, googleId, now, trial ? now + trial : null, trial ? now : null]
       );
       const r = rows[0];
-      return userRow(r);
+      return { ...userRow(r), isNew: r.inserted === true };
     },
 
     async listActivities(ownerId) {
