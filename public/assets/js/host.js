@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink } =
+  const { $, firstName: baseFirstName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink } =
     window.T;
   const Fx = window.Fx;
   // اختصار الترجمة — إن غاب المحرّك نعرض المفتاح بدل الانهيار
@@ -27,6 +27,7 @@
     node.setAttribute('aria-label', t(key));
   }
   if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
+  window.Theme?.mountToggle($('#langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
 
   const app = $('#app');
   const bar = $('#bar');
@@ -77,12 +78,14 @@
   // -------------------------------------------------------------- التوجيه
 
   /**
-   * السِمة الداكنة للجلسة المباشرة فقط؛ الإعداد والتصفّح يبقيان على الأبيض.
-   * نضبطها في التوجيه لأنها الموضع الوحيد الذي يعرف الشاشة الحالية.
+   * الجلسة المباشرة داكنة **افتراضاً** لا قسراً؛ والإعداد والتصفّح فاتحان
+   * افتراضاً. وكانت تُفرض بصنفٍ على <html> يتجاهل اختيار المعلّم، فمن اختار
+   * الداكنة يجد محرّره أبيض في كل مرة ولا يفهم لماذا لا يعمل زرّه.
+   * الآن نضبط **الافتراض** ونترك `Theme` يحسم: اختيارُ المعلّم يعلو عليه.
    */
   function paintTheme(isLive) {
-    document.documentElement.classList.toggle('stage', isLive);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isLive ? '#12102e' : '#ffffff');
+    document.documentElement.setAttribute('data-theme-default', isLive ? 'dark' : 'light');
+    window.Theme?.refresh();
   }
 
   function route() {
@@ -224,18 +227,8 @@
     ]);
   }
 
-  /**
-   * ألقابٌ تسبق الاسم. «أول كلمة» في «أ. سلمى» هي «أ.» لا «سلمى»، فكانت
-   * المنصة تحيّي معلّمتها بـ«أهلاً أ.». والبروفايل نفسه يدعو المعلّم إلى
-   * كتابة «أ. فلان»، فالحالة هي القاعدة لا الشذوذ.
-   */
-  const TITLES = /^(أ|د|م|ا|الأستاذ|الأستاذة|الاستاذ|الاستاذة|الدكتور|الدكتورة|المعلم|المعلمة|المعلّم|المعلّمة|مس|مستر|mr|mrs|ms|dr|prof|miss)\.?$/i;
-
-  function firstName(name) {
-    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-    while (parts.length > 1 && TITLES.test(parts[0])) parts.shift();
-    return parts[0] || t('hthere');
-  }
+  /** الاسم الأول ومعه بديلٌ مترجم لمن لا اسم له */
+  const firstName = (name) => baseFirstName(name, t('hthere'));
 
   /** تسجيل الخروج من أي صفحة */
   async function logout() {
@@ -818,7 +811,7 @@
         photoNote,
         el('label', {}, [
           el('span', { class: 'small', text: t('profName') }),
-          el('span', { class: 'muted small', style: { display: 'block' }, text: t('profNameHint', { name: firstNameOf(profile.name) }) }),
+          el('span', { class: 'muted small', style: { display: 'block' }, text: t('profNameHint', { name: firstName(profile.name) }) }),
           displayName,
         ]),
         el('label', {}, [
@@ -834,8 +827,6 @@
       ])
     );
   }
-
-  const firstNameOf = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 
   /**
    * اختيار الصفوف: شرائح تُنقر — واحدة أو عدّة، أو «كل المراحل» فتلغي الباقي.
