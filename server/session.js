@@ -463,6 +463,31 @@ function normalizeSettings(raw, questions) {
       durationMinutes: clamp(raw?.durationMinutes, 0, MAX_DURATION_MIN, 0),
 
       /**
+       * آخر موعد للتسليم — وهو ما يجعل الرابط **واجباً** لا جلسةً حيّة.
+       *
+       * المنصة تصف نفسها بأن أكثر استعمالاتها «واجبٌ يُرسَل برابط»، ثم
+       * تُسقط الجلسة بعد ثلاث ساعات خمول. فمعلّمٌ يرسل واجب نهاية الأسبوع
+       * ليل الخميس يجد رابطه ميتاً صباح السبت، وطلابُه يظنون أنهم أخطؤوا.
+       *
+       * والفرق عن `durationMinutes` جوهري لا تجميلي: تلك مهلةٌ تبدأ من لحظة
+       * انطلاق الجلسة — تصلح لحصةٍ في قاعة — وهذا **موعدٌ مطلق** لا علاقة
+       * له بمتى فتح أولُ طالبٍ الرابط، وهو ما يعنيه «سلّموا قبل الأحد».
+       */
+      dueAt: futureStamp(raw?.dueAt),
+
+      /**
+       * كشفُ الأسماء المرفق بالنشاط — **نسخةٌ** من فصل المعلّم لا إشارةٌ إليه.
+       *
+       * ولها سببان: أن يختار الطالب اسمه من قائمة فتتّحد كتابته بين الحصص
+       * (لا «احمد» و«أحمد» صفَّين في التقرير)، وأن يرى المعلّم من لم يدخل بعد.
+       * وهي **دليلٌ لا بوّابة**: من لم يجد اسمه يكتبه ويدخل — طالبٌ جديد أو
+       * زائرٌ لا يجوز أن يُمنع من الحصة لأن قائمةً لم تُحدَّث.
+       */
+      roster: Array.isArray(raw?.roster)
+        ? [...new Set(raw.roster.map((n) => clean(n, LIMITS.name)).filter(Boolean))].slice(0, LIMITS.participants)
+        : [],
+
+      /**
        * العلامة الكاملة للنشاط: «هذا الاختبار من ٣٠». صفر = بلا علامة.
        *
        * وهي شيء آخر غير النقاط: النقاط لعبةٌ تكافئ السرعة والسلسلة، والعلامة
@@ -541,15 +566,26 @@ class Session {
     this._openTimer.unref?.();
   }
 
-  /** يضبط مؤقّت الإقفال التلقائي بعد انتهاء مدة الاختبار */
+  /**
+   * يضبط مؤقّت الإقفال التلقائي. مصدران للموعد وأيّهما أقرب يُقفل:
+   *  - `durationMinutes`: مهلةٌ **نسبية** تبدأ من انطلاق الجلسة — حصةٌ في قاعة.
+   *  - `dueAt`: موعدٌ **مطلق** لا علاقة له بمتى بدأت — «سلّموا قبل الأحد».
+   * وجمعُهما بـ`min` هو الصواب: من وضع الاثنين يقصد «ساعةٌ لكل طالب، على
+   * ألّا يتجاوز أحدٌ الأحد» — لا أن يُلغي أحدهما الآخر.
+   */
   armDeadline() {
     if (this._deadlineTimer) clearTimeout(this._deadlineTimer);
     this._deadlineTimer = null;
-    if (!this.settings.durationMinutes || this.status !== 'live') {
+    if (this.status !== 'live') {
       this.deadlineAt = null;
       return;
     }
-    this.deadlineAt = (this.startedAt || Date.now()) + this.settings.durationMinutes * 60000;
+    const byDuration = this.settings.durationMinutes
+      ? (this.startedAt || Date.now()) + this.settings.durationMinutes * 60000
+      : null;
+    const byDue = this.settings.dueAt || null;
+    this.deadlineAt = byDuration && byDue ? Math.min(byDuration, byDue) : byDuration || byDue;
+    if (!this.deadlineAt) return;
     const delay = Math.max(0, this.deadlineAt - Date.now());
     this._deadlineTimer = setTimeout(() => {
       this._deadlineTimer = null;
@@ -615,6 +651,9 @@ class Session {
     // وبمسحه يعلق اختبارٌ مجدول في الانتظار إلى الأبد. نعيده ثم نُسلّح
     // المؤقّت — ومهلته صفر فينطلق فوراً، وهو ما كان سيحدث لولا الانقطاع.
     session.settings.opensAt = snap.settings?.opensAt ?? null;
+    // وموعد التسليم كذلك: لو مضى أثناء التوقّف أُقفل الواجب فور الإحياء،
+    // ولو مسحناه لبقي مفتوحاً بعد موعده يستقبل تسليماتٍ متأخرة بلا علم أحد
+    session.settings.dueAt = snap.settings?.dueAt ?? null;
 
     if (snap.status === 'live') {
       session.status = 'live';
@@ -631,6 +670,9 @@ class Session {
     } else {
       session.armSchedule();
     }
+    // واجبٌ مضى موعده أثناء التوقّف يُقفل فوراً: إحياؤه مفتوحاً يعني قبول
+    // تسليماتٍ متأخرة بلا علم المعلّم، وهو أسوأ من ضياع الجلسة
+    if (session.settings.dueAt && Date.now() >= session.settings.dueAt && session.status !== 'ended') session.finish();
     return session;
   }
 
@@ -684,8 +726,17 @@ class Session {
     this.participants.set(participant.id, participant);
 
     if (this.settings.pace === 'self') {
-      if (this.status === 'lobby' && this.settings.autoStart) {
-        // الوضع الحر مع البدء التلقائي: أول داخل يُشغّل النشاط
+      /**
+       * الوضع الحر مع البدء التلقائي: أول داخل يُشغّل النشاط — **إلا** أن
+       * يكون للنشاط موعدٌ لم يحن بعد.
+       *
+       * كان يتجاهل الموعد تماماً، فيسقط الغرض من الجدولة كلها: معلّم يضبط
+       * «يفتح الأحد التاسعة» ويوزّع الرابط الخميس، فيفتحه أولُ فضوليٍّ
+       * ليلتها ويبدأ الاختبار للصفّ كلّه. والبدء المبكّر يبقى حقَّ المعلّم
+       * وحده من زرّ «بدء النشاط».
+       */
+      const waitingForSchedule = this.settings.opensAt && Date.now() < this.settings.opensAt;
+      if (this.status === 'lobby' && this.settings.autoStart && !waitingForSchedule) {
         this.status = 'live';
         this.phase = 'self';
         this.currentIndex = 0;
@@ -1679,6 +1730,19 @@ class Session {
       hasMark: this.hasMark,
       totalMark: this.settings.totalMark,
       passPercent: this.settings.passPercent,
+      /**
+       * من في الكشف ولم يدخل بعد. هذا هو الغرض الأول من إرفاق الفصل: أن
+       * يعرف المعلّم — وهو واقفٌ أمام صفّه — من لم يفتح الرابط، بدل أن
+       * يعدّ الأسماء الظاهرة بإصبعه ويقارنها بدفتره.
+       * والمقارنة بالنصّ المجرّد لأن الطالب اختار اسمه من القائمة نفسها.
+       */
+      hasRoster: (this.settings.roster || []).length > 0,
+      missing: (() => {
+        const roster = this.settings.roster || [];
+        if (!roster.length) return [];
+        const here = new Set(participants.map((p) => p.name));
+        return roster.filter((name) => !here.has(name));
+      })(),
       startedAt: this.createdAt,
       summary: {
         participants: participants.length,

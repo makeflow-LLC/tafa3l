@@ -176,6 +176,17 @@
 
     const card = el('div', { class: 'card stack' }, [
       el('h1', { text: info.title || t('pJoinBtn') }),
+      /**
+       * موعد التسليم على **شاشة الدخول** لا في قاعة الانتظار وحدها.
+       * الواجب افتراضُه «الوضع الحرّ + بدء تلقائي»، فالطالب لا يمرّ بقاعة
+       * انتظارٍ إطلاقاً: يكتب اسمه فيجد السؤال الأول. وشاشةُ الدخول هي
+       * الموضع الوحيد الذي يمرّ به كلُّ طالبٍ قبل أن يبدأ.
+       */
+      info.dueAt
+        ? el('span', { class: 'badge' }, t('pDueBadge', {
+            when: new Date(info.dueAt).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }),
+          }))
+        : null,
       el('p', {
         class: 'muted small',
         text: anonymous
@@ -202,7 +213,63 @@
           ),
         ])
       );
-      card.append(el('div', {}, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]));
+      /**
+       * كشف الأسماء إن أرفقه المعلّم: يختار الطالب اسمه بدل كتابته، فيتّحد
+       * الاسم بين الحصص ويرى المعلّم من لم يدخل بعد.
+       *
+       * وهو **دليلٌ لا بوّابة**: «اسمي غير موجود» يفتح الكتابة الحرّة —
+       * طالبٌ جديد أو زائرٌ لا يجوز أن يُمنع من الحصة لأن قائمةً لم تُحدَّث.
+       */
+      const roster = Array.isArray(info.roster) ? info.roster : [];
+      if (roster.length) {
+        const picked = el('input', { type: 'hidden' });
+        const list = el('div', { class: 'roster' });
+        const search = el('input', { type: 'search', placeholder: t('pRosterSearch'), autocomplete: 'off' });
+        const free = el('button', { class: 'btn ghost sm', type: 'button' }, t('pRosterNotListed'));
+
+        const select = (name) => {
+          nameInput.value = name;
+          picked.value = name;
+          [...list.children].forEach((node) => node.classList.toggle('on', node.dataset.name === name));
+        };
+        const paint = (needle) => {
+          list.innerHTML = '';
+          const key = String(needle || '').trim().toLowerCase();
+          const hits = roster.filter((name) => !key || name.toLowerCase().includes(key));
+          if (!hits.length) return list.append(el('span', { class: 'muted small', text: t('pRosterNoHits') }));
+          hits.forEach((name) => {
+            const chip = el('button', { class: 'chip' + (picked.value === name ? ' on' : ''), type: 'button', text: name });
+            chip.dataset.name = name;
+            chip.addEventListener('click', () => select(name));
+            list.append(chip);
+          });
+        };
+        let timer = null;
+        search.addEventListener('input', () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => paint(search.value), 120);
+        });
+        paint('');
+
+        const nameBox = el('div', { style: { display: 'none' } }, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]);
+        const pickBox = el('div', { class: 'stack tight' }, [
+          el('label', { text: t('pRosterLabel') }),
+          // البحث يظهر عند الفصول الكبيرة وحدها: قائمةٌ من ستّة أسماء تُقرأ بنظرة
+          roster.length > 12 ? search : null,
+          list,
+          el('div', { class: 'row', style: { marginTop: '4px' } }, [free]),
+        ]);
+        free.addEventListener('click', () => {
+          pickBox.style.display = 'none';
+          nameBox.style.display = '';
+          nameInput.value = '';
+          nameInput.focus();
+        });
+
+        card.append(pickBox, nameBox);
+      } else {
+        card.append(el('div', {}, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]));
+      }
     }
 
     const joinBtn = el('button', { class: 'btn primary block', type: 'submit' }, anonymous ? t('pJoinTitle') : t('pJoinBtn'));
@@ -386,6 +453,13 @@
           : el('p', { class: 'muted', text: waitingReason }),
         opensIn ? null : el('div', { class: 'spinner' }),
         el('span', { class: 'badge' }, t('pParticipants', { count: s.participants })),
+        // موعد التسليم قبل أن يبدأ: الطالب يفتح رابط واجبٍ ليلاً ويريد أن
+        // يعرف إن كان أمامه وقتٌ ليؤجّله إلى الغد أم عليه أن يبدأ الآن
+        s.settings?.dueAt
+          ? el('span', { class: 'badge' }, t('pDueBadge', {
+              when: new Date(s.settings.dueAt).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }),
+            }))
+          : null,
       ])
     );
     if (opensIn) state.stopCountdown = countdownTo(countdownNode, opensIn);

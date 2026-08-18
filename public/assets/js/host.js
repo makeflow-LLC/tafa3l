@@ -322,6 +322,8 @@
       app.append(list);
     }
 
+    app.append(classesCard());
+
     app.append(
       el('div', { class: 'card stack' }, [
         el('div', { class: 'row between' }, [
@@ -443,6 +445,97 @@
       ]),
       slot,
     ]);
+  }
+
+  // ------------------------------------------------------------- الفصول
+
+  /**
+   * فصول المعلّم: كشفُ أسماءٍ **اختياري** يكتبه هو.
+   *
+   * غرضه واحد ومحدود: أن يختار الطالب اسمه من قائمة فتتّحد كتابته بين
+   * الحصص (لا «احمد» و«أحمد» صفَّين في التقرير)، وأن يرى المعلّم من لم
+   * يدخل بعد. وليس سجلَّ طلاب: لا بريد ولا رقم ولا درجة تُحفظ هنا، وإجابات
+   * الطلاب تبقى في الذاكرة وتختفي بانتهاء الجلسة كما كانت.
+   */
+  function classesCard() {
+    const body = el('div', { class: 'stack' });
+    const card = el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 }, text: t('hClassesTitle') }),
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(null) }, t('hClassNew')),
+      ]),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('hClassesIntro') }),
+      body,
+    ]);
+
+    function openForm(existing) {
+      const nameInput = el('input', { maxlength: 60, placeholder: t('hClassNamePh'), value: existing?.name || '' });
+      const namesInput = el('textarea', { rows: 6, placeholder: t('hClassStudentsPh') });
+      namesInput.value = (existing?.students || []).join('\n');
+      const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hClassSave'));
+      save.addEventListener('click', async () => {
+        save.disabled = true;
+        try {
+          const payload = { name: nameInput.value.trim(), students: namesInput.value };
+          if (existing) await api('/api/classes/' + existing.id, { method: 'PUT', body: payload });
+          else await api('/api/classes', { method: 'POST', body: payload });
+          toast(t('hClassSaved'), 'ok');
+          load();
+        } catch (err) {
+          toast(err.message, 'bad');
+          save.disabled = false;
+        }
+      });
+      body.replaceChildren(
+        el('div', { class: 'stack' }, [
+          el('div', {}, [el('label', { text: t('hClassName') }), nameInput]),
+          el('div', {}, [el('label', { text: t('hClassStudents') }), namesInput]),
+          el('div', { class: 'row', style: { gap: '8px' } }, [
+            save,
+            el('button', { class: 'btn ghost sm', type: 'button', onclick: () => load() }, t('hClassCancel')),
+          ]),
+        ])
+      );
+      nameInput.focus();
+    }
+
+    async function load() {
+      body.replaceChildren(el('div', { class: 'spinner' }));
+      let items = [];
+      try {
+        items = (await api('/api/classes')).classes || [];
+      } catch (err) {
+        return body.replaceChildren(el('span', { class: 'muted small', text: err.message }));
+      }
+      state.classes = items;
+      if (!items.length) return body.replaceChildren(el('span', { class: 'muted small', text: t('hClassEmpty') }));
+      body.replaceChildren(
+        ...items.map((item) =>
+          el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)' } }, [
+            el('div', { class: 'stack tight grow' }, [
+              el('strong', { text: item.name }),
+              el('span', { class: 'muted small', text: t('hClassCount', { n: item.students.length }) }),
+            ]),
+            el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(item) }, t('hClassEdit')),
+            el('button', {
+              class: 'btn danger sm', type: 'button',
+              onclick: async () => {
+                if (!confirm(t('hClassDeleteAsk'))) return;
+                try {
+                  await api('/api/classes/' + item.id, { method: 'DELETE' });
+                  load();
+                } catch (err) {
+                  toast(err.message, 'bad');
+                }
+              },
+            }, t('hClassDelete')),
+          ])
+        )
+      );
+    }
+
+    load();
+    return card;
   }
 
   // ------------------------------------------------- ألعابي التفاعلية
@@ -1845,7 +1938,10 @@
   function scheduleCard(s) {
     const opensAt = s.scheduledAt && s.scheduledAt > serverTime() ? s.scheduledAt : null;
     const duration = s.durationMinutes || 0;
-    if (!opensAt && !duration) return null;
+    // موعد التسليم يظهر حتى قبل انطلاق الجلسة: المعلّم يوزّع الرابط الآن
+    // ويريد أن يرى — قبل أن يرسله — إلى متى سيبقى حيّاً
+    const dueAt = s.settings?.dueAt || 0;
+    if (!opensAt && !duration && !dueAt) return null;
 
     const value = opensAt ? el('strong', { class: 'countdown-big' }) : null;
     if (value) state.stopSchedule = countdownTo(value, opensAt, () => renderLive());
@@ -1861,6 +1957,12 @@
           })
         : null,
       duration ? el('span', { class: 'badge' }, t('hDurationNote', { n: duration })) : null,
+      dueAt
+        ? el('span', { class: dueAt > serverTime() ? 'badge' : 'badge bad' },
+            dueAt > serverTime()
+              ? t('hDueBadge', { when: new Date(dueAt).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }) })
+              : t('hDuePassed'))
+        : null,
       opensAt ? el('span', { class: 'muted small', text: t('hyouCanStartBefore') }) : null,
     ]);
   }
@@ -2493,6 +2595,21 @@
         data.hasMark ? stat(`${summary.passed} / ${data.participants.length}`, t('mPassedCount', { pct: data.passPercent })) : null,
       ].filter(Boolean))
     );
+
+    /**
+     * من في الكشف ولم يدخل بعد — الغرض الأول من إرفاق فصل. المعلّم واقفٌ
+     * أمام صفّه ويريد اسماً ينادي به، لا عدّاً يقارنه بدفتره.
+     */
+    if ((data.missing || []).length || (data.hasRoster && !(data.missing || []).length)) {
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('h2', { style: { margin: 0 }, text: data.missing.length ? t('hMissingTitle', { n: data.missing.length }) : t('hMissingAllIn') }),
+          data.missing.length
+            ? el('div', { class: 'roster' }, data.missing.map((name) => el('span', { class: 'chip', text: name })))
+            : null,
+        ])
+      );
+    }
 
     // ---- تصحيح الإجابات النصّية: أول ما يحتاجه المدرب، فنضعه أعلى اللوحة
     (data.grading || []).forEach((item) => app.append(gradingCard(item)));

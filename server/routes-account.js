@@ -402,6 +402,97 @@ function accountRoutes(store) {
     }
   });
 
+  // ---------------------------------------------------------------- الفصول
+  //
+  // أسماءُ طلاب المعلّم كما يكتبها هو، **اختيارية بالكامل**، وغرضها واحد:
+  // أن يعرف من لم يدخل بعد، وأن تتّحد كتابة الاسم بين الحصص فلا يظهر
+  // «احمد» و«أحمد» صفَّين في التقرير.
+  //
+  // والوعد الأصلي لم يُمسّ: هذه قائمةٌ كتبها المعلّم في حسابه، لا بياناتٌ
+  // جمعتها المنصة من الطلاب، ولا تُربط بإجابة أحد. الإجابات تبقى في الذاكرة
+  // وتختفي بانتهاء الجلسة كما كانت.
+
+  const MAX_CLASSES = 60;
+  const MAX_STUDENTS = 300;
+
+  /** أسماءٌ نظيفة بلا فراغات ولا تكرار — تُقبل ملصوقةً بأسطر أو فواصل */
+  function cleanNames(raw) {
+    const list = Array.isArray(raw) ? raw : String(raw || '').split(/[\n,،;]+/);
+    const seen = new Set();
+    const out = [];
+    for (const item of list) {
+      const name = String(item || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      out.push(name);
+      if (out.length >= MAX_STUDENTS) break;
+    }
+    return out;
+  }
+
+  router.get('/classes', auth.requireUser, async (req, res) => {
+    try {
+      res.json({ classes: await storage.get().listClasses(req.user.id) });
+    } catch (err) {
+      console.error('list classes:', err);
+      res.status(500).json({ error: 'تعذّر جلب فصولك' });
+    }
+  });
+
+  router.post('/classes', auth.requireUser, async (req, res) => {
+    try {
+      const existing = await storage.get().listClasses(req.user.id);
+      if (existing.length >= MAX_CLASSES) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_CLASSES} فصلاً) — احذف فصلاً قديماً` });
+      }
+      const name = String(req.body?.name || '').trim().slice(0, 60);
+      if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
+      const now = Date.now();
+      const item = {
+        id: storage.newId('cl_'),
+        ownerId: req.user.id,
+        name,
+        students: cleanNames(req.body?.students),
+        createdAt: now,
+        updatedAt: now,
+      };
+      await storage.get().saveClass(item);
+      res.status(201).json({ class: item });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر حفظ الفصل' });
+    }
+  });
+
+  router.put('/classes/:id', auth.requireUser, async (req, res) => {
+    try {
+      const existing = await storage.get().getClass(req.params.id);
+      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'الفصل غير موجود' });
+      const name = String(req.body?.name ?? existing.name).trim().slice(0, 60);
+      if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
+      const updated = {
+        ...existing,
+        name,
+        students: req.body?.students === undefined ? existing.students : cleanNames(req.body.students),
+        updatedAt: Date.now(),
+      };
+      await storage.get().saveClass(updated);
+      res.json({ class: updated });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر تحديث الفصل' });
+    }
+  });
+
+  router.delete('/classes/:id', auth.requireUser, async (req, res) => {
+    try {
+      const existing = await storage.get().getClass(req.params.id);
+      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'الفصل غير موجود' });
+      await storage.get().deleteClass(existing.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر حذف الفصل' });
+    }
+  });
+
   // ------------------------------------------------------- المكتبة العامة
 
   /**

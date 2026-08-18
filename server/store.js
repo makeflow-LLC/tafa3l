@@ -242,6 +242,13 @@ function sweep(aggressive = false) {
     // اختبار مجدول لموعد قادم يبقى محفوظاً ولو لم يلمسه أحد — ما لم يمتلئ الخادم
     const scheduled = session.status === 'lobby' && session.settings?.opensAt;
     if (!aggressive && scheduled && now < session.settings.opensAt + 60 * 60 * 1000) continue;
+    /**
+     * واجبٌ له موعد تسليم يبقى حيّاً حتى موعده مهما طال الخمول بينهما.
+     * ثلاث ساعاتٍ من الخمول هي القاعدة الصحيحة لحصةٍ في قاعة، وهي الخطأ
+     * الصريح لواجب نهاية الأسبوع: يُرسَل ليل الخميس فيموت رابطه قبل الفجر.
+     */
+    const due = session.status !== 'ended' && session.settings?.dueAt;
+    if (!aggressive && due && now < session.settings.dueAt + 60 * 60 * 1000) continue;
     const idle = now - session.lastActivity;
     const endedTooLong =
       session.status === 'ended' && now - (session.endedAt || session.lastActivity) > (aggressive ? 0 : ENDED_TTL_MS);

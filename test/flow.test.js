@@ -774,6 +774,38 @@ test('احتساب النقاط: ثابتة، وبلا نقاط، ومضاعف �
   assert.deepEqual(legacy, [1000, 1000, 1000]);
 });
 
+test('كشف الأسماء: من فيه ولم يدخل يظهر في اللوحة، ومن ليس فيه يدخل بلا منع', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'حصة بكشف',
+    settings: { pace: 'host', requireName: true, countdown: false, roster: ['سارة', 'ليان', 'كريم'] },
+    questions: [{ type: 'mc', text: 'س', options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'] }],
+  });
+
+  const host = ws();
+  await host.ready;
+  host.send({ t: 'host:hello', code: created.code, hostToken: created.hostToken });
+  await host.next('state');
+
+  // ليان من الكشف، و«طالب جديد» ليس فيه — والكشف دليلٌ لا بوّابة
+  for (const name of ['ليان', 'طالب جديد']) {
+    const p = ws();
+    await p.ready;
+    p.send({ t: 'join', code: created.code, name });
+    const joined = await p.next('joined');
+    assert.ok(joined.participantId, `${name} دخل`);
+  }
+
+  // كل انضمامٍ يبثّ لوحةً للمضيف، فأوّلُ ما في الطابور لوحةُ ما قبل الانضمام.
+  // ننتظر اللوحة التي فيها الاثنان بدل أن نصدّق أوّل ما يصل.
+  host.send({ t: 'host:dashboard' });
+  let dash = await host.next('dashboard');
+  for (let i = 0; i < 6 && dash.data.participants.length < 2; i += 1) dash = await host.next('dashboard');
+  assert.deepEqual(dash.data.missing, ['سارة', 'كريم'], 'من لم يدخل بعد — بأسمائهم');
+  assert.equal(dash.data.hasRoster, true);
+  assert.ok(dash.data.participants.some((p) => p.name === 'طالب جديد'), 'ومن ليس في الكشف محسوبٌ مشاركاً كاملاً');
+  host.close();
+});
+
 test('الأوسمة تُمنح حسب الأداء الفعلي', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'أوسمة',

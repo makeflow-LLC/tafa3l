@@ -81,6 +81,7 @@
         autoAdvanceSec: 6,
         // الجدولة: موعد الفتح (نص محلي من حقل datetime-local) ومدة الاختبار بالدقائق
         opensAt: '',
+        dueAt: '',
         durationMinutes: 0,
         // نظام التقييم: نقاط (لعبة) أو علامات (تقييم) أو بلا تقييم
         reward: 'points',
@@ -406,6 +407,9 @@
    *   مسودةٌ صاغها المساعد الذكي جاهزةٌ للمراجعة، فلا معنى لأن يمرّ صاحبها
    *   على الإعدادات ثم على كل سؤالٍ ضغطةً ضغطة ليصل إلى زرّ الإطلاق.
    */
+  /** فصول المعلّم تُجلب مرة واحدة لكل صفحة — تنقّله بين مراحل المعالج لا يعيد النداء */
+  let classCache = null;
+
   function mount(root, onLaunch, extraActions, opts) {
     const draft = loadDraft();
     let openIndex = 0;
@@ -601,6 +605,9 @@
 
           el('label', { text: t('bscheduleAndDuration'), style: { marginTop: '6px' } }),
           scheduleRow(),
+
+          el('label', { text: t('hClassAttach'), style: { marginTop: '6px' } }),
+          rosterRow(),
         ])
       );
 
@@ -1186,11 +1193,60 @@
     }
 
     /**
+     * إرفاق فصل: تُنسخ أسماؤه في `settings.roster` **نسخاً** لا إشارةً.
+     * ولو أشرنا إليه بمعرّفه لتغيّر كشف نشاطٍ أُطلق الأسبوع الماضي بمجرّد
+     * أن يعدّل المعلّم فصله اليوم — والنشاط سجلٌّ لما كان لا لما صار.
+     */
+    function rosterRow() {
+      const select = el('select', {});
+      const hint = el('div', { class: 'muted small', style: { marginTop: '4px' } });
+      const attached = draft.settings.roster || [];
+      select.append(el('option', { value: '' }, t('hClassNone')));
+
+      const paint = () => {
+        hint.textContent = attached.length ? t('hClassCount', { n: attached.length }) + ' · ' + attached.slice(0, 4).join('، ') + (attached.length > 4 ? '…' : '') : '';
+      };
+      paint();
+
+      select.addEventListener('change', () => {
+        const found = (classCache || []).find((c) => c.id === select.value);
+        draft.settings.roster = found ? found.students.slice() : [];
+        saveDraft(draft);
+        update();
+      });
+
+      // القائمة تُجلب مرة واحدة وتُخزَّن، فتنقُّلُ المعلّم بين المراحل لا يعيد النداء
+      const fill = (items) => {
+        items.forEach((item) => select.append(el('option', { value: item.id }, `${item.name} (${item.students.length})`)));
+        // المرفق حالياً: نطابق بالأسماء لأن المحفوظ نسخةٌ لا معرّف
+        const same = items.find((item) => item.students.length === attached.length && item.students.every((n, i) => n === attached[i]));
+        if (same) select.value = same.id;
+      };
+      if (classCache) fill(classCache);
+      else {
+        api('/api/classes')
+          .then((data) => {
+            classCache = data.classes || [];
+            if (select.isConnected) fill(classCache);
+          })
+          .catch(() => { classCache = []; });
+      }
+
+      return el('div', {}, [select, hint]);
+    }
+
+    /**
      * جدولة الاختبار: موعد الفتح ومدته. الموعد يُكتب بتوقيت جهاز المدرب
      * (datetime-local) ويُحوَّل إلى طابع زمني عند الإطلاق.
      */
     function scheduleRow() {
       const when = el('input', { type: 'datetime-local', value: draft.settings.opensAt || '' });
+      /**
+       * موعد التسليم — وهو ما يحوّل الرابط من جلسةٍ حيّة إلى **واجب**.
+       * غيرُ «مدة الاختبار»: تلك تبدأ من لحظة انطلاق الجلسة فتصلح لحصةٍ في
+       * قاعة، وهذا موعدٌ مطلق لا علاقة له بمتى فتح أولُ طالبٍ الرابط.
+       */
+      const due = el('input', { type: 'datetime-local', value: draft.settings.dueAt || '' });
       const minutes = el('input', {
         type: 'number',
         min: 0,
@@ -1218,11 +1274,24 @@
             ? t('bClosesAfter', { n: draft.settings.durationMinutes })
             : t('bandNoOverallTime')
         );
+        if (draft.settings.dueAt) {
+          const stamp = Date.parse(draft.settings.dueAt);
+          parts.push(
+            Number.isFinite(stamp)
+              ? t('bDueOn', { when: new Date(stamp).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) })
+              : t('bdateNotUnderstood')
+          );
+        }
         hint.textContent = parts.join(' · ');
       };
 
       when.addEventListener('input', () => {
         draft.settings.opensAt = when.value;
+        paint();
+        saveDraft(draft);
+      });
+      due.addEventListener('input', () => {
+        draft.settings.dueAt = due.value;
         paint();
         saveDraft(draft);
       });
@@ -1268,10 +1337,44 @@
         t('bclearTheSchedule')
       );
 
+      const dueClear = el('button', { class: 'btn sm ghost', type: 'button' }, t('bDueClear'));
+      dueClear.addEventListener('click', () => {
+        draft.settings.dueAt = '';
+        due.value = '';
+        paint();
+        saveDraft(draft);
+      });
+
+      // اختصارات: أكثر الواجبات «غداً» أو «آخر الأسبوع»، وكتابتها بالتقويم كل مرة عناء
+      const dueSoon = el('div', { class: 'row', style: { gap: '6px', marginTop: '6px' } },
+        [
+          { key: 'bDueTomorrow', days: 1 },
+          { key: 'bDue3Days', days: 3 },
+          { key: 'bDueWeek', days: 7 },
+        ].map(({ key, days }) =>
+          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => {
+            const at = new Date();
+            at.setDate(at.getDate() + days);
+            at.setHours(23, 59, 0, 0);
+            // datetime-local يقرأ التوقيت المحلي بلا منطقة، فنطرح الإزاحة قبل القصّ
+            draft.settings.dueAt = new Date(at.getTime() - at.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            due.value = draft.settings.dueAt;
+            paint();
+            saveDraft(draft);
+          } }, t(key))
+        )
+      );
+
       return el('div', { class: 'stack tight' }, [
         el('div', { class: 'grid two' }, [
           el('div', {}, [el('label', { text: t('bquizOpeningTimeOptional') }), when, el('div', { class: 'row', style: { marginTop: '6px' } }, [clear])]),
           el('div', {}, [el('label', { text: t('bquizDurationInMinutes') }), minutes, presets]),
+        ]),
+        el('div', {}, [
+          el('label', { text: t('bDueLabel') }),
+          due,
+          el('div', { class: 'muted small', style: { marginTop: '4px' }, text: t('bDueHint') }),
+          el('div', { class: 'row', style: { gap: '6px', marginTop: '6px' } }, [dueSoon, dueClear]),
         ]),
         hint,
       ]);
