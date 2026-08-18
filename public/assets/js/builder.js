@@ -1626,7 +1626,10 @@
                   type: 'button',
                   onclick: () =>
                     toast(
-                      t('bImagePremium', { phone: premiumState?.plan?.whatsapp || '970597034066', price: premiumState?.plan?.priceUsd || 5 }),
+                      // الشهر المجاني أولاً إن كان مُفعّلاً: المعلّم واقفٌ أمام البوابة الآن
+                      premiumState?.plan?.trialWhatsapp
+                        ? t('bImageTrial', { phone: premiumState.plan.trialWhatsapp })
+                        : t('bImagePremium', { phone: premiumState?.plan?.whatsapp || '970597034066', price: premiumState?.plan?.priceUsd || 5 }),
                       'warn'
                     ),
                 },

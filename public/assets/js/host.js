@@ -101,6 +101,7 @@
     const lib = hash.match(/^\/library\/([\w-]+)$/);
     if (lib) return openLibraryItem(lib[1]);
     if (hash === '/ai') return openAiDesigner();
+    if (hash === '/upgrade') return openUpgrade();
     if (hash === '/admin') return openAdmin();
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
     if (edit) return openSavedActivity(edit[1]);
@@ -737,7 +738,10 @@
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
-        el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upNav')),
+          el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
+        ]),
       ])
     );
     app.append(el('h1', { style: { marginBottom: '4px' }, text: t('profTitle') }));
@@ -1243,7 +1247,12 @@
       // ترحيب باسم صاحب الحساب — أول ما يراه المعلّم بعد الدخول
       app.append(
         el('div', { class: 'welcome' }, [
-          el('h1', { style: { margin: 0 }, text: t('hHelloUser', { name: firstName(state.user.name) }) }),
+          el('div', { class: 'row between' }, [
+            el('h1', { style: { margin: 0 }, text: t('hHelloUser', { name: firstName(state.user.name) }) }),
+            // مدخل الباقات من الصفحة الأولى: يعرف المعلّم ما لديه وما ينقصه قبل
+            // أن يصطدم ببوابةٍ في منتصف عمله
+            el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upNav')),
+          ]),
           el('p', {
             class: 'muted small',
             style: { margin: 0 },
@@ -1427,11 +1436,40 @@
     return `https://wa.me/${plan.whatsapp}?text=${encodeURIComponent(text)}`;
   }
 
+  /** رابط طلب الشهر المجاني — رقمٌ ورسالةٌ مستقلّان عن رسالة الاشتراك */
+  function trialLink(plan) {
+    return `https://wa.me/${plan.trialWhatsapp}?text=${encodeURIComponent(t('upTrialMsg'))}`;
+  }
+
+  /**
+   * عرض الشهر المجاني — يُعرض لكل من لم يشترك بعد، سواء دخل صفحة الباقات
+   * أو اصطدم ببوابةٍ في منتصف عمله. الخادم يُخفيه بإفراغ PREMIUM_TRIAL_WHATSAPP.
+   */
+  function trialBanner(plan, compact) {
+    if (!plan?.trialWhatsapp) return null;
+    const days = plan.trialDays || 30;
+    const btn = el('a', { class: 'btn accent' + (compact ? ' sm' : ''), href: trialLink(plan), target: '_blank', rel: 'noopener' }, t('upTrialBtn'));
+    if (compact) {
+      return el('div', { class: 'trial row between' }, [
+        el('span', { class: 'grow', text: t('upTrialShort', { phone: plan.trialWhatsapp }) }),
+        btn,
+      ]);
+    }
+    return el('div', { class: 'trial stack' }, [
+      el('h2', { style: { margin: 0 }, text: t('upTrialTitle') }),
+      el('p', { style: { margin: 0 }, text: t('upTrialBody', { phone: plan.trialWhatsapp, days }) }),
+      el('div', { class: 'row' }, [btn]),
+    ]);
+  }
+
   /** بطاقة «هذه ميزة بريميوم» — تُستخدم في المساعد الذكي وفي التصدير */
   function upgradeCard(plan, title) {
-    const p = plan || { whatsapp: '970597034066', priceUsd: 3, perks: [] };
+    const p = plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], trialWhatsapp: '970597750343', trialDays: 30 };
     return el('div', { class: 'card stack' }, [
       el('h2', { style: { margin: 0 }, text: title || t('hpremiumFeature') }),
+      // العرض المجاني قبل السعر: المعلّم الذي اصطدم بالبوابة الآن هو أكثر من
+      // يحتاج أن يعرف أن التجربة الكاملة متاحة له بلا دفع
+      trialBanner(p, true),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('haPremiumSubscriptionUnlocks') }),
       el('div', { class: 'stack tight' }, [
         el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '🤖' }), el('span', { class: 'grow', text: t('hdesignTheActivityWith') })]),
@@ -1441,8 +1479,150 @@
         el('strong', { text: t('hPriceMonthly', { price: p.priceUsd }) }),
         el('a', { class: 'btn primary', href: whatsappLink(p), target: '_blank', rel: 'noopener' }, t('hWhatsappBtn', { phone: p.whatsapp })),
       ]),
+      // «وماذا أدفع مقابله؟» سؤالٌ يجب أن يُجاب في الشاشة نفسها لا في رسالة واتساب
+      el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upCompareLink')),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('hafterYouGetIn') }),
     ]);
+  }
+
+  /** صفّ ميزة في بطاقة الباقة: علامةٌ ثم نصّ، والعلامة تحمل معناها للقارئ الصوتي */
+  function planPerk(text, on = true) {
+    return el('li', { class: on ? 'on' : 'off' }, [
+      el('span', { class: 'mark', 'aria-hidden': 'true', text: on ? '✓' : '—' }),
+      el('span', { class: 'grow', text }),
+    ]);
+  }
+
+  /** خلية «متاح / غير متاح» في جدول المقارنة */
+  function planCell(on) {
+    return el('td', { class: 'plan-cell' }, [
+      el('span', { 'aria-hidden': 'true', text: on ? '✅' : '✖' }),
+      el('span', { class: 'sr-only', text: on ? t('upYes') : t('upNo') }),
+    ]);
+  }
+
+  /** [مفتاح النصّ، هل هي في المجّاني؟] — بريميوم يشمل الكلّ */
+  const PLAN_ROWS = [
+    ['upRow1', true],
+    ['upRow2', true],
+    ['upRow3', true],
+    ['upRow4', true],
+    ['upRow5', true],
+    ['upRow6', true],
+    ['upRow7', true],
+    ['upRow8', true],
+    ['upRow9', false],
+    ['upRow10', false],
+    ['upRow11', false],
+  ];
+
+  /**
+   * صفحة الباقات: ما يأخذه المجّاني مقابل ما يفتحه الاشتراك، مكتوبةً بصدق.
+   * المجّاني هنا ليس نسخةً مبتورة — عشرة أنواع أسئلة وكل أنماط التشغيل — والمدفوع
+   * ثلاث أدواتٍ للمعلّم وحده. نقولها صراحةً لأن المعلّم سيكتشفها في أول استخدام،
+   * وصفحة سعرٍ يكتشف المعلّم أنها بالغت تُفقده الثقة بالمنصة كلها لا بالصفحة.
+   */
+  async function openUpgrade() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    // السعر ورقم الواتساب يأتيان من الخادم لا من ثابتٍ هنا: كلاهما متغيّر بيئة
+    // يتغيّر بلا نشرٍ جديد، وأسوأ ما في صفحة سعرٍ أن تطبع سعراً قديماً.
+    let info = state.premium?.plan ? state.premium : null;
+    if (!info) info = await api('/api/ai/status').catch(() => null);
+    const plan = info?.plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], trialWhatsapp: '970597750343', trialDays: 30 };
+    const paid = Boolean(info?.isPremium);
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hback')),
+        el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuideTip')),
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('upTitle') }));
+    app.append(
+      el('p', { class: 'muted small', style: { marginTop: 0 } }, [
+        el('span', { class: 'badge ok', text: t('upStudentFree') }),
+        el('span', { text: ' ' + t('upIntro') }),
+      ])
+    );
+
+    const freeCard = el('div', { class: 'plan' + (paid ? '' : ' current') }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 }, text: t('upFreeName') }),
+        paid ? null : el('span', { class: 'badge ok', text: t('upCurrent') }),
+      ]),
+      el('div', { class: 'plan-price' }, [
+        el('strong', { text: t('upFreePrice') }),
+        el('span', { class: 'muted small', text: t('upFreeForever') }),
+      ]),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('upFreeTag') }),
+      el('ul', { class: 'plan-list' }, ['upFree1', 'upFree2', 'upFree3', 'upFree4', 'upFree5', 'upFree6'].map((k) => planPerk(t(k)))),
+    ]);
+
+    // المشترك لا يُعرض عليه زرّ شراءٍ اشتراه: يرى مدّته وزرّ تجديد لا أكثر
+    const until = paid && info?.premiumUntil ? el('span', { class: 'muted small', text: t('upUntilDate', { date: fmtDate(info.premiumUntil) }) }) : null;
+    const cta = paid
+      ? el('div', { class: 'stack tight' }, [
+          el('span', { class: 'badge ok', text: t('upSubscribed') }),
+          until,
+          el('a', { class: 'btn ghost sm', href: whatsappLink(plan), target: '_blank', rel: 'noopener' }, t('upRenewBtn')),
+        ])
+      : state.user
+        ? el('a', { class: 'btn primary', href: whatsappLink(plan), target: '_blank', rel: 'noopener' }, t('hWhatsappBtn', { phone: plan.whatsapp }))
+        : el('div', { class: 'stack tight' }, [
+            el('span', { class: 'muted small', text: t('upSignInFirst') }),
+            el('a', { class: 'btn primary', href: '/login.html?next=' + encodeURIComponent('/host.html#/upgrade') }, t('upSignInBtn')),
+          ]);
+
+    const proCard = el('div', { class: 'plan best' + (paid ? ' current' : '') }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 }, text: t('upProName') }),
+        paid ? el('span', { class: 'badge ok', text: t('upCurrent') }) : null,
+      ]),
+      el('div', { class: 'plan-price' }, [
+        el('strong', { dir: 'ltr', text: `$${plan.priceUsd}` }),
+        el('span', { class: 'muted small', text: t('upPerMonth') }),
+      ]),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('upProTag') }),
+      el('ul', { class: 'plan-list' }, [
+        planPerk(t('upEverythingFree')),
+        planPerk(t('upPro1')),
+        planPerk(t('upPro2')),
+        planPerk(t('upPro3')),
+      ]),
+      cta,
+    ]);
+
+    // المشترك لا يُعرض عليه شهرٌ مجاني — عنده اشتراكٌ سارٍ أصلاً
+    if (!paid) {
+      const trial = trialBanner(plan);
+      if (trial) app.append(trial);
+    }
+
+    app.append(el('div', { class: 'plans' }, [freeCard, proCard]));
+
+    app.append(
+      el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
+        el('h2', { style: { margin: 0 }, text: t('upCompare') }),
+        el('div', { class: 'table-wrap' }, [
+          el('table', { class: 'plans-table' }, [
+            el('thead', {}, el('tr', {}, [
+              el('th', {}, t('upFeature')),
+              el('th', { class: 'plan-cell' }, t('upFreeName')),
+              el('th', { class: 'plan-cell' }, t('upProName')),
+            ])),
+            el('tbody', {}, PLAN_ROWS.map(([key, free]) => el('tr', {}, [el('td', {}, t(key)), planCell(free), planCell(true)]))),
+          ]),
+        ]),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('upHonest') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('upManual') }),
+      ])
+    );
   }
 
   /** صفحة المحادثة مع المساعد الذكي — تنتهي بمسودة تُفتح في المحرّر */

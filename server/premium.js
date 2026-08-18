@@ -14,6 +14,10 @@ const PLAN = {
   whatsapp: process.env.PREMIUM_WHATSAPP || '970597034066',
   priceUsd: Number(process.env.PREMIUM_PRICE_USD) || 5,
   perks: ['تصميم النشاط بالذكاء الاصطناعي', 'تصدير النتائج PDF و Excel'],
+  // شهرٌ مجاني بكل الميزات — رقمٌ منفصل عن رقم الاشتراك، وكلاهما متغيّر بيئة
+  // كي يتغيّرا بلا نشرٍ جديد. أفرغ PREMIUM_TRIAL_WHATSAPP لإيقاف العرض كلياً.
+  trialWhatsapp: process.env.PREMIUM_TRIAL_WHATSAPP ?? '970597750343',
+  trialDays: Number(process.env.PREMIUM_TRIAL_DAYS) || 30,
 };
 
 function adminEmails() {
