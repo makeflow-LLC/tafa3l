@@ -13,6 +13,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tafa3l-acct-'));
 // بلا هذين، مسار /api/auth/google يرفض الطلب فوراً (503) قبل أن نصل حتى إلى جوجل المزيّفة
 process.env.GOOGLE_CLIENT_ID = 'test-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+// حساب مالك واحد: صور الأسئلة ميزة بريميوم، ويلزم اختبارها من يملكها
+process.env.ADMIN_EMAILS = 'owner.images@example.com';
 const { server, ready } = require('../server/index');
 
 let base;
@@ -352,57 +354,75 @@ test('استنساخ نشاط يعطي نسخة مستقلة', async () => {
   assert.equal((await other.request('POST', `/api/activities/${id}/duplicate`)).status, 404);
 });
 
-// ---------------------------------------------------------- بنك الأسئلة
+// ------------------------------------------------------ «أسئلتي السابقة»
+//
+// حلّت محلّ بنك الأسئلة: لا حفظَ مسبقاً ولا مكانَ ثانياً تعيش فيه الأسئلة —
+// بحثٌ واحد يمرّ على أنشطة المعلّم المحفوظة (وعلى بنكه القديم إن كان له بنك،
+// فلا يضيع ما جمعه قبل الحذف).
 
-const BANK_QUESTION = { type: 'mc', text: 'ما عاصمة الأردن؟', options: [{ id: 'o0', text: 'عمّان' }, { id: 'o1', text: 'بيروت' }], correct: ['o0'], points: 500 };
+const REUSE_Q = (text) => ({ type: 'mc', text, options: [{ id: 'o0', text: 'أ' }, { id: 'o1', text: 'ب' }], correct: ['o0'], points: 500 });
 
-test('حفظ سؤال في البنك وتحديثه وحذفه', async () => {
+test('«أسئلتي السابقة» تجمع أسئلة الأنشطة المحفوظة وتُسمّي مصدرها', async () => {
   const c = client();
   await loginViaGoogle(c, { email: email(), name: 'منى' });
 
-  const created = await c.request('POST', '/api/bank', { question: BANK_QUESTION });
-  assert.equal(created.status, 201);
-  const id = created.data.item.id;
-  assert.equal(created.data.item.question.text, BANK_QUESTION.text);
-  assert.equal(created.data.item.question.options.length, 2, 'السؤال يمر عبر نفس تحقّق الأسئلة العادي');
+  await c.request('POST', '/api/activities', {
+    title: 'مراجعة الوحدة الأولى',
+    settings: {},
+    questions: [REUSE_Q('ما عاصمة الأردن؟'), REUSE_Q('كم عدد القارات؟')],
+  });
 
-  const list = await c.request('GET', '/api/bank');
-  assert.equal(list.data.questions.length, 1);
+  const all = await c.request('GET', '/api/my-questions');
+  assert.equal(all.status, 200);
+  assert.equal(all.data.questions.length, 2);
+  const capital = all.data.questions.find((x) => x.question.text === 'ما عاصمة الأردن؟');
+  assert.ok(capital, 'السؤال ظهر بلا أن يحفظه أحد في بنك');
+  assert.equal(capital.from, 'مراجعة الوحدة الأولى', 'ويُسمّى النشاط الذي جاء منه');
 
-  const updated = await c.request('PUT', '/api/bank/' + id, { question: { ...BANK_QUESTION, text: 'ما عاصمة مصر؟' } });
-  assert.equal(updated.status, 200);
-  assert.equal(updated.data.item.question.text, 'ما عاصمة مصر؟');
-  const afterUpdate = await c.request('GET', '/api/bank');
-  assert.equal(afterUpdate.data.questions.length, 1, 'التحديث لا يُنشئ عنصراً ثانياً');
+  const hit = await c.request('GET', '/api/my-questions?q=' + encodeURIComponent('قارات'));
+  assert.equal(hit.data.questions.length, 1, 'البحث يصفّي بالنص');
+  assert.equal(hit.data.questions[0].question.text, 'كم عدد القارات؟');
 
-  assert.equal((await c.request('DELETE', '/api/bank/' + id)).status, 200);
-  assert.equal((await c.request('GET', '/api/bank')).data.questions.length, 0);
+  const miss = await c.request('GET', '/api/my-questions?q=' + encodeURIComponent('كيمياء'));
+  assert.equal(miss.data.questions.length, 0);
 });
 
-test('البنك محمي بتسجيل الدخول ومعزول لكل مدرب', async () => {
-  const anon = client();
-  assert.equal((await anon.request('GET', '/api/bank')).status, 401);
-  assert.equal((await anon.request('POST', '/api/bank', { question: BANK_QUESTION })).status, 401);
+test('السؤال المكرّر في نشاطين يظهر مرة واحدة', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'سامي' });
+  for (const title of ['حصة الأحد', 'حصة الاثنين']) {
+    await c.request('POST', '/api/activities', { title, settings: {}, questions: [REUSE_Q('سؤالٌ أعدتُه')] });
+  }
+  const all = await c.request('GET', '/api/my-questions');
+  assert.equal(all.data.questions.length, 1, 'القائمة للاختيار لا للجرد');
+});
+
+test('«أسئلتي السابقة» محميّة بتسجيل الدخول ومعزولة لكل مدرب', async () => {
+  assert.equal((await client().request('GET', '/api/my-questions')).status, 401);
 
   const a = client();
   const b = client();
-  await loginViaGoogle(a, { email: email(), name: 'سامي' });
-  await loginViaGoogle(b, { email: email(), name: 'دانة' });
+  await loginViaGoogle(a, { email: email(), name: 'دانة' });
+  await loginViaGoogle(b, { email: email(), name: 'غيث' });
+  await a.request('POST', '/api/activities', { title: 'خاصّ بدانة', settings: {}, questions: [REUSE_Q('سؤال دانة')] });
 
-  const id = (await a.request('POST', '/api/bank', { question: BANK_QUESTION })).data.item.id;
-  assert.equal((await b.request('GET', '/api/bank')).data.questions.length, 0, 'قائمة كل مدرب خاصة به');
-  assert.equal((await b.request('PUT', '/api/bank/' + id, { question: BANK_QUESTION })).status, 404);
-  assert.equal((await b.request('DELETE', '/api/bank/' + id)).status, 404);
-  assert.equal((await a.request('GET', '/api/bank')).data.questions.length, 1, 'ولا يزال موجوداً عند صاحبه');
+  assert.equal((await b.request('GET', '/api/my-questions')).data.questions.length, 0);
+  assert.equal((await a.request('GET', '/api/my-questions')).data.questions.length, 1);
 });
 
-test('سؤال بلا نص كافٍ في البنك يُرفض بنفس تحقّق الأسئلة العادي', async () => {
+test('صور الأسئلة لا تُحمَّل في قائمة إعادة الاستخدام', async () => {
   const c = client();
-  await loginViaGoogle(c, { email: email(), name: 'وفاء' });
-  // نوع mc بلا خيارات كافية: normalizeQuestion يعوّض بخيارين افتراضيين بدل الرفض —
-  // فقط الأنواع التي يتحقّق منها normalizeQuiz صراحة (كالأسئلة الفارغة كلياً) تُرفض هنا؛
-  // البنك يستخدم نفس normalizeQuestion المتسامح المستخدم للأنشطة، فهذا سلوك متوقّع لا خطأ.
-  const created = await c.request('POST', '/api/bank', { question: { type: 'mc', text: '' } });
-  assert.equal(created.status, 201);
-  assert.equal(created.data.item.question.text, 'سؤال 1', 'نص افتراضي عند الترك فارغاً — نفس سلوك محرّر الأنشطة');
+  await loginViaGoogle(c, { email: 'owner.images@example.com', name: 'وفاء' });
+  const image = 'data:image/png;base64,' + 'A'.repeat(2000);
+  const saved = await c.request('POST', '/api/activities', {
+    title: 'بالصور',
+    settings: {},
+    questions: [{ ...REUSE_Q('سؤال مصوَّر'), image }],
+  });
+  assert.equal(saved.status, 201, JSON.stringify(saved.data));
+  const all = await c.request('GET', '/api/my-questions');
+  const one = all.data.questions[0];
+  // قائمةٌ من مئة سؤال مصوَّر تصير ميغابايتات لو حملت الصور، والقائمة نصٌّ يُقرأ
+  assert.equal(one.question.image, undefined, 'الصورة لا تُرسل مع القائمة');
+  assert.equal(one.question.hasImage, true, 'لكن يُقال إن للسؤال صورة');
 });

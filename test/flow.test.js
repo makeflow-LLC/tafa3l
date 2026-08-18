@@ -756,23 +756,28 @@ test('احتساب النقاط: ثابتة، وبلا نقاط، ومضاعف �
     return points;
   }
 
-  // ثابتة بلا مضاعف: نفس القيمة رغم اختلاف السرعة
-  const flat = await runOnce({ scoring: 'flat', streakBonus: false });
+  // ثابتة: نفس القيمة رغم اختلاف السرعة
+  const flat = await runOnce({ scoring: 'flat' });
   assert.deepEqual(flat, [1000, 1000, 1000]);
 
   // بلا نقاط إطلاقاً
   const none = await runOnce({ scoring: 'none' });
   assert.deepEqual(none, [0, 0, 0]);
 
-  // مضاعف السلاسل: ×1 ثم ×1.1 ثم ×1.2
-  const streak = await runOnce({ scoring: 'flat', streakBonus: true });
-  assert.deepEqual(streak, [1000, 1100, 1200]);
+  /**
+   * ولا مضاعف سلسلة بعد اليوم — ولو طلبه الطالبُ صراحةً في الإعدادات.
+   * كان يرفع ثلاث صحيحات متتالية إلى 1000‏/1100‏/1200 فيرى الطالب رقماً لا
+   * يفسّره سؤالُه وحده. `streakBonus: true` هنا عمداً: إعدادٌ قديم محفوظ
+   * في نشاطٍ أُطلق قبل الحذف يجب أن يمرّ بلا أثر لا أن يُحيي الحساب القديم.
+   */
+  const legacy = await runOnce({ scoring: 'flat', streakBonus: true });
+  assert.deepEqual(legacy, [1000, 1000, 1000]);
 });
 
 test('الأوسمة تُمنح حسب الأداء الفعلي', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'أوسمة',
-    settings: { pace: 'host', countdown: false, scoring: 'flat', streakBonus: false },
+    settings: { pace: 'host', countdown: false, scoring: 'flat' },
     questions: [0, 1, 2].map((i) => ({
       type: 'mc',
       text: 'س' + i,

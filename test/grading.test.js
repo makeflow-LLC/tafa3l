@@ -445,7 +445,7 @@ test('لا يمكن تصحيح سؤال غير مخصّص للتصحيح الي�
 test('ملف النتائج يحمل بطاقة النشاط وإحصاء كل سؤال ودرجة كل طالب بنسبتها', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'اختبار التقرير',
-    settings: { pace: 'host', requireName: true, countdown: false, scoring: 'flat', streakBonus: false },
+    settings: { pace: 'host', requireName: true, countdown: false, scoring: 'flat' },
     questions: [
       { type: 'mc', text: 'ما عاصمة الأردن؟', timeLimit: 0, points: 10, options: [{ id: 'o0', text: 'عمّان' }, { id: 'o1', text: 'إربد' }], correct: ['o0'] },
       { type: 'mc', text: 'كم يساوي ٢+٢؟', timeLimit: 0, points: 10, options: [{ id: 'o0', text: '٤' }, { id: 'o1', text: '٥' }], correct: ['o0'] },

@@ -56,8 +56,6 @@ const MARK_MODES = ['equal', 'custom'];
  */
 const TIME_MODES = ['none', 'all'];
 /** مضاعف السلسلة: ١٠٪ لكل إجابة صحيحة متتالية بحد أقصى ٥٠٪ */
-const STREAK_STEP = 0.1;
-const STREAK_MAX = 0.5;
 /** الأنواع التي تُحتسب لها نقاط (لها إجابة صحيحة) */
 const SCORED_TYPES = new Set(['mc', 'truefalse']);
 /** فرق افتراضية — نفس الألوان الثمانية المستخدمة أصلاً لخيارات الأسئلة (c0..c7) لتناسق بصري كامل */
@@ -430,8 +428,6 @@ function normalizeSettings(raw, questions) {
       // في وضع العلامات: نقاط ثابتة داخلياً كي يوافق الترتيبُ العلامةَ،
       // وفي «بلا تقييم» لا نقاط أصلاً
       scoring: marks ? 'flat' : reward === 'none' ? 'none' : scoring,
-      // مضاعف السلسلة لعبة نقاط بحتة — لا مكان له في نشاط بعلامة
-      streakBonus: reward === 'points' && raw?.streakBonus !== false,
       // إظهار الإجابة الصحيحة وشرحها للمتدرب فور إجابته
       revealAnswer: raw?.revealAnswer !== false,
       // نزاهة الاختبار: خلط ترتيب الأسئلة مرة عند الإطلاق،
@@ -1241,13 +1237,13 @@ class Session {
       points = q.points * (0.5 + 0.5 * ratio);
     }
 
-    // مضاعف السلسلة يعتمد على عدد الصحيحات المتتالية قبل هذه الإجابة
-    let multiplier = 1;
-    if (this.settings.streakBonus) {
-      multiplier = 1 + Math.min(STREAK_MAX, participant.streak * STREAK_STEP);
-      points *= multiplier;
-    }
-    return { points: Math.round(points), multiplier: Math.round(multiplier * 100) / 100 };
+    /**
+     * لا مضاعف سلسلة. كان يضرب نقاط الإجابة حتى ×١٫٥ بحسب صحيحاتٍ سابقة،
+     * فيرى الطالب «+١٥٠٠» على سؤالٍ قيمته ألف ولا يعرف من أين جاء الفرق،
+     * ويرى المعلّم ترتيباً لا يستطيع شرحه لوليّ أمر. والسلسلة تبقى ظاهرةً
+     * شارةَ حماسٍ (🔥) ووسامَ «أطول سلسلة» — تحفيزٌ بلا رياضياتٍ خفيّة.
+     */
+    return { points: Math.round(points), multiplier: 1 };
   }
 
   parseAnswerValue(q, raw) {

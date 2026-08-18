@@ -47,11 +47,12 @@ test('وضع العلامات يُلغي أثر السرعة على النتيج
   // المعلّم اختار العلامات، فلا سباق ثوانٍ: الخادم يفرض النقاط الثابتة داخلياً
   const s = new Session('000401', {
     title: 'اختبار',
-    settings: settings({ reward: 'marks', totalMark: 10, scoring: 'speed', streakBonus: true }),
+    settings: settings({ reward: 'marks', totalMark: 10, scoring: 'speed' }),
     questions: [{ ...MC(1), timeLimit: 30 }, { ...MC(2), timeLimit: 30 }],
   });
   assert.equal(s.settings.scoring, 'flat', 'وضع العلامات يفرض النقاط الثابتة');
-  assert.equal(s.settings.streakBonus, false, 'ولا مضاعف سلسلة يرفع العلامة فوق سقفها');
+  // ومضاعف السلسلة حُذف من المنصة كلها، فلا سبيل لرفع علامةٍ فوق سقفها
+  assert.equal(s.settings.streakBonus, undefined);
 
   const fast = s.addParticipant({ name: 'سريع' });
   const slow = s.addParticipant({ name: 'بطيء' });

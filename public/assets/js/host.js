@@ -982,34 +982,27 @@
     }
   }
 
-  /** تجربة فورية: ينشئ جلسة من قالب جاهز بضغطة واحدة */
-  async function startDemo() {
-    teardown();
-    app.innerHTML = '';
-    app.append(el('div', { class: 'card center stack' }, [el('div', { class: 'spinner' }), el('p', { class: 'muted', text: t('hpreparingAQuickDemo') })]));
+  /**
+   * تجربة فورية بنشاط جاهز — **بلا حساب**.
+   *
+   * كانت تُنشئ جلسة، فلمّا صار الإطلاق يتطلّب حساباً صار زرٌّ يعد بـ«ضغطة
+   * واحدة» يرمي الزائر إلى صفحة دخول: أسوأ من ألّا يكون. والوعدان ليسا
+   * متعارضين حقاً — ما رفضه صاحب المنصة أن يُنشئ **مجهولٌ جلسةً حيّة**، لا
+   * أن يرى المحرّر. فنفتح له نشاطاً كاملاً جاهزاً يقلّبه ويعدّله ويفهم
+   * المنصة كلها، ويبقى الحساب مطلوباً عند الإطلاق وحده — حيث بابُه أصلاً.
+   */
+  function startDemo() {
     const template = (window.TEMPLATES || []).find((item) => item.key === 'quiz') || (window.TEMPLATES || [])[0];
-    if (!state.user && !(await loadAccount())) {
-      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/demo');
+    if (!template) {
+      location.hash = '#/';
       return;
     }
-    try {
-      const created = await api('/api/sessions', {
-        method: 'POST',
-        body: { title: template.title, settings: template.settings, questions: template.questions },
-      });
-      rememberHost(created.code, created.hostToken, created.title);
-      location.hash = '#/live/' + created.code;
-    } catch (err) {
-      app.innerHTML = '';
-      showOfflineBanner(app);
-      app.append(
-        el('div', { class: 'card stack center' }, [
-          el('h2', { text: t('hcouldNotStartThe') }),
-          el('p', { class: 'muted small', text: err.message }),
-          el('a', { class: 'btn primary', href: '#/' }, t('hgoToTheEditor')),
-        ])
-      );
-    }
+    window.Builder.saveDraft({ title: template.title, settings: template.settings, questions: template.questions });
+    setEditingActivity(null);
+    // «المراجعة» لا «الإعدادات»: الزائر جاء ليرى نشاطاً جاهزاً لا ليملأ نموذجاً
+    state.builderStage = 'review';
+    openBuilder();
+    toast(t('hdemoLoaded'), 'ok');
   }
 
   window.addEventListener('hashchange', route);

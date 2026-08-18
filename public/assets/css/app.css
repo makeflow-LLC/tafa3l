@@ -1126,11 +1126,43 @@ textarea::placeholder {
 
 /* ------------------------------------------- الانتقال التلقائي بعد الإجابة */
 
+/**
+ * شريط الانتقال عند الطالب في الوضع الحرّ.
+ *
+ * ملتصقٌ بأسفل الشاشة لا في أعلى الصفحة: الطالب يقرأ نتيجته ثم شرحها ثم
+ * إجابات زملائه، وأي زرٍّ في الأعلى يغيب عن نظره عند أول تمرير. و‏`z-index`
+ * أعلى من قصاصات الاحتفال (٩٠) لأنها كانت تتساقط فوقه فتُبهت لونه في
+ * اللحظة نفسها التي يُفترض أن يكون فيها أوضح ما في الشاشة.
+ */
+.nextbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 95;
+  display: grid;
+  gap: 6px;
+  margin: 14px -16px 0;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--scrim);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+}
+
+.nextbar .btn {
+  min-height: 54px;
+  font-size: 1.05rem;
+}
+
 .autonext {
   display: grid;
   gap: 6px;
   margin: -4px 0 6px;
   text-align: center;
+}
+
+/* داخل الشريط الملتصق: العدّاد سطرٌ رفيع فوق الزرّ لا كتلةٌ منفصلة */
+.nextbar .autonext {
+  margin: 0;
+  gap: 4px;
 }
 
 .autonext-bar {
