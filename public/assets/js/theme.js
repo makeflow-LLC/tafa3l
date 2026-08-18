@@ -22,9 +22,19 @@
     }
   }
 
-  /** المطبَّق فعلاً: اختيارُ الزائر إن وُجد، وإلا ما يقوله نظامه */
+  /**
+   * سِمَةٌ تفرضها الصفحة حين لا يختار الزائر شيئاً.
+   *
+   * شاشتا الطالب والبروجكتر مصمَّمتان داكنتين: ألوان الخيارات وبطاقة النتيجة
+   * كلها مبنيّة على أرضيةٍ داكنة، وقاعةٌ مضاءة لا تُقرأ فيها شاشةٌ بيضاء.
+   * فتبقيان داكنتين افتراضاً — واختيارُ الزائر الصريح يعلو عليهما دائماً،
+   * لأن من يقرأ تحت الشمس أو يجد الداكنة متعبةً له الحقّ في أن يقلبها.
+   */
+  const pageDefault = () => document.documentElement.getAttribute('data-theme-default') || '';
+
+  /** المطبَّق فعلاً: اختيارُ الزائر، ثم افتراضُ الصفحة، ثم ما يقوله نظامه */
   function effective() {
-    return stored() || (media && media.matches ? 'dark' : 'light');
+    return stored() || pageDefault() || (media && media.matches ? 'dark' : 'light');
   }
 
   function apply() {
@@ -35,9 +45,10 @@
   }
   apply();
 
-  // من لم يختر يدوياً يتبع نظامه ولو غيّره والصفحة مفتوحة
+  // من لم يختر يدوياً يتبع نظامه ولو غيّره والصفحة مفتوحة — ما لم تفرض
+  // الصفحة سِمَتها (شاشة العرض لا تنقلب لأن حاسوب المعلّم غيّر إعداده)
   media?.addEventListener?.('change', () => {
-    if (!stored()) apply();
+    if (!stored() && !pageDefault()) apply();
   });
 
   function set(value) {
@@ -68,9 +79,19 @@
       paint();
     });
     paint();
+    global.addEventListener('themechange', paint);
     container.append(btn);
     return btn;
   }
 
-  global.Theme = { effective, set, mountToggle };
+  /**
+   * لوحة المعلّم صفحةٌ واحدة تنتقل بين شاشاتٍ لكلٍّ منها افتراضها: الجلسة
+   * المباشرة داكنة والتصفّح فاتح. فتُبدّل `data-theme-default` ثم تنادي هذه.
+   */
+  function refresh() {
+    apply();
+    global.dispatchEvent(new CustomEvent('themechange'));
+  }
+
+  global.Theme = { effective, set, mountToggle, refresh };
 })(window);

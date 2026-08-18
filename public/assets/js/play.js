@@ -20,6 +20,7 @@
     node.setAttribute('aria-label', t(aria));
   }
   if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
+  window.Theme?.mountToggle($('#langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
 
   const app = $('#app');
   const connBadge = $('#conn');

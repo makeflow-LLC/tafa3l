@@ -14,6 +14,7 @@
     fsBtn.setAttribute('aria-label', t('sFullscreen'));
   }
   if (window.I18n && document.getElementById('langRow')) window.I18n.mountToggle(document.getElementById('langRow'));
+  window.Theme?.mountToggle(document.getElementById('langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
   const Fx = window.Fx;
 
   const app = $('#app');
