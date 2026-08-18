@@ -10,7 +10,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { Session } = require('../server/session');
+const { Session, normalizeQuestion } = require('../server/session');
 
 const MC = (n, points = 1000) => ({
   type: 'mc',
@@ -22,6 +22,69 @@ const MC = (n, points = 1000) => ({
 });
 
 const settings = (extra) => ({ pace: 'host', requireName: true, countdown: false, ...extra });
+
+// ------------------------------------------------------- «صح / خطأ»
+//
+// النوع الذي يخطئ فيه الجميع مرة واحدة: جوابه يُخزَّن نصّاً ('true'/'false')
+// لا قيمةً منطقية. ولو مرّر أحدٌ `false` المنطقية لسقطت في المصفاة وصار
+// السؤال بلا إجابةٍ صحيحة — أي استطلاعَ رأيٍ لا يُصحَّح، بلا أن يدري أحد.
+
+test('«صح/خطأ»: الجواب نصٌّ، و«خطأ» جوابٌ مشروع كـ«صحيح»', () => {
+  const asFalse = normalizeQuestion({ type: 'truefalse', text: 'الشمس تدور حول الأرض', correct: ['false'] }, 0);
+  assert.deepEqual(asFalse.options.map((o) => o.id), ['true', 'false']);
+  assert.deepEqual(asFalse.options.map((o) => o.text), ['صحيح', 'خطأ']);
+  assert.deepEqual(asFalse.correct, ['false'], '«خطأ» جوابٌ صحيح لا قيمةٌ فارغة');
+
+  const asTrue = normalizeQuestion({ type: 'truefalse', text: 'الماء يغلي عند ١٠٠', correct: 'true' }, 0);
+  assert.deepEqual(asTrue.correct, ['true'], 'ويُقبل نصّاً مفرداً لا مصفوفةً فقط');
+});
+
+test('«صح/خطأ»: القيمة المنطقية تُقبل ولا تُقلَب — والمساعد يرسلها كذلك', () => {
+  // المساعد الذكي يكتب `correct: true` منطقيةً لا نصّاً، فقبولها ليس تساهلاً
+  // بل ضرورة. والمهمّ أن تُقبل **بمعناها**: false ⇐ «خطأ» لا «صحيح».
+  assert.deepEqual(normalizeQuestion({ type: 'truefalse', text: 'س', correct: false }, 0).correct, ['false']);
+  assert.deepEqual(normalizeQuestion({ type: 'truefalse', text: 'س', correct: true }, 0).correct, ['true']);
+  assert.deepEqual(normalizeQuestion({ type: 'truefalse', text: 'س', correct: [false] }, 0).correct, ['false']);
+});
+
+test('«صح/خطأ»: رمزٌ لا معنى له يسقط بدل أن يُخمَّن', () => {
+  // الأسوأ من السقوط أن يُختار جوابٌ عشوائي فيُصحَّح الصفُّ كلّه بالخطأ.
+  // والسقوط ظاهرٌ لا صامت: المحرّر يقول «حدّد الإجابة الصحيحة» في المراجعة.
+  for (const bad of [0, 1, 'yes', 'صح', 'o0', '']) {
+    const q = normalizeQuestion({ type: 'truefalse', text: 'س', correct: [bad] }, 0);
+    assert.deepEqual(q.correct, [], `«${String(bad)}» لا يصلح معرّفَ خيار`);
+  }
+});
+
+test('«صح/خطأ»: التصحيح لا يُخطئ حين يكون الجواب «خطأ»', () => {
+  const s = new Session('000501', {
+    title: 'صح وخطأ',
+    settings: settings({ reward: 'marks', totalMark: 10, pace: 'host', countdown: false }),
+    questions: [
+      { type: 'truefalse', text: 'الشمس تدور حول الأرض', points: 1000, correct: ['false'] },
+      { type: 'truefalse', text: 'الماء يغلي عند ١٠٠', points: 1000, correct: ['true'] },
+    ],
+  });
+  const right = s.addParticipant({ name: 'مصيب' });
+  const wrong = s.addParticipant({ name: 'مخطئ' });
+  s.start();
+
+  s.goTo(0);
+  assert.equal(s.submitAnswer(right, s.questions[0].id, 'false').correct, true, '«خطأ» على سؤالٍ جوابه خطأ = إصابة');
+  assert.equal(s.submitAnswer(wrong, s.questions[0].id, 'true').correct, false);
+
+  s.goTo(1);
+  assert.equal(s.submitAnswer(right, s.questions[1].id, 'true').correct, true);
+  assert.equal(s.submitAnswer(wrong, s.questions[1].id, 'false').correct, false);
+
+  assert.equal(s.markFor(right).mark, 10, 'من أصاب الاثنين علامته كاملة');
+  assert.equal(s.markFor(wrong).mark, 0, 'ومن أخطأهما صفر');
+
+  // والتجميع يعلّم الخيار الصحيح بنصّه لا برمزه
+  const agg = s.aggregate(0);
+  assert.deepEqual(agg.options.map((o) => [o.text, o.correct]), [['صحيح', false], ['خطأ', true]]);
+  s.dispose();
+});
 
 test('العلامة من ٣٠: أربع صحيحة من خمس = ٢٤', () => {
   const s = new Session('000400', {
