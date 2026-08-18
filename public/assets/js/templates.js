@@ -12,7 +12,7 @@
       description: 'أسئلة اختيار من متعدد مع إجابات صحيحة ونقاط وترتيب',
       descriptionEn: 'Multiple-choice questions with correct answers, points and ranking',
       title: 'اختبار سريع',
-      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'self', scoring: 'speed', streakBonus: true },
+      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'self', scoring: 'speed' },
       questions: [
         {
           type: 'mc',
@@ -84,7 +84,7 @@
       description: 'نشاط تحمية سريع وممتع في بداية الحصة',
       descriptionEn: 'A quick, fun warm-up at the start of class',
       title: 'نبدأ بالتحمية!',
-      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'auto', autoAdvanceSec: 6, scoring: 'flat', streakBonus: true },
+      settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'auto', autoAdvance: true, autoAdvanceSec: 6, scoring: 'flat' },
       questions: [
         {
           type: 'poll',

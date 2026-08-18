@@ -502,7 +502,6 @@
       el('div', { class: 'msg', text: msg }),
       // النقاط والسلسلة لغةُ وضع النقاط وحده — في وضع العلامات يكفي «صحيحة»
       showsPoints(s) && scored && answered?.points ? el('div', { class: 'badge ok' }, t('pPlusPoints', { points: answered.points })) : null,
-      showsPoints(s) && scored && answered?.multiplier > 1 ? el('div', { class: 'badge streak' }, t('pStreakX', { x: answered.multiplier })) : null,
       showsPoints(s) && scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, t('pStreakRow', { n: s.me.streak })) : null,
       selfPaced ? null : el('p', { class: 'muted small', text: t('pWaitOthers') }),
     ]);
@@ -777,19 +776,37 @@
     }
   }
 
+  /**
+   * شريط الانتقال في الوضع الحرّ — الفعل الوحيد المتاح للطالب بعد إجابته.
+   *
+   * كان زرّاً في أعلى الصفحة، فيقع **فوق** خبر «إجابة صحيحة» قبل أن يقرأه
+   * الطالب، وتتساقط عليه قصاصات الاحتفال فيبهت لونه، ثم يغيب عن النظر بمجرّد
+   * أن يمرّر ليرى الشرح. فصار شريطاً ملتصقاً بأسفل الشاشة: في متناول الإبهام
+   * دائماً، وفوق طبقة القصاصات لا تحتها، ويقول إلى أين يذهب لا «التالي» وحدها.
+   */
+  function nextBar(s, onNext) {
+    const lastQ = s.index + 1 >= s.total;
+    const button = el(
+      'button',
+      { class: 'btn primary block', type: 'button' },
+      lastQ ? t('pFinishBtn') : t('pGoToQuestion', { n: s.index + 2, total: s.total })
+    );
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      onNext();
+      setTimeout(() => (button.disabled = false), 1500);
+    });
+    const wrap = el('div', { class: 'nextbar' }, [button]);
+    wrap.button = button;
+    wrap.lastQ = lastQ;
+    return wrap;
+  }
+
   /** انتهى وقت المتدرب في الوضع الحر دون إجابة */
   function renderSelfTimeout(s) {
     app.innerHTML = '';
     app.append(header(s));
-    const last = s.index + 1 >= s.total;
-    const nextBtn = el('button', { class: 'btn primary block' }, last ? t('pFinishBtn') : t('pNextQuestion'));
-    nextBtn.addEventListener('click', () => {
-      nextBtn.disabled = true;
-      socket.send({ t: 'next' });
-      setTimeout(() => (nextBtn.disabled = false), 1500);
-    });
-    // زر «التالي» في مقدمة الصفحة كي لا يضطر الطالب للتمرير
-    app.append(nextBtn);
     app.append(
       el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: '⌛' }),
@@ -797,38 +814,40 @@
         el('p', { class: 'muted small', text: t('pKeepGoing') }),
       ])
     );
+    app.append(nextBar(s, () => socket.send({ t: 'next' })));
   }
 
-  /** شاشة ما بعد الإجابة في الوضع الحر — زر «التالي» في المقدمة ثم النتيجة */
+  /** شاشة ما بعد الإجابة في الوضع الحر — النتيجة، وشريط الانتقال ملتصقٌ بالأسفل */
   function renderSelfFeedback(s) {
     const q = s.question;
     app.append(header(s));
 
-    // زر «التالي» في مقدمة الصفحة: يتقدّم الطالب فوراً دون التمرير عبر النتائج
-    const lastQ = s.index + 1 >= s.total;
-    const topNext = el('button', { class: 'btn primary block' }, lastQ ? t('pFinishBtn') : t('pNextQuestion'));
-    const goNext = () => {
-      if (topNext.disabled) return;
-      topNext.disabled = true;
+    cancelAutoNext();
+    const bar = nextBar(s, () => {
       cancelAutoNext();
       socket.send({ t: 'next' });
-      setTimeout(() => (topNext.disabled = false), 1500);
-    };
-    topNext.addEventListener('click', goNext);
-    app.append(topNext);
+    });
+    const goNext = () => bar.button.click();
 
     /**
      * الانتقال التلقائي: الطالب يجيب فينتقل، بلا ضغطة زرّ في كل سؤال.
      * والمهلة ليست تأخيراً بلا سبب: هي اللحظة التي يقرأ فيها «صحيحة» وشرحها.
      * فإن كان الكشف مطفأً لم يعد لها معنى، فتقصر. وأي نقرة على «التالي»
      * تُلغيها فوراً — الانتظار خيار لا فرض.
+     *
+     * وعدّاده داخل الشريط لا فوق الصفحة: أن يرى الطالب المهلة تنقضي بينما
+     * الزرّ الذي يقطعها في مكانٍ آخر هو ما يجعل الانتقال يبدو مفروضاً.
      */
-    cancelAutoNext();
-    if (s.settings?.autoNext !== false && !lastQ) {
+    if (s.settings?.autoNext !== false && !bar.lastQ) {
       const reveals = !!(s.settings?.revealAnswer && (q.scored || q.explanation));
       const wait = reveals ? 2600 : 700;
-      const bar = el('i', { style: { animationDuration: wait + 'ms' } });
-      app.append(el('div', { class: 'autonext' }, [el('span', { class: 'small muted', text: t('pAutoNextHint') }), el('div', { class: 'autonext-bar' }, bar)]));
+      const fill = el('i', { style: { animationDuration: wait + 'ms' } });
+      bar.prepend(
+        el('div', { class: 'autonext' }, [
+          el('span', { class: 'small muted', text: t('pAutoNextHint') }),
+          el('div', { class: 'autonext-bar' }, fill),
+        ])
+      );
       state.autoNextTimer = setTimeout(goNext, wait);
     }
 
@@ -879,6 +898,9 @@
       );
     }
 
+    // آخر عنصر عمداً: `position: sticky; bottom` يلتصق بأسفل الشاشة ما دام
+    // فوقه محتوى لم يُقرأ بعد، ثم يستقرّ في مكانه عند آخر الصفحة
+    app.append(bar);
   }
 
   /**

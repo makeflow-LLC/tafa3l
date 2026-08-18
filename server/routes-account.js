@@ -10,10 +10,11 @@ const storage = require('./storage');
 const auth = require('./auth');
 const google = require('./google-auth');
 const premium = require('./premium');
-const { normalizeQuiz, normalizeQuestion } = require('./session');
+const { normalizeQuiz } = require('./session');
 
 const MAX_ACTIVITIES = 200;
-const MAX_BANK_QUESTIONS = 500;
+// سقف ما تعرضه «أسئلتي السابقة» في نداء واحد — القائمة للتصفّح لا للجرد
+const MAX_MY_QUESTIONS = 500;
 
 const DEFAULT_NEXT = '/host.html#/mine';
 
@@ -364,46 +365,40 @@ function accountRoutes(store) {
   // ------------------------------------------------------------ بنك الأسئلة
 
   /**
-   * أسئلة مستقلة عن أي نشاط — يجمعها المدرب مع الوقت ويعيد استخدامها
-   * في أي نشاط جديد بدل إعادة كتابتها. لا صلة لها بنتائج المشاركين.
+   * «أسئلتي السابقة» — بديل بنك الأسئلة.
+   *
+   * كان البنك مكاناً ثانياً تعيش فيه الأسئلة، وله زرُّ حفظٍ منفصل على كل
+   * سؤال يجب أن يتذكّره المعلّم **قبل** أن يعرف أنه سيحتاج السؤال ثانيةً.
+   * وأكثر من ملأه لم يستعمله، وأكثر من احتاج سؤالاً قديماً كان قد كتبه في
+   * نشاطٍ سابق لا في البنك. فحُذف المفهوم وبقي الغرض: بحثٌ واحد يمرّ على
+   * **كل أسئلة المعلّم** — في أنشطته المحفوظة وفي بنكه القديم معاً — فلا
+   * يضيع ما جمعه أحدٌ من قبل، ولا يُطلب منه حفظٌ مسبق بعد اليوم.
    */
-
-  router.get('/bank', auth.requireUser, async (req, res) => {
+  router.get('/my-questions', auth.requireUser, async (req, res) => {
     try {
-      const list = await storage.get().listBankQuestions(req.user.id);
-      res.json({ questions: list.map((item) => ({ id: item.id, question: item.question, createdAt: item.createdAt, updatedAt: item.updatedAt })) });
+      const needle = String(req.query.q || '').trim().toLowerCase();
+      const db = storage.get();
+      const [activities, bank] = await Promise.all([db.listActivities(req.user.id), db.listBankQuestions(req.user.id)]);
+      const out = [];
+      const seen = new Set();
+      const add = (question, from) => {
+        const text = String(question?.text || '').trim();
+        if (!text) return;
+        // سؤالٌ واحد كُرّر في ثلاثة أنشطة يظهر مرة واحدة — القائمة للاختيار لا للجرد
+        const key = question.type + '|' + text.toLowerCase();
+        if (seen.has(key)) return;
+        if (needle && !text.toLowerCase().includes(needle)) return;
+        seen.add(key);
+        // بلا الصور: القائمة قد تحمل مئات الأسئلة وصورةٌ واحدة تثقلها كلها
+        const { image, ...light } = question;
+        out.push({ question: { ...light, hasImage: Boolean(image) }, from });
+      };
+      for (const item of bank) add(item.question, '');
+      for (const activity of activities) for (const question of activity.questions || []) add(question, activity.title);
+      res.json({ questions: out.slice(0, MAX_MY_QUESTIONS), total: out.length });
     } catch (err) {
-      console.error('list bank:', err);
-      res.status(500).json({ error: 'تعذّر جلب بنك الأسئلة' });
-    }
-  });
-
-  router.post('/bank', auth.requireUser, async (req, res) => {
-    try {
-      const list = await storage.get().listBankQuestions(req.user.id);
-      if (list.length >= MAX_BANK_QUESTIONS) {
-        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_BANK_QUESTIONS} سؤالاً) — احذف أسئلة قديمة` });
-      }
-      const question = normalizeQuestion(req.body?.question || req.body, 0);
-      const now = Date.now();
-      const item = { id: storage.newId('bq_'), ownerId: req.user.id, question, createdAt: now, updatedAt: now };
-      await storage.get().saveBankQuestion(item);
-      res.status(201).json({ item: { id: item.id, question: item.question, createdAt: item.createdAt, updatedAt: item.updatedAt } });
-    } catch (err) {
-      res.status(err.status || 400).json({ error: err.message || 'تعذّر حفظ السؤال في البنك' });
-    }
-  });
-
-  router.put('/bank/:id', auth.requireUser, async (req, res) => {
-    try {
-      const existing = await storage.get().getBankQuestion(req.params.id);
-      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'السؤال غير موجود' });
-      const question = normalizeQuestion(req.body?.question || req.body, 0);
-      const updated = { ...existing, question, updatedAt: Date.now() };
-      await storage.get().saveBankQuestion(updated);
-      res.json({ item: { id: updated.id, question: updated.question, updatedAt: updated.updatedAt } });
-    } catch (err) {
-      res.status(err.status || 400).json({ error: err.message || 'تعذّر تحديث السؤال' });
+      console.error('my-questions:', err);
+      res.status(500).json({ error: 'تعذّر جلب أسئلتك السابقة' });
     }
   });
 

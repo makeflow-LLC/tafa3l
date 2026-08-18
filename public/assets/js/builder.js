@@ -90,7 +90,6 @@
         scoring: 'speed',
         totalMark: 20,
         passPercent: 50,
-        streakBonus: true,
         revealAnswer: true,
         shuffleQuestions: false,
         shuffleOptions: false,
@@ -490,19 +489,44 @@
       );
 
       // ---- وضع التقدّم ونظام التحفيز
+      // نشاطٌ قديم حُفظ بـ pace='auto' يعود الآن «مدرّباً + انتقال تلقائي»،
+      // فنُوفّق المفتاح مع القيمة المخزّنة قبل الرسم كي لا يظهر مطفأً وهو عامل
+      const hostPaced = draft.settings.pace === 'host' || draft.settings.pace === 'auto';
+      if (draft.settings.pace === 'auto') draft.settings.autoAdvance = true;
       root.append(
         el('div', { class: 'card stack' }, [
           el('h2', { text: t('bSectionFlow') }),
           el('label', { text: t('bwhoMovesToThe') }),
+          /**
+           * خياران لا ثلاثة. كان «⏱️ تلقائي» وضعاً ثالثاً بجوار «المدرّب»
+           * بينما هو في حقيقته **المدرّب نفسه** وقد سلّم زرّ الانتقال إلى
+           * مؤقّت: كل ما عداه متطابق. وثلاثةُ خيارات على أول شاشة يقرؤها
+           * المعلّم أثقل من اثنين ومفتاحٍ يظهر عند الحاجة.
+           */
           choiceGroup(
             'pace',
             [
               { value: 'self', emoji: '🏃', title: t('bselfPaced'), hint: t('beveryLearnerAdvancesAt') },
               { value: 'host', emoji: '🎛️', title: t('bteacher'), hint: t('byouMoveBetweenQuestions') },
-              { value: 'auto', emoji: '⏱️', title: t('bautomatic'), hint: t('beveryoneTogetherAdvancingOn') },
             ],
-            () => update()
+            () => update(),
+            {
+              read: () => (draft.settings.pace === 'auto' ? 'host' : draft.settings.pace),
+              write: (value) => {
+                // من ينتقل إلى «الحرّ» يترك التلقائي خلفه، والعائد إلى «المدرّب» يستعيده
+                draft.settings.pace = value === 'host' && draft.settings.autoAdvance ? 'auto' : value;
+              },
+            }
           ),
+          hostPaced
+            ? switchRow(t('bAutoAdvance'), 'autoAdvance', t('bAutoAdvanceHint'), {
+                defaultOn: false,
+                onChange: () => {
+                  draft.settings.pace = draft.settings.autoAdvance ? 'auto' : 'host';
+                  update();
+                },
+              })
+            : null,
           draft.settings.pace === 'auto' ? autoDelayRow() : null,
           draft.settings.pace === 'self'
             ? switchRow(
@@ -546,7 +570,6 @@
                   ],
                   () => update()
                 ),
-                switchRow(t('bstreakMultiplier'), 'streakBonus', t('beachConsecutiveCorrectAnswer')),
               ])
             : null,
           draft.settings.reward === 'marks' ? markRow() : null,
@@ -708,8 +731,8 @@
             }, t('bStepCancelAdd'))
           );
         }
-        page.append(el('label', { text: t('borAddFromYour'), style: { marginTop: '10px' } }));
-        page.append(el('div', { id: 'bankRow' }, el('span', { class: 'muted small', text: t('bloading') })));
+        page.append(el('label', { text: t('bReuseTitle'), style: { marginTop: '10px' } }));
+        page.append(el('div', { id: 'reuseRow' }));
       }
 
       root.append(
@@ -721,7 +744,7 @@
           page,
         ])
       );
-      if (root.querySelector('#bankRow')) loadBank(root.querySelector('#bankRow'));
+      if (root.querySelector('#reuseRow')) reuseRow(root.querySelector('#reuseRow'));
 
     }
 
@@ -946,22 +969,29 @@
     }
 
     /** مجموعة خيارات على شكل بطاقات (وضع التقدّم، احتساب النقاط) */
-    function choiceGroup(key, options, onPick) {
+    /**
+     * @param {{read?:() => string, write?:(v:string) => void}} [io]
+     *   لفصل ما يراه المعلّم عمّا يُخزَّن: «تلقائي» مثلاً قيمةُ `pace` عند
+     *   الخادم لكنه عند المعلّم مفتاحٌ داخل وضع المدرّب لا خياراً ثالثاً.
+     */
+    function choiceGroup(key, options, onPick, io) {
+      const read = io?.read || (() => draft.settings[key]);
+      const write = io?.write || ((value) => { draft.settings[key] = value; });
       const group = el('div', { class: 'types' });
       options.forEach((option) => {
-        const on = (draft.settings[key] || options[0].value) === option.value;
+        const on = (read() || options[0].value) === option.value;
         const button = el('button', { class: 'type-btn' + (on ? ' on' : ''), type: 'button', title: option.hint }, [
           el('span', { class: 'em', text: option.emoji }),
           el('span', { text: option.title }),
         ]);
         button.addEventListener('click', () => {
-          draft.settings[key] = option.value;
+          write(option.value);
           saveDraft(draft);
           onPick?.();
         });
         group.append(button);
       });
-      const current = options.find((option) => option.value === (draft.settings[key] || options[0].value));
+      const current = options.find((option) => option.value === (read() || options[0].value));
       return el('div', {}, [group, el('div', { class: 'muted small', style: { marginTop: '6px' }, text: current ? current.hint : '' })]);
     }
 
@@ -1232,11 +1262,17 @@
       ]);
     }
 
-    function switchRow(label, key, hint) {
+    /**
+     * @param {{defaultOn?:boolean, onChange?:() => void}} [opts]
+     *   `defaultOn:false` لمفتاحٍ الأصل فيه الإطفاء — وأكثر المفاتيح هنا
+     *   عكسه، فلو تُرك على الافتراض العام لظهر مُشغّلاً بلا أن يطلبه أحد.
+     */
+    function switchRow(label, key, hint, opts) {
       const input = el('input', { type: 'checkbox' });
-      input.checked = draft.settings[key] !== false;
+      input.checked = opts?.defaultOn === false ? draft.settings[key] === true : draft.settings[key] !== false;
       input.addEventListener('change', () => {
         draft.settings[key] = input.checked;
+        if (opts?.onChange) return opts.onChange();
         // بعض المفاتيح تُظهر أو تُخفي عناصر إعداد أخرى (مثل عدد الفرق) فيجب إعادة الرسم
         update();
       });
@@ -1845,7 +1881,6 @@
             },
             '⧉'
           ),
-          bankSaveButton(question),
           el('span', { class: 'grow' }),
           el(
             'button',
@@ -1868,71 +1903,75 @@
       return card;
     }
 
-    /** زر «احفظ في البنك» على كل سؤال — يحتاج تسجيل دخول، والرسالة من الخادم كافية بلا صياغة إضافية */
-    function bankSaveButton(question) {
-      const btn = el('button', { class: 'icon-btn', type: 'button', title: t('bsaveTheQuestionTo') }, '📚');
-      btn.addEventListener('click', async () => {
-        if (!question.text.trim()) return toast(t('bwriteTheQuestionText2'), 'bad');
-        btn.disabled = true;
-        try {
-          await api('/api/bank', { method: 'POST', body: { question } });
-          toast(t('bsavedToTheQuestion'), 'ok');
-          update();
-        } catch (err) {
-          toast(err.message, 'bad');
-        } finally {
-          btn.disabled = false;
-        }
-      });
-      return btn;
-    }
+    /**
+     * «أسئلتي السابقة»: بحثٌ في كل ما كتبه المعلّم — في أنشطته المحفوظة وفي
+     * بنكه القديم معاً. حلّ محلّ قائمة البنك المسطّحة، لأن القائمة تُطيل
+     * الصفحة بلا فائدة عند من له مئة سؤال، ولأن أكثر ما يبحث عنه المعلّم
+     * كتبه في نشاطٍ سابق ولم يحفظه في بنكٍ لم يكن يعلم أنه سيحتاجه.
+     */
+    let myQuestions = null;
 
-    /** يحمّل بنك أسئلة المدرب في حاوية موجودة — يحتاج تسجيل دخول */
-    async function loadBank(row) {
-      let data;
-      try {
-        data = await api('/api/bank');
-      } catch {
-        row.innerHTML = '';
-        row.append(
-          el('a', { class: 'btn ghost sm', href: '/login.html?next=' + encodeURIComponent('/host.html#/') }, t('bsignInToUse'))
-        );
-        return;
-      }
+    function reuseRow(row) {
       row.innerHTML = '';
-      if (!data.questions.length) {
-        row.append(el('span', { class: 'muted small', text: t('bnoSavedQuestionsYet') }));
-        return;
-      }
-      data.questions.forEach((item) => {
-        const q = item.question;
-        const addBtn = el('button', { class: 'btn sm ghost', type: 'button', title: t('baddToThisActivity') }, t('badd'));
-        addBtn.addEventListener('click', () => {
-          const copy = JSON.parse(JSON.stringify(q));
-          copy.id = uid();
-          draft.questions.push(copy);
-          openIndex = draft.questions.length - 1;
-          update();
+      const input = el('input', { type: 'search', placeholder: t('bReuseSearch'), autocomplete: 'off' });
+      const results = el('div', { class: 'stack tight', style: { marginTop: '8px' } });
+      row.append(input, results);
+
+      const paint = (needle) => {
+        results.innerHTML = '';
+        if (myQuestions === 'anon') {
+          results.append(el('a', { class: 'btn ghost sm', href: '/login.html?next=' + encodeURIComponent('/host.html#/') }, t('bsignInToUse')));
+          return;
+        }
+        if (!myQuestions) return results.append(el('span', { class: 'muted small', text: t('bloading') }));
+        if (!myQuestions.length) return results.append(el('span', { class: 'muted small', text: t('bReuseEmpty') }));
+        const key = needle.trim().toLowerCase();
+        const hits = (key ? myQuestions.filter((item) => String(item.question.text).toLowerCase().includes(key)) : myQuestions).slice(0, 12);
+        if (!hits.length) return results.append(el('span', { class: 'muted small', text: t('bReuseNoHits') }));
+        hits.forEach((item) => {
+          const q = item.question;
+          const add = el('button', { class: 'btn sm ghost', type: 'button', title: t('baddToThisActivity') }, t('badd'));
+          add.addEventListener('click', () => {
+            const copy = sanitizeQuestion({ ...q, id: uid() });
+            // مسودةٌ جديدة تبدأ بسؤالٍ فارغ. لو أضفنا فوقه لخرج المعلّم بسؤالٍ
+            // بلا نصّ عليه أن يحذفه بنفسه — فنحلّ محلّه ما دام لم يُكتب فيه شيء
+            const only = draft.questions.length === 1 ? draft.questions[0] : null;
+            const untouched = only && !String(only.text).trim() && !(only.options || []).some((o) => String(o.text).trim());
+            if (untouched) draft.questions[0] = copy;
+            else draft.questions.push(copy);
+            openIndex = draft.questions.length - 1;
+            adding = false;
+            update();
+          });
+          results.append(
+            el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)' } }, [
+              el('span', { text: TYPE_EMOJI[q.type] }),
+              el('span', { class: 'grow stack tight', style: { margin: '0 8px', textAlign: 'start' } }, [
+                el('span', { text: q.text || TYPE_LABELS[q.type] }),
+                // من أي نشاط جاء: نصّان متشابهان يفترقان بمصدرهما
+                item.from ? el('span', { class: 'muted small', text: item.from }) : null,
+              ]),
+              add,
+            ])
+          );
         });
-        const delBtn = el('button', { class: 'icon-btn', type: 'button', title: t('bdeleteFromTheBank') }, '🗑');
-        delBtn.addEventListener('click', async () => {
-          if (!confirm(t('bdeleteThisQuestionFrom'))) return;
-          try {
-            await api('/api/bank/' + item.id, { method: 'DELETE' });
-            loadBank(row);
-          } catch (err) {
-            toast(err.message, 'bad');
-          }
-        });
-        row.append(
-          el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)' } }, [
-            el('span', { text: TYPE_EMOJI[q.type] }),
-            el('span', { class: 'grow', style: { margin: '0 8px' }, text: q.text || TYPE_LABELS[q.type] }),
-            addBtn,
-            delBtn,
-          ])
-        );
+        // البحث يقتصر على ١٢ نتيجة: قول ذلك أصدق من إيهامه بأن هذا كل ما لديه
+        if (!key && myQuestions.length > 12) results.append(el('span', { class: 'muted small', text: t('bReuseMore', { n: myQuestions.length }) }));
+      };
+
+      let timer = null;
+      input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => paint(input.value), 150);
       });
+
+      paint('');
+      if (myQuestions === null) {
+        api('/api/my-questions')
+          .then((data) => { myQuestions = data.questions || []; })
+          .catch(() => { myQuestions = 'anon'; })
+          .then(() => row.isConnected && paint(input.value));
+      }
     }
 
     /** القوالب محمّلة مع الصفحة (window.TEMPLATES) — لا تعتمد على الشبكة إطلاقاً */
