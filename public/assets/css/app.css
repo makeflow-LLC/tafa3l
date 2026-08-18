@@ -502,6 +502,16 @@ html.dark .brand .dark-only {
   gap: 12px;
 }
 
+/**
+ * عنصرُ الشبكة حدُّه الأدنى `auto` أي عرضُ محتواه الأدنى — فسطرٌ واحد لا
+ * يُكسر (رابطٌ طويل مثلاً) يوسّع العمود كلّه، ويوسّع البطاقة، وتنزاح الصفحة
+ * أفقياً على الجوال. الصفر يسمح للعمود أن يلتزم عرض حاويته، ويترك التمرير
+ * لمن طلبه لنفسه (`.link-box`, `.chart-card`).
+ */
+.stack > * {
+  min-width: 0;
+}
+
 .row {
   display: flex;
   gap: 10px;
@@ -1509,8 +1519,13 @@ body.playing .footer {
   display: block;
 }
 
-/* رابطٌ يُنسخ: يُعرض كاملاً بلا كسر تخطيط الصفحة */
+/**
+ * رابطٌ يُنسخ: يمرّر نفسه ولا يكسر الصفحة.
+ * `min-width: 0` ليس زينة: عنصرُ فليكس لا يصغر دون عرض محتواه الأدنى مهما
+ * وضعتَ له `overflow-x: auto` — فكان الرابط الطويل يمدّ الصفّ ويمدّ الصفحة.
+ */
 .link-box {
+  min-width: 0;
   overflow-x: auto;
   white-space: nowrap;
   font-size: 0.8rem;
@@ -2812,13 +2827,23 @@ body.screen-body .q-image {
   margin-bottom: 12px;
 }
 
+/**
+ * البطاقة تجرّ جدولها ولا تجرّ الصفحة.
+ *
+ * `.chart-table` عرضها ١٠٠٪ لكنّ ذلك حدٌّ أدنى لا أقصى: تخطيط الجدول التلقائي
+ * لا يضغط الخلية دون عرض أطول كلمة فيها، فخمسةُ أعمدة عربية تحتاج ~٥٢٠ بكسل
+ * على شاشة ٣٩٠ — فكانت تمتدّ ويمتدّ معها المستند كلّه، فتنزاح كل الصفحة
+ * أفقياً ويختفي نصفها. الآن يفيض الجدول داخل بطاقته وحدها.
+ */
 .chart-card {
   flex: 1 1 260px;
+  min-width: 0;
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   margin-bottom: 12px;
+  overflow-x: auto;
 }
 
 .chart-card.grow {
@@ -2920,6 +2945,18 @@ body.screen-body .q-image {
   border-bottom: 1px solid var(--border);
   padding: 7px 8px;
   text-align: start;
+}
+
+/* على الجوال نضيّق الحشو والخطّ أولاً — فالتمرير آخر الحلول لا أوّلها */
+@media (max-width: 560px) {
+  .chart-table {
+    font-size: 12px;
+  }
+
+  .chart-table th,
+  .chart-table td {
+    padding: 6px 5px;
+  }
 }
 
 .rec-list {
