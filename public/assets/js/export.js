@@ -850,6 +850,231 @@ ${marksTableHtml(data)}
     return true;
   }
 
+  // ------------------------------------------------------- النسخة الورقية
+  //
+  // ليست تراجعاً عن المنصة بل اعترافٌ بالواقع: صفٌّ بلا جوالات، أو امتحانٌ
+  // رسمي يشترط الورق، أو طالبٌ غاب فيحتاج نسخةً يحلّها في بيته. والمعلّم
+  // الذي لا يجدها هنا يعيد كتابة أسئلته في Word — فيصير عنده نسختان
+  // تفترقان مع أول تعديل. فنطبعها من المصدر نفسه: ورقةُ طالبٍ ثم **مفتاح
+  // إجابات** في صفحة مستقلة يفصلها فاصلُ طباعة، فلا تُوزَّع سهواً مع الأسئلة.
+
+  const PAPER_CSS = `
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+  body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color: #16162a; margin: 22px; line-height: 1.7; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .head { border-bottom: 2px solid #16162a; padding-bottom: 10px; margin-bottom: 14px; }
+  .head .meta { color: #61657d; font-size: 13px; margin: 0; }
+  /* خانات يكتب فيها الطالب اسمه بخط اليد — لا تُطبع ورقةٌ بلا صاحب */
+  .fields { display: flex; gap: 22px; flex-wrap: wrap; margin: 12px 0 0; font-size: 14px; }
+  .fields span { flex: 1 1 180px; }
+  .fields i { display: inline-block; border-bottom: 1px dotted #16162a; min-width: 110px; font-style: normal; }
+  .q { break-inside: avoid; margin: 0 0 16px; }
+  .q > .qt { font-weight: 700; font-size: 15px; margin: 0 0 6px; }
+  .q .n { display: inline-block; min-width: 26px; }
+  .mark { color: #61657d; font-weight: 400; font-size: 13px; }
+  .opts { margin: 0; padding-inline-start: 26px; list-style: none; }
+  .opts li { margin: 3px 0; font-size: 14px; }
+  /* مربّع يُعلَّم بالقلم: أوضح من نقطةٍ ملوّنة لا تُطبع */
+  .box { display: inline-block; width: 13px; height: 13px; border: 1.4px solid #16162a; border-radius: 3px; vertical-align: -2px; margin-inline-end: 7px; }
+  .rank { display: inline-block; width: 24px; height: 20px; border: 1.4px solid #16162a; border-radius: 3px; vertical-align: -5px; margin-inline-end: 8px; }
+  .lines i { display: block; border-bottom: 1px dotted #9aa0b4; height: 26px; }
+  .scale { display: flex; gap: 14px; align-items: center; font-size: 13px; color: #61657d; padding-inline-start: 26px; }
+  .scale u { display: inline-flex; width: 24px; height: 24px; border: 1.4px solid #16162a; border-radius: 50%; align-items: center; justify-content: center; text-decoration: none; font-size: 12px; }
+  .pairs { width: auto; border-collapse: collapse; margin-inline-start: 26px; }
+  .pairs td { border: 1px solid #d7dae6; padding: 5px 10px; font-size: 14px; }
+  .pairs .slot { width: 46px; text-align: center; }
+  .note { border-inline-start: 3px solid #5b45e0; background: #f6f7fb; padding: 8px 12px; margin: 0 0 16px; font-size: 14px; break-inside: avoid; }
+  .key { break-before: page; border-top: 2px solid #16162a; padding-top: 12px; }
+  .key h2 { font-size: 19px; margin: 0 0 4px; }
+  .key ol { padding-inline-start: 24px; margin: 10px 0; }
+  .key li { margin: 5px 0; font-size: 14px; break-inside: avoid; }
+  .key .exp { color: #61657d; font-size: 12px; }
+  .foot { margin-top: 18px; font-size: 11px; color: #8a8ea3; text-align: center; }
+  @media print { body { margin: 12mm; } }`;
+
+  const LETTERS_AR = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح'];
+  const letterFor = (i) => (isRtl() ? LETTERS_AR[i] || String(i + 1) : String.fromCharCode(65 + i));
+
+  /** أسطر كتابةٍ بعدد يناسب طول الإجابة المتوقعة */
+  const writeLines = (n) => `<div class="lines">${'<i></i>'.repeat(n)}</div>`;
+
+  /** جسم السؤال على ورقة الطالب — بلا أي أثر للإجابة الصحيحة */
+  function paperBody(q) {
+    const options = q.options || [];
+    switch (q.type) {
+      case 'mc':
+      case 'poll':
+      case 'truefalse':
+        return `<ul class="opts">${options
+          .map((o, i) => `<li><span class="box"></span>${letterFor(i)}) ${esc(o.text)}</li>`)
+          .join('')}</ul>`;
+      case 'scale': {
+        const min = q.scale?.min ?? 1;
+        const max = q.scale?.max ?? 5;
+        const dots = [];
+        for (let n = min; n <= max; n += 1) dots.push(`<u>${n}</u>`);
+        return `<div class="scale"><span>${esc(q.scale?.minLabel || '')}</span>${dots.join('')}<span>${esc(q.scale?.maxLabel || '')}</span></div>`;
+      }
+      case 'order':
+        // الترتيب الصحيح هو ترتيب الإدخال، فطباعتُه كما هو تُفشي الجواب.
+        // وخانةُ الترتيب مربّعٌ يُكتب فيه رقم، لا مربّع اختيارٍ يُعلَّم بعلامة.
+        return `<ul class="opts">${seededPaperShuffle(q.items || [], q.id)
+          .map((item) => `<li><span class="rank"></span>${esc(item.text)}</li>`)
+          .join('')}</ul>`;
+      case 'match': {
+        const pairs = q.pairs || [];
+        return `<table class="pairs"><tbody>${pairs
+          .map((p, i) => `<tr><td>${i + 1}. ${esc(p.left)}</td><td class="slot"></td><td>${letterFor(i)}) ${esc(matchRights(q)[i]?.text || '')}</td></tr>`)
+          .join('')}</tbody></table>`;
+      }
+      case 'blank':
+        // نصّ السؤال يحمل الفراغات نفسها (___)، فيكفي سطرٌ للإجابات القصيرة
+        return writeLines(1);
+      case 'word':
+        return writeLines(1);
+      case 'open':
+        return writeLines(4);
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * أطراف المطابقة اليمنى بعد الخلط. تُحسب مرة واحدة هنا ليقرأها **الورقة
+   * والمفتاح معاً**: لو خُلطت في كل موضع على حدة لأعطى المفتاح حروفاً لا
+   * تطابق ما بين يدي الطالب.
+   */
+  function matchRights(q) {
+    return seededPaperShuffle((q.pairs || []).map((p, i) => ({ text: p.right, i })), q.id + ':r');
+  }
+
+  /** الإجابة الصحيحة كما تُكتب في المفتاح */
+  function paperAnswer(q) {
+    const options = q.options || [];
+    switch (q.type) {
+      case 'mc':
+      case 'truefalse': {
+        const picked = options.map((o, i) => ({ o, i })).filter(({ o }) => (q.correct || []).includes(o.id));
+        if (!picked.length) return t('paperNoAnswer');
+        return picked.map(({ o, i }) => `${letterFor(i)}) ${esc(o.text)}`).join(' + ');
+      }
+      case 'order':
+        return (q.items || []).map((item, i) => `${i + 1}. ${esc(item.text)}`).join(' ← ');
+      case 'match': {
+        // الطالب كتب **حرفاً** في الخانة، فالمفتاح يعطي الحرف ومعه قيمته —
+        // «١ ← Fe» وحدها تُجبر المعلّم على البحث عن حرف Fe في كل ورقة
+        const rights = matchRights(q);
+        return (q.pairs || [])
+          .map((p, i) => {
+            const at = rights.findIndex((r) => r.i === i);
+            return `${i + 1} → ${at < 0 ? '' : letterFor(at) + ') '}${esc(p.right)}`;
+          })
+          .join(' · ');
+      }
+      case 'blank':
+        return (q.blanks || []).filter(Boolean).map(esc).join(' · ') || t('paperManual');
+      case 'open':
+        return t('paperManual');
+      case 'poll':
+      case 'word':
+      case 'scale':
+        return t('paperNoAnswer');
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * خلطٌ ثابتٌ بالمعرّف لا عشوائي: المعلّم يطبع الورقة مرتين — مسوّدةً ثم
+   * نهائيةً — فلو اختلف الترتيب بينهما لصار مفتاحُ الإجابات لورقةٍ أخرى.
+   */
+  function seededPaperShuffle(list, seed) {
+    const out = list.slice();
+    let h = 2166136261;
+    for (const ch of String(seed)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+    for (let i = out.length - 1; i > 0; i -= 1) {
+      h = (Math.imul(h, 48271) + 11) >>> 0;
+      const j = h % (i + 1);
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    /**
+     * الخلط قد يقع على الترتيب الأصلي نفسه — واحتمالُه ١/٦ بثلاثة عناصر.
+     * ولأن البذرة ثابتة فهو ليس حظاً عابراً: سؤالٌ وقع عليه يطبع الجواب
+     * مرتّباً **في كل نسخة إلى الأبد**. فندوّره دورةً واحدة، وهي كافية.
+     */
+    if (out.length > 1 && out.every((item, i) => item === list[i])) out.push(out.shift());
+    return out;
+  }
+
+  /**
+   * @param {{title:string, questions:Array, settings:Object}} activity
+   * @param {{teacher?:string, withKey?:boolean}} [opts]
+   */
+  function paperHtml(activity, opts) {
+    const settings = activity.settings || {};
+    const marks = settings.reward === 'marks';
+    const all = activity.questions || [];
+    // الشرائح تُشرح على الشاشة ولا تُجاب، فتُطبع ملاحظةً بلا رقم ولا مكان إجابة
+    const asked = all.filter((q) => q.type !== 'slide');
+    /**
+     * الأسئلة التي تحمل علامة — بنفس قاعدة المحرّر والخادم. استطلاعُ رأيٍ
+     * أو مقياسٌ لا يُحاسَب عليه أحد، فإدخاله في القسمة يُنقص علامة كل سؤال
+     * حقيقي ويجعل مجموع الورقة أقلّ من علامتها الكاملة.
+     */
+    const counted = asked.filter((q) => Number(q.points) > 0 && !['poll', 'word', 'scale'].includes(q.type));
+    const share = marks && (settings.markMode || 'equal') === 'equal' && counted.length
+      ? Math.round((100 * (settings.totalMark || 0)) / counted.length) / 100
+      : null;
+
+    let n = 0;
+    const body = all
+      .map((q) => {
+        if (q.type === 'slide') {
+          return `<p class="note"><strong>${esc(q.text)}</strong>${q.body ? '<br>' + esc(q.body) : ''}</p>`;
+        }
+        n += 1;
+        const scored = counted.includes(q);
+        const mark = marks && scored ? (share !== null ? share : Number(q.mark) || 0) : 0;
+        const tag = mark ? ` <span class="mark">(${mark})</span>` : '';
+        return `<div class="q"><p class="qt"><span class="n">${n}.</span> ${esc(q.text)}${tag}</p>${paperBody(q)}</div>`;
+      })
+      .join('');
+
+    let k = 0;
+    const key = asked
+      .map((q) => {
+        k += 1;
+        const exp = q.explanation ? `<div class="exp">${esc(q.explanation)}</div>` : '';
+        return `<li value="${k}">${paperAnswer(q)}${exp}</li>`;
+      })
+      .join('');
+
+    const total = marks ? settings.totalMark || 0 : 0;
+    const meta = [
+      opts?.teacher ? esc(opts.teacher) : null,
+      t('paperQuestionCount', { n: asked.length }),
+      total ? t('paperTotalMark', { n: total }) : null,
+    ].filter(Boolean).join(' · ');
+
+    return `<!doctype html><html lang="${loc()}" dir="${isRtl() ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
+<title>${esc(activity.title || t('paperUntitled'))}</title>
+<style>${PAPER_CSS}</style></head><body>
+<div class="head">
+  <h1>${esc(activity.title || t('paperUntitled'))}</h1>
+  <p class="meta">${meta}</p>
+  <div class="fields"><span>${t('paperName')}: <i></i></span><span>${t('paperClass')}: <i></i></span><span>${t('paperDate')}: <i></i></span></div>
+</div>
+${body}
+${opts?.withKey === false ? '' : `<div class="key"><h2>${t('paperKeyTitle')}</h2><p class="meta">${t('paperKeyNote')}</p><ol>${key}</ol></div>`}
+<p class="foot">Tapio — tapio.fun</p>
+<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 400); });<\/script>
+</body></html>`;
+  }
+
+  function toPaper(activity, opts) {
+    return openPrintWindow(paperHtml(activity, opts));
+  }
+
   function toPdf(data) {
     return openPrintWindow(pdfHtml(data));
   }
@@ -860,6 +1085,7 @@ ${marksTableHtml(data)}
 
   global.Exporter = {
     toExcel, toResultsExcel,
+    toPaper, paperHtml,           // ورقة الطالب + مفتاح الإجابات
     toPdf, toResultsPdf,          // تقرير ملوّن عبر نافذة الطباعة (الأجمل)
     toPdfFile, toResultsPdfFile,  // تنزيل مباشر بلا نافذة (أبسط)
     toXlsx, buildSheets, buildResultsSheets, pdfHtml, resultsPdfHtml, ensurePdfLibs, crc32,

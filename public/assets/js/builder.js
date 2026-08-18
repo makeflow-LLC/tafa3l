@@ -752,6 +752,12 @@
      * المراجعة: كل الأسئلة في نظرة واحدة قبل الإطلاق — والنقر على أيٍّ منها
      * يعيد المعلّم إلى صفحته لتعديله.
      */
+    /** ورقة أسئلة للطلاب ومفتاح إجابات للمعلّم، من المسودة نفسها لا من نسخةٍ ثانية */
+    function printPaper() {
+      if (!draft.questions.length) return toast(t('bPaperEmpty'), 'bad');
+      if (!global.Exporter.toPaper(draft, { teacher: (opts && opts.teacherName) || '' })) toast(t('bPaperBlocked'), 'warn');
+    }
+
     function drawReview() {
       const rows = el('div', { class: 'stack tight' });
       draft.questions.forEach((q, i) => {
@@ -795,6 +801,15 @@
               draw();
             },
           }, t('bStepAdd')),
+          /**
+           * النسخة الورقية هنا لا في مكانٍ آخر: هذه لحظةُ «أسئلتي جاهزة»
+           * بالضبط، وهي نفسها لحظةُ من يريد ورقةً لصفٍّ بلا جوالات أو
+           * لطالبٍ غاب. ووضعُها بعد الإطلاق يعني أنه لن يجدها.
+           */
+          el('div', { class: 'row between', style: { gap: '10px', marginTop: '4px' } }, [
+            el('span', { class: 'muted small grow', text: t('bPaperHint') }),
+            el('button', { class: 'btn ghost sm', type: 'button', onclick: printPaper }, t('bPaperPrint')),
+          ]),
         ])
       );
 
