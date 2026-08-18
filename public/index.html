@@ -6,63 +6,45 @@
     <title>Tapio</title>
     <meta name="description" content="منصة خفيفة لإنشاء أسئلة تفاعلية واستطلاعات حية للمدربين والمعلمين. بلا تسجيل وبلا تخزين دائم." />
     <meta name="theme-color" content="#ffffff" />
-    <link rel="icon" href="/assets/icon.svg?v=1.46.0" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.46.0" />
+    <link rel="icon" href="/assets/icon.svg?v=1.47.0" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.47.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.46.0" />
-    <script src="/assets/js/i18n.js?v=1.46.0"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.47.0" />
+    <script src="/assets/js/i18n.js?v=1.47.0"></script>
   </head>
   <body>
     <div class="wrap narrow">
-      <div class="row" style="justify-content: flex-end; padding-top: 10px" id="langRow"></div>
+      <div class="row" style="gap: 8px; padding-top: 10px">
+        <!-- زرّ الحساب هنا وملوّن: معلّمون كثيرون لم يجدوه حين كان زرّاً شاحباً في آخر البطاقة -->
+        <a class="btn primary sm" href="/login.html" id="topAccount"></a>
+        <span class="grow"></span>
+        <span id="langRow"></span>
+      </div>
       <div class="center" style="padding: 10px 0 18px">
         <div class="brand hero" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.46.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.46.0" alt="Tapio" width="249" height="159" />
+          <img class="logo light-only" src="/assets/logo.svg?v=1.47.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.47.0" alt="Tapio" width="249" height="159" />
         </div>
         <p class="muted small" style="margin-top: 8px" id="tagline"></p>
         <p id="welcome" class="hidden" style="margin: 10px 0 0; font-weight: 700"></p>
       </div>
 
       <div class="card">
-        <h2 id="joinTitle"></h2>
-        <form id="joinForm" class="stack">
-          <div>
-            <label for="code" id="codeLabel"></label>
-            <!--
-              خانة لكل رقم، لكن الحقل الحقيقي واحد شفّاف فوقها: اللصق والإكمال
-              التلقائي ولوحة المفاتيح والقارئ الصوتي تعمل كلها بلا حيلة، والخانات
-              الستّ مجرّد طبقة عرض تُملأ من قيمته.
-            -->
-            <div class="code-field" id="codeField">
-              <input
-                id="code"
-                class="code-input"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="6"
-                autocomplete="one-time-code"
-                enterkeyhint="go"
-              />
-            </div>
-          </div>
-          <button class="btn primary block" type="submit" id="joinBtn"></button>
-          <p class="muted small center" style="margin: 0" id="orScan"></p>
-        </form>
-      </div>
-
-      <div class="card">
         <h2 id="teacherTitle"></h2>
         <p class="muted small" id="teacherBody"></p>
-        <a class="btn accent block" href="/host.html" id="createBtn"></a>
+        <a class="btn primary block big-cta" id="accountLink" href="/login.html"></a>
+        <a class="btn accent block" href="/host.html" id="createBtn" style="margin-top: 8px"></a>
         <a class="btn ghost block" href="/host.html#/demo" style="margin-top: 8px" id="demoBtn"></a>
         <a class="btn ghost block" href="/games.html" id="gamesBtn" style="margin-top: 8px"></a>
         <a class="btn ghost block" href="/help.html" id="guideBtn" style="margin-top: 8px"></a>
-        <a class="btn ghost block" id="accountLink" href="/login.html" style="margin-top: 8px"></a>
         <button class="btn ghost block hidden" id="logoutBtn" type="button" style="margin-top: 8px"></button>
         <div id="resume" class="hidden" style="margin-top: 10px">
           <a class="btn ghost block" id="resumeLink" href="#"></a>
         </div>
       </div>
+
+      <p class="center muted small" style="margin: 14px 0">
+        <a href="/c" id="haveCode"></a>
+      </p>
 
       <div class="card">
         <h3 id="whyTitle"></h3>
@@ -72,24 +54,20 @@
       <p class="footer" id="pageFooter"></p>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.46.0"></script>
-    <script src="/assets/js/common.js?v=1.46.0"></script>
-    <script src="/assets/js/footer.js?v=1.46.0"></script>
+    <script src="/assets/js/avatar.js?v=1.47.0"></script>
+    <script src="/assets/js/common.js?v=1.47.0"></script>
+    <script src="/assets/js/footer.js?v=1.47.0"></script>
     <script>
       (function () {
-        const { $, api, toast, store, serverAlive, showOfflineBanner } = window.T;
+        const { $, api, store, serverAlive, showOfflineBanner } = window.T;
         const t = window.I18n.t;
-        const input = $('#code');
 
         document.title = t('brand') + ' — ' + t('homeTagline');
         window.I18n.mountToggle($('#langRow'));
 
         $('#tagline').textContent = t('homeTagline');
-        $('#joinTitle').textContent = t('homeJoinTitle');
-        $('#codeLabel').textContent = t('homeCodeLabel');
-        input.setAttribute('aria-label', t('homeCodeAria'));
-        $('#joinBtn').textContent = t('homeJoinBtn');
-        $('#orScan').textContent = t('homeOrScan');
+        $('#topAccount').textContent = t('homeLoginShort');
+        $('#haveCode').textContent = t('homeHaveCode');
         $('#teacherTitle').textContent = t('homeTeacherTitle');
         $('#teacherBody').textContent = t('homeTeacherBody');
         $('#createBtn').textContent = t('homeCreateBtn');
@@ -110,56 +88,13 @@
           if (!alive) showOfflineBanner(document.querySelector('.wrap'));
         });
 
-        // رمز قادم من رابط QR
-        const params = new URLSearchParams(location.search);
-        const preset = params.get('code');
-        if (preset) input.value = preset.replace(/\D/g, '').slice(0, 6);
-
-        // الخانات الستّ: طبقة عرض فقط، مصدرها قيمة الحقل الواحد فوقها
-        const field = $('#codeField');
-        const cells = [];
-        for (let i = 0; i < 6; i += 1) {
-          const cell = document.createElement('span');
-          cell.className = 'code-cell';
-          cell.setAttribute('aria-hidden', 'true');
-          field.append(cell);
-          cells.push(cell);
-        }
-
-        function paintCells() {
-          const digits = input.value;
-          cells.forEach((cell, i) => {
-            cell.textContent = digits[i] || '';
-            cell.classList.toggle('filled', i < digits.length);
-            cell.classList.toggle('next', i === digits.length);
-          });
-        }
-
-        input.addEventListener('focus', () => field.classList.add('focused'));
-        input.addEventListener('blur', () => field.classList.remove('focused'));
-        // المؤشّر دائماً في آخر الرمز: النقر في منتصفه لا يجعله يكتب بين رقمين
-        const toEnd = () => setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-        input.addEventListener('click', toEnd);
-        input.addEventListener('focus', toEnd);
-
-        input.addEventListener('input', () => {
-          input.value = input.value.replace(/\D/g, '').slice(0, 6);
-          paintCells();
-          if (input.value.length === 6) $('#joinForm').requestSubmit();
-        });
-        paintCells();
-
-        $('#joinForm').addEventListener('submit', async (event) => {
-          event.preventDefault();
-          const code = input.value.trim();
-          if (code.length !== 6) return toast(t('homeCodeError'), 'bad');
-          try {
-            await api('/api/sessions/' + code);
-            location.href = '/play.html?code=' + code;
-          } catch (err) {
-            toast(err.message, 'bad');
-          }
-        });
+        /**
+         * رمزٌ في العنوان (‎/?code=‎ من رابطٍ قديم): نمرّره إلى صفحة الدخول
+         * بدل أن نُبقي حقل رمزٍ في الواجهة. الروابط القديمة تبقى تعمل، والزائر
+         * الذي لا رمز معه لا يُسأل عن رمز أصلاً.
+         */
+        const preset = new URLSearchParams(location.search).get('code');
+        if (preset && /^\d{4,8}$/.test(preset)) location.replace('/play.html?code=' + preset);
 
         // إن كان مسجّل الدخول نوجّهه إلى أنشطته مباشرة
         api('/api/auth/me')
@@ -168,6 +103,9 @@
             const link = $('#accountLink');
             link.href = '/host.html#/mine';
             link.textContent = t('homeMyActivities', { name: user.name });
+            const top = $('#topAccount');
+            top.href = '/host.html#/mine';
+            top.textContent = t('homeMyActivitiesShort');
             const hello = $('#welcome');
             hello.textContent = t('homeWelcome', { name: String(user.name).trim().split(/\s+/)[0] });
             hello.classList.remove('hidden');
@@ -194,7 +132,6 @@
             .catch(() => {});
         }
 
-        if (preset && input.value.length === 6) $('#joinForm').requestSubmit();
       })();
     
       window.SiteFooter.mount();

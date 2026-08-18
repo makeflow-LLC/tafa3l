@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tapio</title>
+    <meta name="description" content="ادخل إلى نشاط Tapio برمز الدخول المكوّن من ستة أرقام." />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" href="/assets/icon.svg?v=1.47.0" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.47.0" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.47.0" />
+    <script src="/assets/js/i18n.js?v=1.47.0"></script>
+  </head>
+  <body>
+    <div class="wrap narrow">
+      <div class="row" style="justify-content: flex-end; padding-top: 10px" id="langRow"></div>
+      <div class="center" style="padding: 10px 0 18px">
+        <a class="brand hero" href="/" style="justify-content: center">
+          <img class="logo light-only" src="/assets/logo.svg?v=1.47.0" alt="Tapio" width="249" height="159" /><img
+            class="logo dark-only"
+            src="/assets/logo-white.svg?v=1.47.0"
+            alt="Tapio"
+            width="249"
+            height="159"
+          />
+        </a>
+      </div>
+
+      <div class="card">
+        <h2 id="joinTitle"></h2>
+        <form id="joinForm" class="stack">
+          <div>
+            <label for="code" id="codeLabel"></label>
+            <!--
+              خانة لكل رقم، لكن الحقل الحقيقي واحد شفّاف فوقها: اللصق والإكمال
+              التلقائي ولوحة المفاتيح والقارئ الصوتي تعمل كلها بلا حيلة، والخانات
+              الستّ مجرّد طبقة عرض تُملأ من قيمته.
+            -->
+            <div class="code-field" id="codeField">
+              <input
+                id="code"
+                class="code-input"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="6"
+                autocomplete="one-time-code"
+                enterkeyhint="go"
+              />
+            </div>
+          </div>
+          <button class="btn primary block" type="submit" id="joinBtn"></button>
+          <p class="muted small center" style="margin: 0" id="orScan"></p>
+        </form>
+      </div>
+
+      <p class="center" style="margin-top: 14px">
+        <a class="btn ghost" href="/" id="backHome"></a>
+      </p>
+
+      <p class="footer" id="pageFooter"></p>
+    </div>
+
+    <script src="/assets/js/common.js?v=1.47.0"></script>
+    <script src="/assets/js/footer.js?v=1.47.0"></script>
+    <script>
+      (function () {
+        const { $, api, toast, serverAlive, showOfflineBanner } = window.T;
+        const t = window.I18n.t;
+        const input = $('#code');
+
+        document.title = t('brand') + ' — ' + t('homeJoinTitle');
+        window.I18n.mountToggle($('#langRow'));
+
+        $('#joinTitle').textContent = t('homeJoinTitle');
+        $('#codeLabel').textContent = t('homeCodeLabel');
+        input.setAttribute('aria-label', t('homeCodeAria'));
+        $('#joinBtn').textContent = t('homeJoinBtn');
+        $('#orScan').textContent = t('homeOrScan');
+        $('#backHome').textContent = t('joinBackHome');
+        $('#pageFooter').textContent = t('homeFooter');
+
+        serverAlive().then((alive) => {
+          if (!alive) showOfflineBanner(document.querySelector('.wrap'));
+        });
+
+        // رمزٌ في العنوان: من ‎?code=‎ أو من مسار ‎/c/123456‎
+        const params = new URLSearchParams(location.search);
+        const fromPath = (location.pathname.match(/\/c\/(\d{4,8})/) || [])[1];
+        const preset = params.get('code') || fromPath;
+        if (preset) input.value = String(preset).replace(/\D/g, '').slice(0, 6);
+
+        // الخانات الستّ: طبقة عرض فقط، مصدرها قيمة الحقل الواحد فوقها
+        const field = $('#codeField');
+        const cells = [];
+        for (let i = 0; i < 6; i += 1) {
+          const cell = document.createElement('span');
+          cell.className = 'code-cell';
+          cell.setAttribute('aria-hidden', 'true');
+          field.append(cell);
+          cells.push(cell);
+        }
+
+        function paintCells() {
+          const digits = input.value;
+          cells.forEach((cell, i) => {
+            cell.textContent = digits[i] || '';
+            cell.classList.toggle('filled', i < digits.length);
+            cell.classList.toggle('next', i === digits.length);
+          });
+        }
+
+        input.addEventListener('focus', () => field.classList.add('focused'));
+        input.addEventListener('blur', () => field.classList.remove('focused'));
+        // المؤشّر دائماً في آخر الرمز: النقر في منتصفه لا يجعله يكتب بين رقمين
+        const toEnd = () => setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+        input.addEventListener('click', toEnd);
+        input.addEventListener('focus', toEnd);
+
+        input.addEventListener('input', () => {
+          input.value = input.value.replace(/\D/g, '').slice(0, 6);
+          paintCells();
+          if (input.value.length === 6) $('#joinForm').requestSubmit();
+        });
+        paintCells();
+
+        $('#joinForm').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const code = input.value.trim();
+          if (code.length !== 6) return toast(t('homeCodeError'), 'bad');
+          try {
+            await api('/api/sessions/' + code);
+            location.href = '/play.html?code=' + code;
+          } catch (err) {
+            toast(err.message, 'bad');
+          }
+        });
+
+        if (preset && input.value.length === 6) $('#joinForm').requestSubmit();
+        else input.focus();
+      })();
+
+      window.SiteFooter.mount();
+    </script>
+  </body>
+</html>
