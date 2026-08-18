@@ -12,6 +12,9 @@ const WebSocket = require('ws');
 process.env.PORT = '0';
 // عزل بيانات الاختبار عن بيانات التطوير
 process.env.DATA_DIR = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'tafa3l-test-'));
+// إنشاء الجلسة صار يتطلّب حساباً، والحساب يحتاج جوجل مهيّأة (مزيّفة هنا)
+process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 const { server, ready } = require('../server/index');
 
 let base;
@@ -19,6 +22,7 @@ let base;
 test.before(async () => {
   await ready;
   base = `http://127.0.0.1:${server.address().port}`;
+  await loginHost();
 });
 
 // كل الاتصالات المفتوحة، حتى نغلقها بالقوة ولو فشل اختبار في منتصفه
@@ -88,10 +92,42 @@ function ws() {
   };
 }
 
+
+/**
+ * إنشاء الجلسة صار يتطلّب حساباً، فكل اختبارٍ يطلق جلسةً يحتاج كوكي مدرب.
+ * نسجّل الدخول مرّةً واحدة ونرفقه تلقائياً في `post`.
+ */
+let hostCookie = '';
+
+async function loginHost() {
+  const original = global.fetch;
+  const mail = `flow.${Date.now()}@example.com`;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.startsWith('https://oauth2.googleapis.com/token')) return { ok: true, json: async () => ({ access_token: 't' }) };
+    if (u.startsWith('https://www.googleapis.com/oauth2/v3/userinfo')) {
+      return { ok: true, json: async () => ({ sub: 'g_' + mail, email: mail, email_verified: true, name: 'مدرب' }) };
+    }
+    return original(url, opts);
+  };
+  try {
+    const start = await fetch(base + '/api/auth/google', { redirect: 'manual' });
+    const stateCookie = (start.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_oauth='));
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    const cb = await fetch(`${base}/api/auth/google/callback?code=x&state=${state}`, {
+      redirect: 'manual',
+      headers: { Cookie: stateCookie.split(';')[0] },
+    });
+    hostCookie = (cb.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_sid=')).split(';')[0];
+  } finally {
+    global.fetch = original;
+  }
+}
+
 async function post(path, body, headers) {
   const response = await fetch(base + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...(hostCookie ? { Cookie: hostCookie } : {}), ...(headers || {}) },
     body: JSON.stringify(body),
   });
   return { status: response.status, data: await response.json().catch(() => null) };

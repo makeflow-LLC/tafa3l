@@ -22,7 +22,7 @@ const premium = require('./premium');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -141,7 +141,6 @@ app.get('/api/templates', (_req, res) => {
  * بحسب عنوانهم، والمسجّلين بحسب حسابهم وبسقف أعلى.
  */
 const CREATE_WINDOW_MS = 60 * 60 * 1000;
-const CREATE_MAX_GUEST = 60;
 const CREATE_MAX_USER = 300;
 const createUsage = new Map(); // key -> { count, resetAt }
 
@@ -162,10 +161,17 @@ function createLimited(key, max) {
 }
 
 /** إنشاء جلسة جديدة — يعيد رمز الدخول ومفتاح المضيف */
-app.post('/api/sessions', async (req, res) => {
+/**
+ * إنشاء جلسة يتطلّب حساباً.
+ *
+ * كان مفتوحاً لأي زائر، فيستطيع أي أحد أن يطلق نشاطاً باسم المنصة بلا أثرٍ
+ * يُنسب إليه — ولا إشراف على ما يُعرض على الطلاب، ولا نشاطٌ يُحفظ لصاحبه.
+ * والدخول بجوجل بضغطة، فالكلفة على المعلّم لا تُذكر أمام ما تشتريه.
+ */
+app.post('/api/sessions', auth.requireUser, async (req, res) => {
   try {
-    const key = req.user ? 'u:' + req.user.id : 'ip:' + (req.ip || req.socket.remoteAddress || 'unknown');
-    if (createLimited(key, req.user ? CREATE_MAX_USER : CREATE_MAX_GUEST)) {
+    const key = 'u:' + req.user.id;
+    if (createLimited(key, CREATE_MAX_USER)) {
       return res.status(429).json({ error: 'أنشأت جلسات كثيرة خلال ساعة — انتظر قليلاً ثم أعد المحاولة' });
     }
     // صور الأسئلة للمشتركين فقط
@@ -174,7 +180,7 @@ app.post('/api/sessions', async (req, res) => {
     let activityId = null;
     // المدرب المسجّل: تُحفظ أسئلته تلقائياً في نشاطاته مع كل إطلاق —
     // فلا يضيع نشاط لمجرد أنه نسي زر الحفظ، وإنهاء الجلسة لا يحذفه
-    if (req.user) {
+    {
       session.ownerId = req.user.id;
       // اسم المعلّم يُطبع على التقرير — يُحفظ مع الجلسة لا يُقرأ من القاعدة وقت التصدير
       session.ownerName = req.user.name;

@@ -722,6 +722,23 @@ textarea {
   resize: vertical;
 }
 
+/**
+ * الخانة والدائرة ليستا حقلَي نصّ. القاعدة العامة أعلاه كانت تمطّهما إلى
+ * مربّعٍ فارغ بعرض السطر وارتفاع ٤٨ بكسل — يظهر كصندوقٍ غامض وسط الشاشة
+ * منفصلٍ عن نصّه، كما حدث في خانة «اسمح بأسئلة تحتاج تصحيحاً يدوياً».
+ */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  min-height: 0;
+  padding: 0;
+  margin: 2px 0 0;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
 input:focus,
 textarea:focus,
 select:focus {

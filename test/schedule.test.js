@@ -10,6 +10,9 @@ const assert = require('node:assert');
 const WebSocket = require('ws');
 
 process.env.PORT = '0';
+// إنشاء الجلسة صار يتطلّب حساباً، والحساب يحتاج جوجل مهيّأة (مزيّفة هنا)
+process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 const { server, ready } = require('../server/index');
 const { normalizeQuiz } = require('../server/session');
 const store = require('../server/store');
@@ -23,6 +26,7 @@ test.before(async () => {
   const port = server.address().port;
   base = `http://127.0.0.1:${port}`;
   wsBase = `ws://127.0.0.1:${port}/ws`;
+  await loginHost();
 });
 
 test.after(() => {
@@ -65,10 +69,38 @@ function ws() {
   };
 }
 
+let hostCookie = '';
+
+/** إنشاء الجلسة يتطلّب حساباً — كوكي مدرب واحد يكفي لهذا الملف */
+async function loginHost() {
+  const original = global.fetch;
+  const mail = `sched.${Date.now()}@example.com`;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.startsWith('https://oauth2.googleapis.com/token')) return { ok: true, json: async () => ({ access_token: 't' }) };
+    if (u.startsWith('https://www.googleapis.com/oauth2/v3/userinfo')) {
+      return { ok: true, json: async () => ({ sub: 'g_' + mail, email: mail, email_verified: true, name: 'مدرب' }) };
+    }
+    return original(url, opts);
+  };
+  try {
+    const start = await fetch(base + '/api/auth/google', { redirect: 'manual' });
+    const stateCookie = (start.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_oauth='));
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    const cb = await fetch(`${base}/api/auth/google/callback?code=x&state=${state}`, {
+      redirect: 'manual',
+      headers: { Cookie: stateCookie.split(';')[0] },
+    });
+    hostCookie = (cb.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_sid=')).split(';')[0];
+  } finally {
+    global.fetch = original;
+  }
+}
+
 const post = async (path, body) => {
   const res = await fetch(base + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(hostCookie ? { Cookie: hostCookie } : {}) },
     body: JSON.stringify(body),
   });
   return { status: res.status, data: await res.json() };

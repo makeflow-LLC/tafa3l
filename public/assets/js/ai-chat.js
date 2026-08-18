@@ -66,9 +66,9 @@
     manualBox.addEventListener('change', () => {
       state.allowManual = manualBox.checked;
     });
-    const manualRow = el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start' } }, [
+    const manualRow = el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
       manualBox,
-      el('span', { class: 'small' }, [
+      el('span', { class: 'small grow' }, [
         el('strong', { text: t('cAllowManual') }),
         el('span', { class: 'muted small', style: { display: 'block' }, text: t('cAllowManualHint') }),
       ]),
