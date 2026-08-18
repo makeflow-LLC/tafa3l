@@ -64,3 +64,8 @@ services:
       #   value: "970597034066"
       # - key: PREMIUM_PRICE_USD
       #   value: "5"
+      # الشهر المجاني: أفرغ الرقم لإخفاء العرض من كل الشاشات
+      # - key: PREMIUM_TRIAL_WHATSAPP
+      #   value: "970597750343"
+      # - key: PREMIUM_TRIAL_DAYS
+      #   value: "30"

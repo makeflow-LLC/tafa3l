@@ -189,3 +189,27 @@ test('اسم المعلّم يُحفظ مع الجلسة ويظهر في ملف 
   });
   assert.equal(anon.status, 401);
 });
+
+test('عرض الشهر المجاني يصل إلى الواجهة، ويُطفأ بمتغيّر بيئة فارغ', async () => {
+  const teacher = client();
+  await teacher.login('trial.seeker@example.com', 'أ. باحثة');
+
+  const me = await teacher.request('GET', '/api/auth/me');
+  assert.equal(me.data.premium.plan.trialWhatsapp, '970597750343', 'رقم التجربة يصل للواجهة');
+  assert.equal(me.data.premium.plan.trialDays, 30, 'مدة التجربة شهر');
+
+  // الصفحة العامة تحمل العرض أيضاً — الزائر قبل تسجيل الدخول يراه
+  const pub = await fetch(base + '/api/ai/status').then((r) => r.json());
+  assert.equal(pub.plan.trialWhatsapp, '970597750343');
+
+  // إفراغ المتغيّر يطفئ العرض كله: الواجهة تُخفي البطاقة حين لا يوجد رقم
+  const saved = process.env.PREMIUM_TRIAL_WHATSAPP;
+  process.env.PREMIUM_TRIAL_WHATSAPP = '';
+  delete require.cache[require.resolve('../server/premium')];
+  const fresh = require('../server/premium');
+  assert.equal(fresh.PLAN.trialWhatsapp, '', 'الرقم الفارغ يعني: لا عرض');
+  if (saved === undefined) delete process.env.PREMIUM_TRIAL_WHATSAPP;
+  else process.env.PREMIUM_TRIAL_WHATSAPP = saved;
+  delete require.cache[require.resolve('../server/premium')];
+  require('../server/premium');
+});
