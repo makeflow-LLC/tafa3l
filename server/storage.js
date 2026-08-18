@@ -47,8 +47,8 @@ function sortGames(sort) {
 // ------------------------------------------------------------- سائق الملف
 
 function fileDriver() {
-  /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object}} */
-  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {} };
+  /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
+  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, liveSessions: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -99,6 +99,7 @@ function fileDriver() {
           games: parsed.games || {},
           authSessions: parsed.authSessions || {},
           bankQuestions: parsed.bankQuestions || {},
+          liveSessions: parsed.liveSessions || {},
         };
       } catch (err) {
         if (err.code !== 'ENOENT') console.error('ملف البيانات غير قابل للقراءة، سنبدأ فارغاً:', err.message);
@@ -194,6 +195,31 @@ function fileDriver() {
       if (!a) return;
       a.copies = (a.copies || 0) + 1;
       schedule();
+    },
+
+    // ------------------------------------------- هياكل الجلسات الحيّة
+    // ما يُحفظ هنا هيكلٌ فقط (رمز، أسئلة، إعدادات، موضع العرض). لا مشارك
+    // ولا إجابة ولا درجة — تلك تبقى في الذاكرة وتموت مع العملية عمداً.
+
+    async saveLiveSession(snap) {
+      db.liveSessions[snap.code] = { ...snap, savedAt: Date.now() };
+      schedule();
+    },
+    /** تحديث الحقول الخفيفة وحدها — يعيد false إن لم يكن للجلسة صفّ بعد */
+    async patchLiveSession(code, patch) {
+      const row = db.liveSessions[code];
+      if (!row) return false;
+      Object.assign(row, patch, { savedAt: Date.now() });
+      schedule();
+      return true;
+    },
+    async deleteLiveSession(code) {
+      if (!db.liveSessions[code]) return;
+      delete db.liveSessions[code];
+      schedule();
+    },
+    async listLiveSessions() {
+      return Object.values(db.liveSessions);
     },
 
 
@@ -484,6 +510,16 @@ function postgresDriver(connectionString) {
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           expires_at BIGINT NOT NULL
         );
+        -- هياكل الجلسات الحيّة كي تنجو من إعادة نشرٍ أو إعادة تشغيل.
+        -- data يحمل الرمز والأسئلة والإعدادات وموضع العرض فقط؛ لا مشارك
+        -- ولا إجابة ولا درجة — وعدُ المنصة أن تلك لا تلمس القرص أبداً.
+        CREATE TABLE IF NOT EXISTS live_sessions (
+          code TEXT PRIMARY KEY,
+          owner_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          data JSONB NOT NULL,
+          updated_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS live_sessions_updated_idx ON live_sessions(updated_at);
       `);
     },
 
@@ -597,6 +633,35 @@ function postgresDriver(connectionString) {
       await pool.query('UPDATE activities SET copies = copies + 1 WHERE id = $1', [id]);
     },
 
+    // ------------------------------------------- هياكل الجلسات الحيّة
+
+    async saveLiveSession(snap) {
+      await pool.query(
+        `INSERT INTO live_sessions (code, owner_id, data, updated_at) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (code) DO UPDATE SET owner_id = $2, data = $3, updated_at = $4`,
+        [snap.code, snap.ownerId || null, JSON.stringify(snap), Date.now()]
+      );
+    },
+    /**
+     * دمجٌ سطحي داخل JSONB بدل إعادة كتابة الصفّ كلّه. والفرق ليس تجميلاً:
+     * `data` تحمل الأسئلة وصورَها، فإعادةُ كتابتها عند كل انتقالِ شريحة تعني
+     * ميغابايتاتٍ تُرسَل إلى القاعدة ستّين مرة في الحصة الواحدة بلا سبب —
+     * وما تغيّر فعلاً حقلان أو ثلاثة.
+     */
+    async patchLiveSession(code, patch) {
+      const { rowCount } = await pool.query(
+        'UPDATE live_sessions SET data = data || $2::jsonb, updated_at = $3 WHERE code = $1',
+        [code, JSON.stringify(patch), Date.now()]
+      );
+      return rowCount > 0;
+    },
+    async deleteLiveSession(code) {
+      await pool.query('DELETE FROM live_sessions WHERE code = $1', [code]);
+    },
+    async listLiveSessions() {
+      const { rows } = await pool.query('SELECT data FROM live_sessions ORDER BY updated_at DESC');
+      return rows.map((r) => r.data);
+    },
 
     // ------------------------------------------------------------- الألعاب
 

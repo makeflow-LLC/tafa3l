@@ -213,7 +213,16 @@ function normalizeQuestion(raw, index) {
     text: clean(raw?.text, LIMITS.questionText) || `سؤال ${index + 1}`,
     // شرح أو سبب يظهر مع الإجابة الصحيحة (اختياري)
     explanation: clean(raw?.explanation, LIMITS.explanation),
-    timeLimit: raw?.timeLimit === 0 || raw?.timeLimit === null ? 0 : clamp(raw?.timeLimit, 5, 600, 30),
+    /**
+     * مؤقّت السؤال الواحد لم يعد موجوداً: الوقت — إن وُضع — واحدٌ لكل
+     * الأسئلة في `settings.timeMode`. يبقى الحقل ليُقرأ من نشاطٍ قديم
+     * (يستنتج منه `inferLegacyTime` وضعاً موحّداً) لا ليُولَّد افتراضياً.
+     *
+     * وكان افتراضه ٣٠ ثانية، فكان كل نشاطٍ يُطلَق بلا `timeMode` صريح —
+     * وارداً من المكتبة أو من المساعد — يُستنتج منه مؤقّتٌ لم يطلبه أحد،
+     * والافتراضي المُعلَن «بلا وقت».
+     */
+    timeLimit: clamp(raw?.timeLimit, 0, 600, 0),
     // علامة السؤال — يضعها المدرب بحرية
     points: clamp(raw?.points, 0, 10000, 1000),
     options: [],
@@ -558,6 +567,75 @@ class Session {
 
   touch() {
     this.lastActivity = Date.now();
+    // خطّاف يضعه المخزن ليحفظ هيكل الجلسة عند تغيّره — لا يعرف عنه هذا الملف شيئاً
+    this.onChange?.();
+  }
+
+  // ------------------------------------------------- البقاء بعد إعادة التشغيل
+
+  /**
+   * لقطة تكفي لإحياء الجلسة بعد إعادة تشغيل الخادم — **بلا مشارك ولا إجابة**.
+   *
+   * وهذا ليس نقصاً في اللقطة بل هو وعد المنصة: إجابات الطلاب لا تُكتب على
+   * قرص أبداً. ما يستحقّ النجاة هو ما لو ضاع بقي المعلّم بلا حيلة: الرمز
+   * الذي وزّعه، وموعد اختباره المجدول، وأسئلته. أما ما أجابه الطلاب في
+   * الدقائق الماضية فيضيع، ونقول ذلك للمعلّم صراحةً بدل أن نخفيه.
+   */
+  snapshot() {
+    return {
+      code: this.code,
+      hostToken: this.hostToken,
+      ownerId: this.ownerId,
+      ownerName: this.ownerName,
+      title: this.title,
+      // الأسئلة كما هي الآن: لو خُلطت عند الإطلاق حُفظ الترتيب المخلوط
+      questions: this.questions,
+      settings: this.settings,
+      shuffled: Boolean(this._shuffled),
+      status: this.status,
+      currentIndex: this.currentIndex,
+      createdAt: this.createdAt,
+      startedAt: this.startedAt,
+      lastActivity: this.lastActivity,
+      teams: this.teams,
+    };
+  }
+
+  /** يبني جلسةً من لقطة. المشاركون يبدأون فارغين — لا سبيل غير ذلك. */
+  static restore(snap) {
+    const session = new Session(snap.code, { title: snap.title, questions: snap.questions, settings: snap.settings });
+    session.hostToken = snap.hostToken || session.hostToken;
+    session.ownerId = snap.ownerId ?? null;
+    session.ownerName = snap.ownerName ?? null;
+    session.createdAt = Number(snap.createdAt) || Date.now();
+    // عمرٌ كامل بعد الإحياء: لا نُعاقب الجلسة بخمولٍ سببه توقّف الخادم
+    session.lastActivity = Date.now();
+    session._shuffled = Boolean(snap.shuffled);
+    if (snap.teams) session.teams = snap.teams;
+    /** علامةٌ يقرأها المضيف ليعرف أن ما قبل إعادة التشغيل لم يُحفظ */
+    session.restored = true;
+
+    // موعدٌ حلّ أثناء توقّف الخادم يبقى موعداً: `futureStamp` يمسح الماضي،
+    // وبمسحه يعلق اختبارٌ مجدول في الانتظار إلى الأبد. نعيده ثم نُسلّح
+    // المؤقّت — ومهلته صفر فينطلق فوراً، وهو ما كان سيحدث لولا الانقطاع.
+    session.settings.opensAt = snap.settings?.opensAt ?? null;
+
+    if (snap.status === 'live') {
+      session.status = 'live';
+      session.startedAt = Number(snap.startedAt) || Date.now();
+      session.armDeadline();
+      if (session.settings.pace === 'self') {
+        session.currentIndex = 0;
+        session.phase = 'self';
+      } else {
+        // نعيد عرض السؤال الذي كان معروضاً؛ مؤقّته يبدأ من جديد لأن أحداً
+        // لم يكن يجيب أثناء الانقطاع أصلاً
+        session.goTo(Math.min(Math.max(0, Number(snap.currentIndex) || 0), session.questions.length - 1));
+      }
+    } else {
+      session.armSchedule();
+    }
+    return session;
   }
 
   dispose() {
@@ -1928,6 +2006,8 @@ class Session {
       opensAt: this.questionOpensAt,
       serverNow: Date.now(),
       settings: this.settings,
+      // نجت الجلسة إعادة تشغيل الخادم — والمضيف يستحقّ أن يعرف أن الإجابات لم تنجُ معها
+      restored: Boolean(this.restored),
       questions: this.questions.map((item) => ({ id: item.id, text: item.text, type: item.type })),
       participants: [...this.participants.values()].map((p) => ({
         id: p.id,
