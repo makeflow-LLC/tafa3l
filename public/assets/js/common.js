@@ -46,6 +46,49 @@
     return location.protocol === 'file:';
   }
 
+  /**
+   * تهنئة الحساب الجديد بمنحة التسجيل — تظهر مرّة واحدة على أي صفحةٍ يهبط
+   * فيها المعلّم بعد أول تسجيل دخول (`welcome=1` من الخادم).
+   *
+   * هنا لا في host.js: وجهة ما بعد الدخول ليست صفحةً واحدة، والمعلّم الذي
+   * سجّل من صفحة الألعاب يستحق أن يعرف ما فُتح له مثل الذي سجّل من اللوحة.
+   * وتُلصق على `body` لا داخل حاوية الصفحة لأن التوجيه يمسحها عند كل رسم.
+   *
+   * @param {object} premium ملخّص الاشتراك من `/api/auth/me`
+   */
+  function welcomeNewAccount(premium) {
+    const url = new URL(location.href);
+    if (url.searchParams.get('welcome') !== '1') return;
+    // نمسح المعامل فوراً كي لا تتكرّر التهنئة مع كل تحديثٍ للصفحة
+    url.searchParams.delete('welcome');
+    history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
+    if (!premium?.onSignupTrial) return;
+
+    const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
+    const days = premium.daysLeft || premium.plan?.signupTrialDays || 0;
+    const box = el('div', { class: 'welcome-pop' });
+    const close = () => box.remove();
+    box.append(
+      el('div', { class: 'welcome-card stack' }, [
+        el('div', { style: { fontSize: '2.6rem', textAlign: 'center' }, text: '🎉' }),
+        el('h2', { style: { margin: 0, textAlign: 'center' }, text: t('upWelcomeTitle', { days }) }),
+        el('p', { class: 'muted small', style: { margin: 0, textAlign: 'center' }, text: t('upWelcomeBody', { days }) }),
+        el('ul', { class: 'plan-list' }, [t('upPro1'), t('upPro2'), t('upPro3')].map((line) =>
+          el('li', {}, [el('span', { class: 'mark', 'aria-hidden': 'true', text: '✓' }), el('span', { text: line })])
+        )),
+        el('a', { class: 'btn primary', href: '/host.html#/ai', onclick: close }, t('upWelcomeCta')),
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: close }, t('upWelcomeLater')),
+      ])
+    );
+    box.addEventListener('click', (e) => { if (e.target === box) close(); });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key !== 'Escape') return;
+      close();
+      document.removeEventListener('keydown', esc);
+    });
+    document.body.append(box);
+  }
+
   /** النص الافتراضي عربي دائماً؛ الصفحات المُترجمة (المحمَّل فيها i18n.js) تستبدله بلغتها الحالية */
   function offlineHint() {
     return global.I18n ? global.I18n.t('offlineHint') : 'تعذّر الوصول إلى خادم Tapio — هذه الصفحة تُقدَّم كملفات ثابتة فقط. محلياً شغّل «npm start»، وللنشر استخدم استضافة تشغّل Node دائماً (Render أو Railway أو Fly.io) لأن منصات serverless مثل Vercel لا تدعم WebSocket.';
@@ -417,6 +460,7 @@
     showOfflineBanner,
     hideOfflineBanner,
     isFileProtocol,
+    welcomeNewAccount,
     OFFLINE_HINT: offlineHint,
   };
 })(window);

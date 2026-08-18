@@ -79,6 +79,8 @@ async function attachUser(req, _res, next) {
             email: user.email,
             name: user.name,
             premiumUntil: user.premiumUntil ?? null,
+            // يميّز منحة التسجيل عن اشتراكٍ مدفوع في ما تعرضه الواجهة
+            trialGrantedAt: user.trialGrantedAt ?? null,
             createdAt: user.createdAt,
           };
         }

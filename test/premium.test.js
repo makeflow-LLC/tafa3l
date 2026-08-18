@@ -22,6 +22,17 @@ const premium = require('../server/premium');
 let base;
 const DAY = 86400000;
 
+/**
+ * ينهي منحة التسجيل لحساب. الاختبارات التي تصف «حساباً مجانياً» تصف اليوم
+ * الحادي عشر لا اليوم الأول — فنُنهي المنحة صراحةً بدل إطفائها للملف كله.
+ */
+async function endTrial(email) {
+  const store = require('../server/storage').get();
+  const user = (await store.listUsers()).find((u) => u.email === email);
+  await store.setPremiumUntil(user.id, null);
+  return user;
+}
+
 test.before(async () => {
   await ready;
   base = `http://127.0.0.1:${server.address().port}`;
@@ -101,6 +112,7 @@ test('لوحة المالك محجوبة عن المدربين العاديين 
 test('المالك يرى المدربين ويمدّد ويخصم ويلغي', async () => {
   const teacher = client();
   await teacher.login('teacher2@example.com', 'سارة');
+  await endTrial('teacher2@example.com');
   const before = await teacher.request('GET', '/api/auth/me');
   assert.equal(before.data.premium.isPremium, false, 'يبدأ حساباً مجانياً');
   assert.equal(before.data.premium.plan.whatsapp, '970597034066');
@@ -156,6 +168,7 @@ test('المالك يرى المدربين ويمدّد ويخصم ويلغي', 
 test('مدرب لا يستطيع تمديد اشتراك نفسه', async () => {
   const teacher = client();
   await teacher.login('teacher3@example.com', 'سامي');
+  await endTrial('teacher3@example.com');
   const me = await teacher.request('GET', '/api/auth/me');
   const res = await teacher.request('POST', `/api/admin/users/${me.data.user.id}/premium`, { addDays: 3650 });
   assert.equal(res.status, 404);
@@ -190,26 +203,68 @@ test('اسم المعلّم يُحفظ مع الجلسة ويظهر في ملف 
   assert.equal(anon.status, 401);
 });
 
-test('عرض الشهر المجاني يصل إلى الواجهة، ويُطفأ بمتغيّر بيئة فارغ', async () => {
+test('كل حساب جديد يُمنح بريميوم عشرة أيام تلقائياً — مرّة واحدة فقط', async () => {
   const teacher = client();
-  await teacher.login('trial.seeker@example.com', 'أ. باحثة');
+  await teacher.login('brand.new@example.com', 'أ. جديدة');
 
   const me = await teacher.request('GET', '/api/auth/me');
-  assert.equal(me.data.premium.plan.trialWhatsapp, '970597750343', 'رقم التجربة يصل للواجهة');
-  assert.equal(me.data.premium.plan.trialDays, 30, 'مدة التجربة شهر');
+  assert.equal(me.data.premium.isPremium, true, 'الحساب الجديد مشترك فوراً');
+  assert.equal(me.data.premium.onSignupTrial, true, 'ويُعرف أنها منحة تسجيل لا اشتراك مدفوع');
+  assert.equal(me.data.premium.daysLeft, 10, 'عشرة أيام');
+  assert.equal(me.data.premium.plan.signupTrialDays, 10, 'والمدّة تصل للواجهة كي تُعلن عنها');
 
-  // الصفحة العامة تحمل العرض أيضاً — الزائر قبل تسجيل الدخول يراه
-  const pub = await fetch(base + '/api/ai/status').then((r) => r.json());
-  assert.equal(pub.plan.trialWhatsapp, '970597750343');
+  // والمنحة تفتح المساعد الذكي فعلاً — لا شارةً بلا أثر
+  const ai = await teacher.request('POST', '/ai/design', { messages: [{ role: 'user', content: 'س' }] });
+  assert.notEqual(ai.status, 402, 'المساعد الذكي مفتوح للحساب الجديد');
 
-  // إفراغ المتغيّر يطفئ العرض كله: الواجهة تُخفي البطاقة حين لا يوجد رقم
-  const saved = process.env.PREMIUM_TRIAL_WHATSAPP;
-  process.env.PREMIUM_TRIAL_WHATSAPP = '';
-  delete require.cache[require.resolve('../server/premium')];
-  const fresh = require('../server/premium');
-  assert.equal(fresh.PLAN.trialWhatsapp, '', 'الرقم الفارغ يعني: لا عرض');
-  if (saved === undefined) delete process.env.PREMIUM_TRIAL_WHATSAPP;
-  else process.env.PREMIUM_TRIAL_WHATSAPP = saved;
-  delete require.cache[require.resolve('../server/premium')];
-  require('../server/premium');
+  // ولا تتجدّد بإعادة الدخول: الخروج ثم الدخول بالبريد نفسه لا يمنح شيئاً
+  const store = require('../server/storage').get();
+  const find = async () => (await store.listUsers()).find((u) => u.email === 'brand.new@example.com');
+  const before = (await find()).premiumUntil;
+  await teacher.request('POST', '/auth/logout');
+  await teacher.login('brand.new@example.com', 'أ. جديدة');
+  assert.equal((await find()).premiumUntil, before, 'الدخول مجدداً لا يُجدّد المنحة');
+});
+
+test('المنحة لا تمسّ حساباً قائماً ولا تُلغي اشتراكاً مدفوعاً', async () => {
+  const store = require('../server/storage').get();
+  const owner = client();
+  await owner.login('owner@tapio.fun', 'المالك');
+  const teacher = client();
+  await teacher.login('paid.member@example.com', 'أ. مشترك');
+
+  const find = async () => (await store.listUsers()).find((u) => u.email === 'paid.member@example.com');
+  const user = await find();
+  const far = Date.now() + 400 * DAY;
+  await store.setPremiumUntil(user.id, far);
+
+  // إعادة الدخول بعد اشتراكٍ مدفوع طويل يجب ألا تُقصّره إلى عشرة أيام
+  await teacher.request('POST', '/auth/logout');
+  await teacher.login('paid.member@example.com', 'أ. مشترك');
+  assert.equal((await find()).premiumUntil, far, 'الاشتراك المدفوع كما هو');
+});
+
+test('المشترك الذي دفع بعد تجربته لا يُقال له إنه في تجربة مجانية', async () => {
+  const store = require('../server/storage').get();
+  const teacher = client();
+  await teacher.login('upgraded@example.com', 'أ. مُرقّى');
+
+  const onTrial = await teacher.request('GET', '/api/auth/me');
+  assert.equal(onTrial.data.premium.onSignupTrial, true, 'يبدأ في تجربته');
+
+  // المالك يمدّد له: أثر المنحة يبقى في الحساب، لكنه لم يعد في تجربة
+  const owner = client();
+  await owner.login('owner@tapio.fun', 'المالك');
+  const list = await owner.request('GET', '/api/admin/users');
+  const target = list.data.users.find((u) => u.email === 'upgraded@example.com');
+  await owner.request('POST', `/api/admin/users/${target.id}/premium`, { addDays: 365 });
+
+  const after = await teacher.request('GET', '/api/auth/me');
+  assert.equal(after.data.premium.isPremium, true);
+  assert.equal(after.data.premium.onSignupTrial, false, 'دافعٌ لا مجرّب');
+
+  // والمالك نفسه ليس «في تجربة» مهما كان أثر منحته
+  const ownerMe = await owner.request('GET', '/api/auth/me');
+  assert.equal(ownerMe.data.premium.onSignupTrial, false, 'المالك مشترك دائماً لا مجرّب');
+  await store.listUsers();
 });

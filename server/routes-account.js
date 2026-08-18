@@ -38,6 +38,19 @@ function safeNext(value) {
   }
 }
 
+/**
+ * يضيف `welcome=1` إلى وجهةٍ نسبية سبق أن مرّت على safeNext.
+ * البناء يدويّ لأن الوجهة قد تحمل مرساة (`/host.html#/ai`)، ولصق المعامل في
+ * آخر النصّ كان سيضعه داخل المرساة فلا تقرؤه الصفحة.
+ */
+function withWelcome(target) {
+  const [beforeHash, ...rest] = String(target).split('#');
+  const hash = rest.length ? '#' + rest.join('#') : '';
+  const [pathPart, query] = beforeHash.split('?');
+  const search = query ? `?${query}&welcome=1` : '?welcome=1';
+  return pathPart + search + hash;
+}
+
 /** نصّ قصير مُشذَّب — لحقول المكتبة القادمة من المدرب أو من شريط العنوان */
 function clean(value, max) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -108,7 +121,9 @@ function accountRoutes(store) {
       const user = await storage.get().upsertUser({ email, name: profile.name, googleId: profile.googleId });
       google.clearStateCookie(req, res);
       await auth.startSession(req, res, user.id);
-      res.redirect(safeNext(saved.next));
+      // الحساب الجديد يُمنح بريميوم تلقائياً — نُعلمه بذلك في وجهته لا في رسالة
+      // منفصلة: `welcome=1` تجعل أول شاشة يراها هي شاشة «ما الذي فُتح لك».
+      res.redirect(user.isNew && premium.signupTrialMs() ? withWelcome(safeNext(saved.next)) : safeNext(saved.next));
     } catch (err) {
       console.error('دخول جوجل:', err.message);
       bounce('تعذّر تسجيل الدخول عبر جوجل — حاول مجدداً');

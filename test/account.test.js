@@ -129,13 +129,19 @@ test('الدخول عبر جوجل ينشئ حساباً ويفتح جلسة د�
   const mail = email();
   const callback = await loginViaGoogle(c, { email: mail, name: 'أ. محمد' });
   assert.equal(callback.status, 302, 'يعيد التوجيه إلى الوجهة بعد النجاح');
-  assert.match(callback.headers.get('location'), /\/host\.html#\/mine$/);
+  // الوجهة محفوظة، ومعها إعلامٌ بمنحة التسجيل — المرساة تبقى بعد المعامل
+  assert.match(callback.headers.get('location'), /^\/host\.html\?welcome=1#\/mine$/);
   assert.ok(c.cookie.startsWith('tafa3l_sid='), 'يجب ضبط كوكي الجلسة');
 
   const me = await c.request('GET', '/api/auth/me');
   assert.equal(me.data.user.name, 'أ. محمد');
   assert.equal(me.data.user.email, mail);
   assert.ok(!('googleId' in me.data.user), 'لا يُسرَّب معرّف جوجل الداخلي للعميل');
+  assert.equal(me.data.premium.onSignupTrial, true, 'وحسابه الجديد يبدأ بمنحة بريميوم');
+
+  // والدخول الثاني بالحساب نفسه لا يُهنّئ مرّةً أخرى
+  const again = await loginViaGoogle(client(), { email: mail, name: 'أ. محمد' });
+  assert.doesNotMatch(again.headers.get('location'), /welcome=1/, 'التهنئة لأول مرّة فقط');
 });
 
 test('نفس بريد جوجل يعطي نفس الحساب دائماً — لا حسابات مكرّرة لنفس الشخص', async () => {

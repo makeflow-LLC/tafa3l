@@ -1436,40 +1436,42 @@
     return `https://wa.me/${plan.whatsapp}?text=${encodeURIComponent(text)}`;
   }
 
-  /** رابط طلب الشهر المجاني — رقمٌ ورسالةٌ مستقلّان عن رسالة الاشتراك */
-  function trialLink(plan) {
-    return `https://wa.me/${plan.trialWhatsapp}?text=${encodeURIComponent(t('upTrialMsg'))}`;
+  /**
+   * دعوة التسجيل: الحساب الجديد يُفتح له بريميوم تلقائياً، بلا طلبٍ ولا انتظار.
+   * تُعرض لمن لم يسجّل بعد — هي أقوى ما نقوله له، فتسبق السعر.
+   */
+  function signupTrialInvite(plan) {
+    const days = plan?.signupTrialDays || 0;
+    if (!days || state.user) return null;
+    return el('div', { class: 'trial stack' }, [
+      el('h2', { style: { margin: 0 }, text: t('upSignupTitle', { days }) }),
+      el('p', { style: { margin: 0 }, text: t('upSignupBody', { days }) }),
+      el('div', { class: 'row' }, [
+        el('a', { class: 'btn accent', href: '/login.html?next=' + encodeURIComponent('/host.html#/ai') }, t('upSignupBtn')),
+      ]),
+    ]);
   }
 
   /**
-   * عرض الشهر المجاني — يُعرض لكل من لم يشترك بعد، سواء دخل صفحة الباقات
-   * أو اصطدم ببوابةٍ في منتصف عمله. الخادم يُخفيه بإفراغ PREMIUM_TRIAL_WHATSAPP.
+   * عدّاد التجربة للمعلّم الذي يعيشها الآن: كم بقي، وما الذي فُتح له.
+   * يُعرض في كل بطاقة بوابة وفي صفحة الباقات — لا في مكانٍ واحد يفوته.
    */
-  function trialBanner(plan, compact) {
-    if (!plan?.trialWhatsapp) return null;
-    const days = plan.trialDays || 30;
-    const btn = el('a', { class: 'btn accent' + (compact ? ' sm' : ''), href: trialLink(plan), target: '_blank', rel: 'noopener' }, t('upTrialBtn'));
-    if (compact) {
-      return el('div', { class: 'trial row between' }, [
-        el('span', { class: 'grow', text: t('upTrialShort', { phone: plan.trialWhatsapp }) }),
-        btn,
-      ]);
-    }
-    return el('div', { class: 'trial stack' }, [
-      el('h2', { style: { margin: 0 }, text: t('upTrialTitle') }),
-      el('p', { style: { margin: 0 }, text: t('upTrialBody', { phone: plan.trialWhatsapp, days }) }),
-      el('div', { class: 'row' }, [btn]),
+  function trialCountdown() {
+    if (!state.premium?.onSignupTrial) return null;
+    const days = state.premium.daysLeft || 0;
+    return el('div', { class: 'trial row between' }, [
+      el('span', { class: 'grow', text: t('upTrialLeft', { days }) }),
+      el('a', { class: 'btn accent sm', href: '#/ai' }, t('hdesignWithAi')),
     ]);
   }
 
   /** بطاقة «هذه ميزة بريميوم» — تُستخدم في المساعد الذكي وفي التصدير */
   function upgradeCard(plan, title) {
-    const p = plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], trialWhatsapp: '970597750343', trialDays: 30 };
+    const p = plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], signupTrialDays: 10 };
     return el('div', { class: 'card stack' }, [
       el('h2', { style: { margin: 0 }, text: title || t('hpremiumFeature') }),
-      // العرض المجاني قبل السعر: المعلّم الذي اصطدم بالبوابة الآن هو أكثر من
-      // يحتاج أن يعرف أن التجربة الكاملة متاحة له بلا دفع
-      trialBanner(p, true),
+      // من لم يسجّل بعد يُدعى للتسجيل لا للدفع، ومن يعيش تجربته يرى ما بقي منها
+      signupTrialInvite(p) || trialCountdown(),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('haPremiumSubscriptionUnlocks') }),
       el('div', { class: 'stack tight' }, [
         el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '🤖' }), el('span', { class: 'grow', text: t('hdesignTheActivityWith') })]),
@@ -1533,7 +1535,7 @@
     // يتغيّر بلا نشرٍ جديد، وأسوأ ما في صفحة سعرٍ أن تطبع سعراً قديماً.
     let info = state.premium?.plan ? state.premium : null;
     if (!info) info = await api('/api/ai/status').catch(() => null);
-    const plan = info?.plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], trialWhatsapp: '970597750343', trialDays: 30 };
+    const plan = info?.plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], signupTrialDays: 10 };
     const paid = Boolean(info?.isPremium);
 
     app.innerHTML = '';
@@ -1598,11 +1600,8 @@
       cta,
     ]);
 
-    // المشترك لا يُعرض عليه شهرٌ مجاني — عنده اشتراكٌ سارٍ أصلاً
-    if (!paid) {
-      const trial = trialBanner(plan);
-      if (trial) app.append(trial);
-    }
+    const invite = signupTrialInvite(plan) || trialCountdown();
+    if (invite) app.append(invite);
 
     app.append(el('div', { class: 'plans' }, [freeCard, proCard]));
 
@@ -3210,5 +3209,7 @@
   });
 
   // نعرف المستخدم أولاً حتى تظهر أزرار الحساب صحيحة من أول رسم
-  loadAccount().finally(route);
+  loadAccount()
+    .finally(route)
+    .finally(() => window.T.welcomeNewAccount(state.premium));
 })();

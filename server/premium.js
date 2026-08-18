@@ -10,15 +10,25 @@
 // حتى تعمل اللوحة فور النشر بلا إعداد إضافي.
 const DEFAULT_ADMIN = 'jihad@makeflow.tech';
 
+/**
+ * تجربة التسجيل: كل حسابٍ جديد يُفتح له بريميوم عشرة أيام تلقائياً لحظة
+ * إنشائه — بلا طلبٍ ولا رسالة واتساب ولا موافقةٍ يدوية. المعلّم الذي يجرّب
+ * المساعد الذكي في دقيقته الأولى هو الذي يعرف لماذا يشترك بعد عشرة أيام.
+ * اضبطها صفراً لإيقاف المنحة.
+ */
+const SIGNUP_TRIAL_DAYS = process.env.PREMIUM_SIGNUP_TRIAL_DAYS === undefined ? 10 : Number(process.env.PREMIUM_SIGNUP_TRIAL_DAYS) || 0;
+
 const PLAN = {
   whatsapp: process.env.PREMIUM_WHATSAPP || '970597034066',
   priceUsd: Number(process.env.PREMIUM_PRICE_USD) || 5,
   perks: ['تصميم النشاط بالذكاء الاصطناعي', 'تصدير النتائج PDF و Excel'],
-  // شهرٌ مجاني بكل الميزات — رقمٌ منفصل عن رقم الاشتراك، وكلاهما متغيّر بيئة
-  // كي يتغيّرا بلا نشرٍ جديد. أفرغ PREMIUM_TRIAL_WHATSAPP لإيقاف العرض كلياً.
-  trialWhatsapp: process.env.PREMIUM_TRIAL_WHATSAPP ?? '970597750343',
-  trialDays: Number(process.env.PREMIUM_TRIAL_DAYS) || 30,
+  signupTrialDays: SIGNUP_TRIAL_DAYS,
 };
+
+/** مدّة منحة التسجيل بالمللي ثانية — صفرٌ يعني: لا منحة */
+function signupTrialMs() {
+  return Math.max(0, SIGNUP_TRIAL_DAYS) * 86400000;
+}
 
 function adminEmails() {
   const raw = String(process.env.ADMIN_EMAILS || DEFAULT_ADMIN);
@@ -39,12 +49,36 @@ function isPremium(user) {
   return Boolean(user.premiumUntil && user.premiumUntil > Date.now());
 }
 
+/** كم يوماً بقي من الاشتراك الحالي (صفرٌ إن لا اشتراك) — للعدّاد في الواجهة */
+function daysLeft(user) {
+  if (!user?.premiumUntil || user.premiumUntil <= Date.now()) return 0;
+  return Math.ceil((user.premiumUntil - Date.now()) / 86400000);
+}
+
+/**
+ * هل هذا الحساب يعيش منحة تسجيله الآن؟
+ *
+ * وجود `trialGrantedAt` وحده لا يكفي: المعلّم الذي اشترك بعد تجربته يبقى
+ * أثر منحته في حسابه إلى الأبد، فكان سيُقال له «لديك أيام مجانية» وهو دافع.
+ * لذا نشترط أن يكون تاريخ الانتهاء هو تاريخ المنحة كما مُنحت تماماً — أيّ
+ * تمديدٍ من المالك يجعلها اشتراكاً لا تجربة. والمالك مستثنى: هو مشتركٌ دائماً.
+ */
+function onSignupTrial(user) {
+  if (!user || isAdmin(user)) return false;
+  if (!user.trialGrantedAt || !user.premiumUntil) return false;
+  if (user.premiumUntil <= Date.now()) return false;
+  return user.premiumUntil === user.trialGrantedAt + signupTrialMs();
+}
+
 /** ملخّص يُرسل للمتصفح — بلا أي بيانات حساسة */
 function summary(user) {
   return {
     isPremium: isPremium(user),
     isAdmin: isAdmin(user),
     premiumUntil: user?.premiumUntil ?? null,
+    daysLeft: daysLeft(user),
+    // منحة التسجيل: نميّزها عن الاشتراك المدفوع كي تعرف الواجهة ماذا تقول
+    onSignupTrial: onSignupTrial(user),
     plan: PLAN,
   };
 }
@@ -81,4 +115,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { PLAN, isAdmin, isPremium, summary, requirePremium, requireAdmin, adminEmails, assertImagesAllowed };
+module.exports = { PLAN, isAdmin, isPremium, summary, daysLeft, onSignupTrial, signupTrialMs, requirePremium, requireAdmin, adminEmails, assertImagesAllowed };

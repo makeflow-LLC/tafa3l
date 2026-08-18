@@ -14,6 +14,8 @@ process.env.GOOGLE_CLIENT_ID = 'test-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 // صور الأسئلة ميزة بريميوم، والمالك مشترك دائماً — نستخدمه لاختبارات الصور
 process.env.ADMIN_EMAILS = 'owner@tapio.fun';
+// و«الحساب المجاني» هنا يعني حساباً انتهت منحة تسجيله — نُطفئ المنحة لهذا الملف
+process.env.PREMIUM_SIGNUP_TRIAL_DAYS = '0';
 const { server, ready } = require('../server/index');
 const { normalizeQuestion } = require('../server/session');
 
