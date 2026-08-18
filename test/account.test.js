@@ -354,6 +354,67 @@ test('استنساخ نشاط يعطي نسخة مستقلة', async () => {
   assert.equal((await other.request('POST', `/api/activities/${id}/duplicate`)).status, 404);
 });
 
+// ---------------------------------------------------------------- الفصول
+//
+// كشفُ أسماءٍ اختياري يكتبه المعلّم في حسابه. الوعد الأصلي لم يُمسّ: هذه
+// ليست بياناتٍ جمعتها المنصة من الطلاب، ولا تُربط بإجابة أحد.
+
+test('إنشاء فصل ينظّف الأسماء: يقصّ الفراغات ويُسقط الفارغ والمكرّر', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'أ. ريم' });
+  const made = await c.request('POST', '/api/classes', {
+    name: '  الصف السابع «أ»  ',
+    students: 'سارة\n\n  ليان  \nكريم\nسارة\n',
+  });
+  assert.equal(made.status, 201);
+  assert.equal(made.data.class.name, 'الصف السابع «أ»');
+  assert.deepEqual(made.data.class.students, ['سارة', 'ليان', 'كريم']);
+});
+
+test('الأسماء تُقبل ملصوقةً بفواصل عربية أو إنجليزية أو أسطر', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'أ. غيث' });
+  const made = await c.request('POST', '/api/classes', { name: 'صف', students: 'سارة، ليان; كريم,رنا' });
+  assert.deepEqual(made.data.class.students, ['سارة', 'ليان', 'كريم', 'رنا']);
+});
+
+test('الفصل بلا اسم يُرفض', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'أ. منى' });
+  assert.equal((await c.request('POST', '/api/classes', { name: '   ', students: 'سارة' })).status, 400);
+});
+
+test('تعديل الفصل وحذفه، والقائمة تعكسهما', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'أ. دانة' });
+  const id = (await c.request('POST', '/api/classes', { name: 'قديم', students: 'سارة' })).data.class.id;
+
+  const updated = await c.request('PUT', '/api/classes/' + id, { name: 'جديد', students: 'سارة\nليان' });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.class.name, 'جديد');
+  assert.equal(updated.data.class.students.length, 2);
+  assert.equal((await c.request('GET', '/api/classes')).data.classes.length, 1, 'التعديل لا يُنشئ فصلاً ثانياً');
+
+  assert.equal((await c.request('DELETE', '/api/classes/' + id)).status, 200);
+  assert.equal((await c.request('GET', '/api/classes')).data.classes.length, 0);
+});
+
+test('الفصول محميّة بتسجيل الدخول ومعزولة لكل معلّم', async () => {
+  assert.equal((await client().request('GET', '/api/classes')).status, 401);
+  assert.equal((await client().request('POST', '/api/classes', { name: 'صف' })).status, 401);
+
+  const a = client();
+  const b = client();
+  await loginViaGoogle(a, { email: email(), name: 'أ. سامي' });
+  await loginViaGoogle(b, { email: email(), name: 'أ. وفاء' });
+  const id = (await a.request('POST', '/api/classes', { name: 'صفّ سامي', students: 'سارة' })).data.class.id;
+
+  assert.equal((await b.request('GET', '/api/classes')).data.classes.length, 0);
+  assert.equal((await b.request('PUT', '/api/classes/' + id, { name: 'سرقة' })).status, 404);
+  assert.equal((await b.request('DELETE', '/api/classes/' + id)).status, 404);
+  assert.equal((await a.request('GET', '/api/classes')).data.classes.length, 1, 'ولا يزال عند صاحبه');
+});
+
 // ------------------------------------------------------ «أسئلتي السابقة»
 //
 // حلّت محلّ بنك الأسئلة: لا حفظَ مسبقاً ولا مكانَ ثانياً تعيش فيه الأسئلة —

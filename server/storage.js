@@ -48,7 +48,7 @@ function sortGames(sort) {
 
 function fileDriver() {
   /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
-  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, liveSessions: {} };
+  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, liveSessions: {}, classes: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -100,6 +100,7 @@ function fileDriver() {
           authSessions: parsed.authSessions || {},
           bankQuestions: parsed.bankQuestions || {},
           liveSessions: parsed.liveSessions || {},
+          classes: parsed.classes || {},
         };
       } catch (err) {
         if (err.code !== 'ENOENT') console.error('ملف البيانات غير قابل للقراءة، سنبدأ فارغاً:', err.message);
@@ -220,6 +221,26 @@ function fileDriver() {
     },
     async listLiveSessions() {
       return Object.values(db.liveSessions);
+    },
+
+    // ------------------------------------------------------------- الفصول
+
+    async listClasses(ownerId) {
+      return Object.values(db.classes)
+        .filter((c) => c.ownerId === ownerId)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    async getClass(id) {
+      return db.classes[id] || null;
+    },
+    async saveClass(item) {
+      db.classes[item.id] = item;
+      schedule();
+      return item;
+    },
+    async deleteClass(id) {
+      delete db.classes[id];
+      schedule();
     },
 
 
@@ -398,6 +419,16 @@ function postgresDriver(connectionString) {
       ...(r.author_name === undefined ? {} : { authorName: r.author_name || '' }),
     };
 
+  const rowToClass = (r) =>
+    r && {
+      id: r.id,
+      ownerId: r.owner_id,
+      name: r.name,
+      students: r.students || [],
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+    };
+
   const rowToGame = (r) =>
     r && {
       id: r.id,
@@ -520,6 +551,18 @@ function postgresDriver(connectionString) {
           updated_at BIGINT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS live_sessions_updated_idx ON live_sessions(updated_at);
+        -- فصول المعلّم: أسماءُ طلابه كما يكتبها هو، اختيارية بالكامل.
+        -- ليست بيانات جمعتها المنصة من الطلاب، ولا تُربط بإجابة أحد —
+        -- الإجابات تبقى في الذاكرة كما كانت ولا تلمس هذا الجدول ولا غيره.
+        CREATE TABLE IF NOT EXISTS classes (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          students JSONB NOT NULL DEFAULT '[]'::jsonb,
+          created_at BIGINT NOT NULL,
+          updated_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS classes_owner_idx ON classes(owner_id);
       `);
     },
 
@@ -661,6 +704,28 @@ function postgresDriver(connectionString) {
     async listLiveSessions() {
       const { rows } = await pool.query('SELECT data FROM live_sessions ORDER BY updated_at DESC');
       return rows.map((r) => r.data);
+    },
+
+    // ------------------------------------------------------------- الفصول
+
+    async listClasses(ownerId) {
+      const { rows } = await pool.query('SELECT * FROM classes WHERE owner_id = $1 ORDER BY updated_at DESC', [ownerId]);
+      return rows.map(rowToClass);
+    },
+    async getClass(id) {
+      const { rows } = await pool.query('SELECT * FROM classes WHERE id = $1', [id]);
+      return rowToClass(rows[0]);
+    },
+    async saveClass(item) {
+      await pool.query(
+        `INSERT INTO classes (id, owner_id, name, students, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (id) DO UPDATE SET name = $3, students = $4, updated_at = $6`,
+        [item.id, item.ownerId, item.name, JSON.stringify(item.students), item.createdAt, item.updatedAt]
+      );
+      return item;
+    },
+    async deleteClass(id) {
+      await pool.query('DELETE FROM classes WHERE id = $1', [id]);
     },
 
     // ------------------------------------------------------------- الألعاب

@@ -236,6 +236,111 @@ test('الجلسة المجدولة لا يمسحها المُنظِّف قبل 
   assert.equal(store.getSession(session.code), null, 'وبلا موعد تُمسح كالمعتاد');
 });
 
+test('نشاطٌ حرٌّ مجدول لا يبدأ بدخول طالبٍ مبكّر — الموعد موعد', () => {
+  // كان «البدء التلقائي» يتجاهل الموعد فيُسقط الجدولة كلها: معلّم يضبط
+  // «يفتح الأحد التاسعة» ويوزّع الرابط الخميس، فيفتحه أولُ فضوليٍّ ليلتها.
+  const session = store.createSession({
+    title: 'مجدول حرّ',
+    settings: { pace: 'self', autoStart: true, opensAt: Date.now() + 3600000 },
+    questions: QUESTIONS,
+  });
+  const early = session.addParticipant({ name: 'فضولي' });
+  assert.equal(session.status, 'lobby', 'بقي في القاعة رغم البدء التلقائي');
+  // `phase` يبدأ 'question' في البناء، فالدليل الحقيقي أن سؤالاً لم يُفتح بعد
+  assert.equal(early.openedAt, null, 'ولم يُفتح له سؤال');
+
+  // ثم يحين الموعد فيبدأ للجميع، ومن كان ينتظر يُفتح له فوراً
+  session.settings.opensAt = Date.now() - 1000;
+  session.start();
+  assert.equal(session.status, 'live');
+  assert.ok(early.openedAt, 'ومن انتظر يُفتح له عند الفتح');
+  store.deleteSession(session.code);
+});
+
+test('والبدء المبكّر يبقى حقّ المعلّم وحده', () => {
+  const session = store.createSession({
+    title: 'مجدول حرّ',
+    settings: { pace: 'self', autoStart: true, opensAt: Date.now() + 3600000 },
+    questions: QUESTIONS,
+  });
+  session.start(); // المعلّم يضغط «بدء النشاط»
+  assert.equal(session.status, 'live');
+  const p = session.addParticipant({ name: 'ليان' });
+  assert.ok(p.openedAt, 'ومن دخل بعد البدء يجد سؤاله مفتوحاً');
+  store.deleteSession(session.code);
+});
+
+// ------------------------------------------------- الواجب: موعد التسليم
+//
+// «مدة الاختبار» مهلةٌ نسبية تبدأ من انطلاق الجلسة — تصلح لحصةٍ في قاعة.
+// و«موعد التسليم» موعدٌ مطلق لا علاقة له بمتى فتح أولُ طالبٍ الرابط، وهو
+// ما يعنيه المعلّم بـ«سلّموا قبل الأحد». والفرق يظهر في ثلاثة سلوكيات.
+
+test('موعد التسليم يُقبل المستقبلي ويُرفض الماضي والبعيد جداً', () => {
+  const soon = Date.now() + 3 * 86400000;
+  assert.equal(normalizeQuiz({ settings: { dueAt: soon }, questions: QUESTIONS }).settings.dueAt, soon);
+  assert.equal(normalizeQuiz({ settings: { dueAt: new Date(soon).toISOString() }, questions: QUESTIONS }).settings.dueAt, soon);
+  assert.equal(normalizeQuiz({ settings: { dueAt: Date.now() - 3600000 }, questions: QUESTIONS }).settings.dueAt, null);
+  assert.equal(normalizeQuiz({ settings: { dueAt: 'الأحد' }, questions: QUESTIONS }).settings.dueAt, null);
+  assert.equal(normalizeQuiz({ settings: {}, questions: QUESTIONS }).settings.dueAt, null);
+});
+
+test('الواجب لا يمسحه المُنظِّف قبل موعد تسليمه مهما طال الخمول', () => {
+  // هذه هي الحالة كلها: واجبٌ يُرسَل ليل الخميس ويُحلّ صباح السبت. ومهلة
+  // الخمول ثلاث ساعات، فبلا هذا الاستثناء يموت الرابط قبل الفجر.
+  const session = store.createSession({
+    title: 'واجب نهاية الأسبوع',
+    settings: { pace: 'self', dueAt: Date.now() + 3 * 86400000 },
+    questions: QUESTIONS,
+  });
+  session.lastActivity = Date.now() - 25 * 60 * 60 * 1000;
+  store.sweep();
+  assert.ok(store.getSession(session.code), 'بقي حيّاً رغم يومٍ كامل من الخمول');
+
+  session.settings.dueAt = null;
+  store.sweep();
+  assert.equal(store.getSession(session.code), null, 'وبلا موعد تسليم يُمسح كالمعتاد');
+});
+
+test('موعد التسليم يُقفل الواجب وحده وإن لم يمضِ من عمر الجلسة شيء', async () => {
+  const { data: created } = await post('/api/sessions', {
+    title: 'يُقفل بموعده',
+    settings: { pace: 'self', requireName: true, countdown: false, autoStart: true, dueAt: Date.now() + 900 },
+    questions: QUESTIONS,
+  });
+  const session = store.getSession(created.code);
+  session.start();
+  assert.equal(session.status, 'live');
+  assert.equal(session.deadlineAt, session.settings.dueAt, 'الإقفال مضبوط على موعد التسليم لا على مدةٍ نسبية');
+
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.equal(session.status, 'ended', 'أُقفل في موعده وحده');
+  store.deleteSession(created.code);
+});
+
+test('حين يجتمع الموعد والمدة يُقفل أقربهما', () => {
+  const due = Date.now() + 10 * 60000;
+  const session = store.createSession({
+    title: 'الاثنان معاً',
+    // ساعةٌ لكل طالب، على ألّا يتجاوز أحدٌ عشر دقائق من الآن
+    settings: { pace: 'host', durationMinutes: 60, dueAt: due },
+    questions: QUESTIONS,
+  });
+  session.start();
+  assert.equal(session.deadlineAt, due, 'الموعد أقرب من المدة فهو الذي يحكم');
+  store.deleteSession(session.code);
+
+  const far = Date.now() + 10 * 86400000;
+  const other = store.createSession({
+    title: 'المدة أقرب',
+    settings: { pace: 'host', durationMinutes: 30, dueAt: far },
+    questions: QUESTIONS,
+  });
+  other.start();
+  assert.ok(Math.abs(other.deadlineAt - (other.startedAt + 30 * 60000)) < 50, 'والمدة أقرب فهي التي تحكم');
+  store.deleteSession(other.code);
+});
+
 test('تقرير النتائج يذكر الموعد والمدة', async () => {
   const { data: created } = await post('/api/sessions', {
     title: 'تقرير بمدة',

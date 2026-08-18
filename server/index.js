@@ -22,7 +22,7 @@ const premium = require('./premium');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun'],
+  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun', 'homeworkDueDate', 'classRosters'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -237,6 +237,16 @@ app.get('/api/sessions/:code', (req, res) => {
     // شاشة الطالب تضبط لغتها على لغة النشاط قبل أن ترسم
     lang: session.settings.lang,
     durationMinutes: session.settings.durationMinutes,
+    // موعد التسليم: الطالب يفتح رابط واجبٍ ليلاً ويريد أن يعرف كم بقي له
+    dueAt: session.settings.dueAt,
+    /**
+     * كشف الأسماء إن أرفقه المعلّم — يختار الطالب اسمه بدل كتابته.
+     *
+     * وكشفُه هنا مقصود: من معه رمز الجلسة هو من في الصفّ، وقائمةُ الأسماء
+     * الأولى هي ما يُنادى به في الحصة أصلاً. ولا يُرسَل شيءٌ آخر — لا بريد
+     * ولا رقم ولا درجة — لأن الكشف أسماءٌ فقط لا سجلّ طلاب.
+     */
+    roster: session.settings.roster || [],
     participants: session.participants.size,
     questionCount: session.questions.length,
     joinUrl: joinUrl(req, session.code),
