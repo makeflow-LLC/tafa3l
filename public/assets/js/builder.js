@@ -24,7 +24,9 @@
   }
 
   function blankQuestion(type) {
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 20, points: 1000, mark: 0, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '' };
+    // timeLimit صفر دائماً: الوقت — إن وُضع — واحدٌ لكل الأسئلة في الإعدادات،
+    // ورقمٌ تحت السؤال لا يقرؤه أحد إلا مُستنتِج الأنشطة القديمة فيوهمه بمؤقّت
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 0, points: 1000, mark: 0, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '' };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },

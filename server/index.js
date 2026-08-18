@@ -22,7 +22,7 @@ const premium = require('./premium');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -686,6 +686,16 @@ const ready = storage
     console.error('فشل تهيئة التخزين:', err.message);
     throw err;
   })
+  // إحياء الجلسات المحفوظة قبل الاستماع: طالبٌ يطرق رمزاً بعد إعادة النشر
+  // مباشرةً يجب أن يجده حيّاً، لا أن يُقابَل بـ«الجلسة غير موجودة» ثم تعود
+  .then(() =>
+    store
+      .restore()
+      .then((n) => {
+        if (n) log(`أُعيدت ${n} جلسة محفوظة بعد إعادة التشغيل`);
+      })
+      .catch((err) => console.error('تعذّر إحياء الجلسات:', err.message))
+  )
   .then(
     () =>
       new Promise((resolve) => {
@@ -707,6 +717,9 @@ let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  // آخر كتابة قبل الوداع: الحفظ مؤجَّل ثانيةً ونصفاً، ولولا هذه لضاع آخر
+  // انتقالِ سؤالٍ حدث قُبيل النشر. لا ننتظرها — شبكةُ الأمان بعد ٥ ثوانٍ تكفي.
+  store.flush().catch(() => {});
   for (const socket of wss.clients) {
     try {
       socket.close(1001, 'server restarting');

@@ -1583,6 +1583,12 @@
       ])
     );
 
+    // الصدق أرخص من الحيرة: جلسةٌ نجت إعادة تشغيل الخادم تبدو سليمة تماماً
+    // بينما عدّاد المشاركين صفر، فيظنّ المعلّم العطل في جهازه أو في طلابه.
+    if (s.restored) {
+      app.append(el('div', { class: 'banner', style: { marginBottom: '12px' }, text: '⚠️ ' + t('hRestoredNote') }));
+    }
+
     const tabs = el('div', { class: 'tabs', style: { marginBottom: '12px' } }, [
       tabBtn('stage', t('hstage')),
       tabBtn('dashboard', t('hdashboard')),
@@ -2556,9 +2562,31 @@
 
   // -------------------------------------------------------- شريط التحكم
 
+  /**
+   * «إنهاء للجميع» — الزرّ الذي يُغلق الاختبار على كل مشارك دفعةً واحدة
+   * ويُظهر النتائج.
+   *
+   * كان أحمرَ بلون الحذف في وضعٍ، وأيقونةَ ⏹ صغيرة في وضعٍ آخر، فاختلط
+   * على المعلّم فعلان مختلفان تماماً: إنهاءٌ يحفظ النتائج ليراجعها، وحذفٌ
+   * يمحوها. لونٌ ثالثٌ صريح ونصٌّ واحد في كل الأوضاع يفصلهما — والتأكيد
+   * يقول ما سيحدث بالضبط لا «هل أنت متأكد؟».
+   */
+  function finishBtn() {
+    return el(
+      'button',
+      { class: 'btn finish', type: 'button', onclick: () => confirm(t('hfinishConfirm')) && send('host:end') },
+      t('hfinishForAll')
+    );
+  }
+
   function renderBar(s) {
     bar.innerHTML = '';
-    if (state.tab !== 'stage') return;
+    // الزرّ يلزم أينما جلس المعلّم لا في «العرض» وحده: في الوضع الحرّ يقضي
+    // وقته على تبويب «التقدّم» يراقب، ولو غاب الزرّ هناك بدا النشاط بلا نهاية.
+    if (state.tab !== 'stage') {
+      if (s.status === 'live') bar.append(el('div', { class: 'actionbar' }, [finishBtn()]));
+      return;
+    }
 
     const actions = [];
     if (s.status === 'lobby') {
@@ -2589,16 +2617,21 @@
           t('htrackProgress')
         )
       );
-      actions.push(
-        el('button', { class: 'btn danger', type: 'button', onclick: () => confirm(t('hendTheActivityFor')) && send('host:end') }, t('hendActivity'))
-      );
+      actions.push(finishBtn());
     } else {
       actions.push(el('button', { class: 'icon-btn', type: 'button', title: t('hpreviousQuestion'), disabled: s.index <= 0, onclick: () => send('host:prev') }, '⟩'));
+      /**
+       * على السؤال الأخير كان يظهر زرّان متجاوران: «🏁 إنهاء» و«🏁 إنهاء
+       * للجميع» — فعلهما واحدٌ حرفياً (كلاهما يُنهي النشاط)، واسمهما متشابه.
+       * فنُسقط الأول ونترك الثاني: خيارٌ واحد لا يحتاج المعلّم أن يوازن بينه
+       * وبين توأمه أمام صفٍّ ينتظر.
+       */
+      const last = s.index + 1 >= s.total;
+      const nextBtn = () =>
+        last ? null : el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, t('hnextQuestion'));
       if (s.question?.content) {
         // شريحة عرض: لا إجابات تُغلق ولا نتائج تُكشف — زرّ انتقال واحد فقط
-        actions.push(
-          el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? t('hfinish') : t('hnextQuestion'))
-        );
+        actions.push(nextBtn());
       } else if (s.phase === 'question') {
         actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: () => send('host:lock') }, t('hlockAnswers')));
         actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:results') }, t('hshowResults2')));
@@ -2606,11 +2639,11 @@
         if (s.settings.showLeaderboard) {
           actions.push(el('button', { class: 'btn ghost', type: 'button', onclick: () => send('host:leaderboard') }, t('pLeaderboard')));
         }
-        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? t('hfinish') : t('hnextQuestion')));
+        actions.push(nextBtn());
       } else {
-        actions.push(el('button', { class: 'btn primary', type: 'button', onclick: () => send('host:skip') }, s.index + 1 >= s.total ? t('hfinish') : t('hnextQuestion')));
+        actions.push(nextBtn());
       }
-      actions.push(el('button', { class: 'icon-btn', type: 'button', title: t('hendTheActivity'), onclick: () => confirm(t('hendTheActivityNow')) && send('host:end') }, '⏹'));
+      actions.push(finishBtn());
     }
 
     bar.append(el('div', { class: 'actionbar' }, actions));
