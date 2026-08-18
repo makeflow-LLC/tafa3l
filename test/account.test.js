@@ -315,11 +315,17 @@ test('الإطلاق المباشر من المحرّر يحفظ النشاط ت
   assert.equal(list.data.activities.length, 1);
 });
 
-test('الإطلاق بلا تسجيل دخول لا يحفظ شيئاً (الوعد الأصلي)', async () => {
+test('الإطلاق بلا تسجيل دخول مرفوض — لا نشاطَ بلا صاحبٍ يُنسب إليه', async () => {
   const anon = client();
   const created = await anon.request('POST', '/api/sessions', QUIZ);
-  assert.equal(created.status, 201);
-  assert.equal(created.data.activityId, null, 'بلا حساب لا يُحفظ نشاط');
+  assert.equal(created.status, 401, 'كان مفتوحاً لأي زائر فصار يحتاج حساباً');
+
+  // والمسجَّل يطلق ويُحفظ له نشاطه تلقائياً
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'معلّمة' });
+  const ok = await c.request('POST', '/api/sessions', QUIZ);
+  assert.equal(ok.status, 201);
+  assert.ok(ok.data.activityId, 'ويُحفظ النشاط لصاحبه');
 });
 
 test('استنساخ نشاط يعطي نسخة مستقلة', async () => {

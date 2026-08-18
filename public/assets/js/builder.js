@@ -400,13 +400,18 @@
    * @param {HTMLElement} root
    * @param {(draft:object)=>void} onLaunch
    */
-  function mount(root, onLaunch, extraActions) {
+  /**
+   * @param {{startStage?:'settings'|'questions'|'review'}} [opts]
+   *   مسودةٌ صاغها المساعد الذكي جاهزةٌ للمراجعة، فلا معنى لأن يمرّ صاحبها
+   *   على الإعدادات ثم على كل سؤالٍ ضغطةً ضغطة ليصل إلى زرّ الإطلاق.
+   */
+  function mount(root, onLaunch, extraActions, opts) {
     const draft = loadDraft();
     let openIndex = 0;
     // هل لوحة أنواع الأسئلة مفتوحة لإضافة سؤال جديد؟
     let adding = false;
     /** مرحلة المعالج: الإعدادات ← الأسئلة ← المراجعة */
-    let stage = 'settings';
+    let stage = opts && opts.startStage && draft.questions.length ? opts.startStage : 'settings';
 
     function update() {
       saveDraft(draft);
@@ -708,7 +713,7 @@
       root.append(
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row between' }, [
-            el('h2', { text: t('bQuestionsSection', { count: total }), style: { margin: 0 } }),
+            el('h2', { text: t('bQuestionsSection'), style: { margin: 0 } }),
             total ? el('button', { class: 'btn ghost sm', type: 'button', onclick: () => { adding = true; draw(); } }, t('bStepAdd')) : null,
           ]),
           page,

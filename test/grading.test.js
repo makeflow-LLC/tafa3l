@@ -24,11 +24,15 @@ let wsBase;
 const PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+let hostCookie = '';
+
 test.before(async () => {
   await ready;
   const port = server.address().port;
   base = `http://127.0.0.1:${port}`;
   wsBase = `ws://127.0.0.1:${port}/ws`;
+  // إنشاء الجلسة يتطلّب حساباً — كوكي مدرب واحد يكفي لكل هذا الملف
+  hostCookie = await loginFree();
 });
 
 test.after(() => {
@@ -76,13 +80,40 @@ function ws() {
 const post = async (path, body, cookie) => {
   const res = await fetch(base + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    headers: { 'Content-Type': 'application/json', ...((cookie || hostCookie) ? { Cookie: cookie || hostCookie } : {}) },
     body: JSON.stringify(body),
   });
   return { status: res.status, data: await res.json() };
 };
 
 /** يسجّل دخول المالك (مشترك دائماً) عبر جوجل مزيّفة ويعيد كوكي الجلسة */
+
+/** حساب مجاني (غير مالك) — الإنشاء صار يتطلّب حساباً ولو لم يكن مشتركاً */
+async function loginFree() {
+  const original = global.fetch;
+  const mail = `free.${Date.now()}.${Math.round(performance.now())}@example.com`;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.startsWith('https://oauth2.googleapis.com/token')) return { ok: true, json: async () => ({ access_token: 't' }) };
+    if (u.startsWith('https://www.googleapis.com/oauth2/v3/userinfo')) {
+      return { ok: true, json: async () => ({ sub: 'g_' + mail, email: mail, email_verified: true, name: 'مدرب مجاني' }) };
+    }
+    return original(url, opts);
+  };
+  try {
+    const start = await fetch(base + '/api/auth/google', { redirect: 'manual' });
+    const stateCookie = (start.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_oauth='));
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    const cb = await fetch(`${base}/api/auth/google/callback?code=x&state=${state}`, {
+      redirect: 'manual',
+      headers: { Cookie: stateCookie.split(';')[0] },
+    });
+    return (cb.headers.getSetCookie?.() || []).find((h) => h.startsWith('tafa3l_sid=')).split(';')[0];
+  } finally {
+    global.fetch = original;
+  }
+}
+
 async function loginOwner() {
   const original = global.fetch;
   global.fetch = async (url, opts) => {
@@ -162,7 +193,8 @@ test('أكمل الفراغ: عدد الفراغات من النص، والعل�
 // ------------------------------------------------------------------ التدفق
 
 test('صورة السؤال ميزة بريميوم: تُرفض من حساب مجاني وتُقبل من المشترك', async () => {
-  const free = await post('/api/sessions', IMAGE_QUIZ);
+  const freeCookie = await loginFree();
+  const free = await post('/api/sessions', IMAGE_QUIZ, freeCookie);
   assert.equal(free.status, 402, 'حساب بلا اشتراك لا يرفع صوراً');
   assert.match(free.data.error, /بريميوم/);
   assert.match(free.data.error, /970597034066/);

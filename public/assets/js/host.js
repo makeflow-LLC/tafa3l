@@ -496,9 +496,9 @@
       ]),
       preview,
       shotNote,
-      el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start' } }, [
+      el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
         offlineOk,
-        el('span', { class: 'small' }, [
+        el('span', { class: 'small grow' }, [
           el('strong', { text: t('gFormOffline') }),
           el('span', { class: 'muted small', style: { display: 'block' }, text: t('gFormOfflineHint') }),
         ]),
@@ -988,6 +988,10 @@
     app.innerHTML = '';
     app.append(el('div', { class: 'card center stack' }, [el('div', { class: 'spinner' }), el('p', { class: 'muted', text: t('hpreparingAQuickDemo') })]));
     const template = (window.TEMPLATES || []).find((item) => item.key === 'quiz') || (window.TEMPLATES || [])[0];
+    if (!state.user && !(await loadAccount())) {
+      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/demo');
+      return;
+    }
     try {
       const created = await api('/api/sessions', {
         method: 'POST',
@@ -1295,6 +1299,8 @@
       onApprove: (draft) => {
         window.Builder.saveDraft(draft);
         setEditingActivity(null);
+        // المسودة جاهزة: نفتحها على المراجعة مباشرةً لا على أول الإعدادات
+        state.builderStage = 'review';
         toast(t('htheDraftIsOpen'), 'ok');
         location.hash = '#/';
       },
@@ -1327,6 +1333,14 @@
           })),
         };
         if (state.editingActivityId) payload.activityId = state.editingActivityId;
+        // إنشاء الجلسة يتطلّب حساباً: نسوقه إلى الدخول ونعيده إلى محرّره
+        if (!state.user && !(await loadAccount())) {
+          toast(t('hLoginToLaunch'), 'bad');
+          setTimeout(() => {
+            location.href = '/login.html?next=' + encodeURIComponent('/host.html#/new');
+          }, 1200);
+          return;
+        }
         const created = await api('/api/sessions', { method: 'POST', body: payload });
         rememberHost(created.code, created.hostToken, created.title);
         // الخادم يحفظ النشاط تلقائياً للمدرب المسجّل — نتذكر معرّفه حتى لا يتكرر
@@ -1342,7 +1356,9 @@
     };
 
     try {
-      window.Builder.mount(root, onLaunch, saveAction);
+      const startStage = state.builderStage;
+      state.builderStage = null;
+      window.Builder.mount(root, onLaunch, saveAction, { startStage });
       return;
     } catch (err) {
       // السبب الأشيع: مسودة محفوظة من نسخة قديمة — نمسحها ونعيد المحاولة
@@ -1354,6 +1370,7 @@
       }
       root.innerHTML = '';
       try {
+        // مسار التعافي بعد إعادة تعيين المسودة: يبدأ من أوّل المعالج دائماً
         window.Builder.mount(root, onLaunch, saveAction);
         toast(t('htheDraftWasReset'), 'ok');
         return;

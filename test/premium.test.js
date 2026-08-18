@@ -181,12 +181,11 @@ test('اسم المعلّم يُحفظ مع الجلسة ويظهر في ملف 
   ).then((r) => r.json());
   assert.equal(report.teacher, 'جهاد حجازي', 'التقرير يحمل اسم المعلّم');
 
-  // جلسة بلا حساب تبقى بلا اسم — لا نخترع مالكاً
+  // ولا جلسة بلا حساب أصلاً: الإطلاق يتطلّب صاحباً يُنسب إليه النشاط
   const anon = await fetch(base + '/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title: 'بلا حساب', questions: [{ type: 'word', text: 'كلمة؟' }] }),
-  }).then((r) => r.json());
-  const anonReport = await fetch(`${base}/api/sessions/${anon.code}/export?hostToken=${anon.hostToken}`).then((r) => r.json());
-  assert.equal(anonReport.teacher, null);
+  });
+  assert.equal(anon.status, 401);
 });
