@@ -51,6 +51,30 @@ function withWelcome(target) {
   return pathPart + search + hash;
 }
 
+/**
+ * تسجيلات كل يوم في آخر `days` يوماً — سلسلةٌ متّصلة بلا فجوات.
+ *
+ * الأيام الصفرية تُذكر صراحةً: رسمٌ يقفز من يومٍ إلى يومٍ بعده بثلاثة أيام
+ * يبدو نموّاً مطّرداً وهو انقطاع. والحدّ الأدنى يوم واحد كي لا يُقسم على صفر.
+ */
+function signupsByDay(users, days) {
+  const span = Math.max(1, Math.min(365, Number(days) || 30));
+  const dayKey = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const tally = new Map();
+  for (const u of users) {
+    if (!u.createdAt) continue;
+    const key = dayKey(u.createdAt);
+    tally.set(key, (tally.get(key) || 0) + 1);
+  }
+  const out = [];
+  const today = Date.now();
+  for (let i = span - 1; i >= 0; i -= 1) {
+    const key = dayKey(today - i * 86400000);
+    out.push({ day: key, count: tally.get(key) || 0 });
+  }
+  return out;
+}
+
 /** نصّ قصير مُشذَّب — لحقول المكتبة القادمة من المدرب أو من شريط العنوان */
 function clean(value, max) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -155,8 +179,10 @@ function accountRoutes(store) {
   router.get('/admin/users', premium.requireAdmin, async (_req, res) => {
     try {
       const users = await storage.get().listUsers();
+      const counts = (await storage.get().ownerCounts?.()) || new Map();
       res.json({
         now: Date.now(),
+        signups: signupsByDay(users, 30),
         users: users.map((u) => ({
           id: u.id,
           name: u.name,
@@ -165,6 +191,9 @@ function accountRoutes(store) {
           premiumUntil: u.premiumUntil ?? null,
           isPremium: premium.isPremium(u),
           isAdmin: premium.isAdmin(u),
+          onSignupTrial: premium.onSignupTrial(u),
+          activities: counts.get(u.id)?.activities || 0,
+          games: counts.get(u.id)?.games || 0,
         })),
       });
     } catch (err) {

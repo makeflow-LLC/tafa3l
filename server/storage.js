@@ -175,6 +175,23 @@ function fileDriver() {
         .filter((a) => a.ownerId === ownerId)
         .sort((a, b) => b.updatedAt - a.updatedAt);
     },
+    /**
+     * كم نشاطاً وكم لعبةً لكل مالك — للوحة المالك.
+     * مرورٌ واحد على كلٍّ من الجدولين بدل استعلامٍ لكل مدرب: اللوحة تعرض
+     * كل المدربين في صفحة واحدة، فاستعلامٌ لكلٍّ منهم يعني مئات الاستعلامات.
+     */
+    async ownerCounts() {
+      const out = new Map();
+      const bump = (ownerId, key) => {
+        if (!ownerId) return;
+        const row = out.get(ownerId) || { activities: 0, games: 0 };
+        row[key] += 1;
+        out.set(ownerId, row);
+      };
+      Object.values(db.activities).forEach((a) => bump(a.ownerId, 'activities'));
+      Object.values(db.games).forEach((g) => bump(g.ownerId, 'games'));
+      return out;
+    },
     async getActivity(id) {
       return db.activities[id] || null;
     },
@@ -648,6 +665,17 @@ function postgresDriver(connectionString) {
     async listActivities(ownerId) {
       const { rows } = await pool.query('SELECT * FROM activities WHERE owner_id = $1 ORDER BY updated_at DESC', [ownerId]);
       return rows.map(rowToActivity);
+    },
+    /** عددا الأنشطة والألعاب لكل مالك في استعلامٍ واحد — لا استعلامٍ لكل مدرب */
+    async ownerCounts() {
+      const { rows } = await pool.query(`
+        SELECT owner_id, SUM(a) AS activities, SUM(g) AS games FROM (
+          SELECT owner_id, 1 AS a, 0 AS g FROM activities
+          UNION ALL
+          SELECT owner_id, 0 AS a, 1 AS g FROM games
+        ) t GROUP BY owner_id
+      `);
+      return new Map(rows.map((r) => [r.owner_id, { activities: Number(r.activities), games: Number(r.games) }]));
     },
     async getActivity(id) {
       const { rows } = await pool.query('SELECT * FROM activities WHERE id = $1', [id]);

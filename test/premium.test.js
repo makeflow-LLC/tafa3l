@@ -268,3 +268,45 @@ test('المشترك الذي دفع بعد تجربته لا يُقال له إ
   assert.equal(ownerMe.data.premium.onSignupTrial, false, 'المالك مشترك دائماً لا مجرّب');
   await store.listUsers();
 });
+
+test('لوحة المالك تعرض تسجيلات كل يوم وما أنشأه كل معلّم', async () => {
+  const teacher = client();
+  await teacher.login('busy.teacher@example.com', 'أ. منتِجة');
+
+  // نشاطان محفوظان — نتحقّق أن اللوحة تعدّهما لا أن تعرض صفراً
+  for (const title of ['نشاط أ', 'نشاط ب']) {
+    const saved = await teacher.request('POST', '/api/activities', {
+      title,
+      settings: { pace: 'host', lang: 'ar' },
+      questions: [{ type: 'word', text: 'كلمة؟' }],
+    });
+    assert.equal(saved.status, 201, title);
+  }
+
+  const owner = client();
+  await owner.login('owner@tapio.fun', 'المالك');
+  const res = await owner.request('GET', '/api/admin/users');
+  assert.equal(res.status, 200);
+
+  const row = res.data.users.find((u) => u.email === 'busy.teacher@example.com');
+  assert.equal(row.activities, 2, 'عدد الأنشطة أمام اسمه');
+  assert.equal(row.games, 0, 'ولا ألعاب بعد');
+  assert.equal(row.onSignupTrial, true, 'وحالة تجربته ظاهرة للمالك');
+
+  // سلسلة التسجيلات: ثلاثون يوماً متّصلة تنتهي باليوم
+  const series = res.data.signups;
+  assert.equal(series.length, 30, 'ثلاثون يوماً');
+  const today = new Date().toISOString().slice(0, 10);
+  assert.equal(series[series.length - 1].day, today, 'آخر نقطة هي اليوم');
+  assert.ok(series[series.length - 1].count > 0, 'وتسجيلات اليوم محسوبة');
+
+  // بلا فجوات: كل يومٍ حاضر ولو بصفر، وإلا بدا الانقطاع نموّاً
+  for (let i = 1; i < series.length; i += 1) {
+    const gap = Date.parse(series[i].day) - Date.parse(series[i - 1].day);
+    assert.equal(gap, DAY, `فجوة عند ${series[i].day}`);
+  }
+  assert.equal(series.every((d) => Number.isInteger(d.count)), true);
+
+  // ولا يراها غير المالك
+  assert.equal((await teacher.request('GET', '/api/admin/users')).status, 404);
+});
