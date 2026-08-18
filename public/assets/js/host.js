@@ -102,11 +102,12 @@
     const lib = hash.match(/^\/library\/([\w-]+)$/);
     if (lib) return openLibraryItem(lib[1]);
     if (hash === '/ai') return openAiDesigner();
+    if (hash === '/new') return openBuilder();
     if (hash === '/upgrade') return openUpgrade();
     if (hash === '/admin') return openAdmin();
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
     if (edit) return openSavedActivity(edit[1]);
-    return openBuilder();
+    return openStart();
   }
 
   // ------------------------------------------------------- حساب المدرب
@@ -183,7 +184,7 @@
         hint: t('gdDesignHint'),
         actions: [
           el('a', { class: 'btn accent sm', href: '#/ai' }, t('gdByAi')),
-          el('a', { class: 'btn ghost sm', href: '#/' }, t('gdByHand')),
+          el('a', { class: 'btn ghost sm', href: '#/new' }, t('gdByHand')),
         ],
       },
       {
@@ -1203,6 +1204,8 @@
     setEditingActivity(null);
     // «المراجعة» لا «الإعدادات»: الزائر جاء ليرى نشاطاً جاهزاً لا ليملأ نموذجاً
     state.builderStage = 'review';
+    // العنوان يجب أن يقول «المحرّر» لا «الاختيار»، وإلا أعاد زرّ الرجوع رسم شاشةٍ أخرى
+    history.replaceState(null, '', '#/new');
     openBuilder();
     toast(t('hdemoLoaded'), 'ok');
   }
@@ -1223,35 +1226,37 @@
 
   // ------------------------------------------------------------- المحرّر
 
-  function openBuilder() {
+  /**
+   * أول شاشة يراها المعلّم: سؤالٌ واحد بجوابين.
+   *
+   * كان المحرّر يُفتح مباشرةً وفوقه بطاقةٌ صغيرة تقترح المساعد الذكي — فمن
+   * يرى نموذجاً بدأ يملؤه، ولا يلتفت إلى أن هناك من يملؤه عنه. والقرار بين
+   * الطريقين قرارٌ يستحق شاشته: بطاقتان كبيرتان لا ثالث لهما.
+   */
+  function openStart() {
     teardown();
-    // المسار «#/» يعني نشاطاً جديداً؛ التعديل يمر عبر «#/edit/:id»
-    if ((location.hash.slice(1) || '/') === '/') setEditingActivity(null);
+    setEditingActivity(null);
     codeBadge.classList.add('hidden');
     connBadge.classList.add('hidden');
     bar.innerHTML = '';
     app.innerHTML = '';
-    const root = el('div', { class: 'stack' });
-    // زر رجوع صريح — لا يكفي الأيقونة الصغيرة في الشريط العلوي
+
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
         el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
           el('a', { class: 'btn ghost sm', href: '#/library' }, t('lNav')),
-          el('a', { class: 'btn ghost sm', href: '/games.html' }, t('gNav')),
           el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuide')),
-          el('span', { class: 'muted small', text: t('hyourDraftIsSaved') }),
         ]),
       ])
     );
+
     if (state.user) {
-      // ترحيب باسم صاحب الحساب — أول ما يراه المعلّم بعد الدخول
       app.append(
         el('div', { class: 'welcome' }, [
           el('div', { class: 'row between' }, [
             el('h1', { style: { margin: 0 }, text: t('hHelloUser', { name: firstName(state.user.name) }) }),
-            // مدخل الباقات من الصفحة الأولى: يعرف المعلّم ما لديه وما ينقصه قبل
-            // أن يصطدم ببوابةٍ في منتصف عمله
             el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upNav')),
           ]),
           el('p', {
@@ -1262,15 +1267,63 @@
         ])
       );
     }
-    app.append(el('h1', { text: t('hcreateAnInteractiveActivity') }));
-    // مدخل المساعد الذكي: أسرع طريق لمدرب لا يريد كتابة الأسئلة يدوياً
+
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('startTitle') }));
+    app.append(el('p', { class: 'muted small', style: { marginTop: 0 }, text: t('startIntro') }));
+
+    const choice = (href, emoji, title, body, cta, cls) =>
+      el('a', { class: 'start-card' + (cls ? ' ' + cls : ''), href }, [
+        el('div', { class: 'start-emoji', 'aria-hidden': 'true', text: emoji }),
+        el('strong', { class: 'start-name', text: title }),
+        el('span', { class: 'muted small', text: body }),
+        el('span', { class: 'btn ' + (cls === 'ai' ? 'accent' : 'primary') + ' block', text: cta }),
+      ]);
+
     app.append(
-      el('div', { class: 'card row between', style: { marginBottom: '12px' } }, [
-        el('div', { class: 'stack tight' }, [
-          el('strong', { text: t('hnotSureWhereTo') }),
-          el('span', { class: 'muted small', text: t('htellTheAssistantAbout') }),
+      el('div', { class: 'start-grid' }, [
+        choice('#/ai', '🤖', t('startAiTitle'), t('startAiBody'), t('startAiCta'), 'ai'),
+        choice('#/new', '✍️', t('startManualTitle'), t('startManualBody'), t('startManualCta')),
+      ])
+    );
+
+    // مسودةٌ نصف مكتوبة لا يجوز أن تختفي خلف شاشة اختيار: نعرضها صراحةً
+    const draft = window.Builder?.loadDraft?.();
+    if (draft?.questions?.length) {
+      app.append(
+        el('div', { class: 'card row between', style: { marginTop: '12px' } }, [
+          el('div', { class: 'stack tight' }, [
+            el('strong', { text: t('startDraftTitle', { title: draft.title || t('startDraftUntitled') }) }),
+            el('span', { class: 'muted small', text: t('startDraftBody', { n: draft.questions.length }) }),
+          ]),
+          el('a', { class: 'btn ghost', href: '#/new' }, t('startDraftCta')),
+        ])
+      );
+    }
+
+    serverAlive().then((alive) => {
+      if (!alive) showOfflineBanner(app);
+    });
+  }
+
+  function openBuilder() {
+    teardown();
+    // «#/new» يعني نشاطاً جديداً؛ التعديل يمر عبر «#/edit/:id»
+    if ((location.hash.slice(1) || '/') === '/new') setEditingActivity(null);
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '';
+    const root = el('div', { class: 'stack' });
+    // زر رجوع صريح — لا يكفي الأيقونة الصغيرة في الشريط العلوي
+    // شريطٌ نحيف: المعلّم هنا جاء ليكتب أسئلته، فلا نزاحمه بمداخل الأقسام.
+    // الاختيار بين اليدوي والذكي صار في شاشةٍ قبل هذه، فلا نكرّره فوق النموذج.
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hback')),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('span', { class: 'muted small', text: t('hyourDraftIsSaved') }),
+          el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuide')),
         ]),
-        el('a', { class: 'btn accent', href: '#/ai' }, t('hdesignWithAi2')),
       ])
     );
     app.append(root);
@@ -1709,7 +1762,7 @@
     app.innerHTML = '';
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '#/' }, t('hbackToTheEditor')),
+        el('a', { class: 'btn ghost sm', href: '#/new' }, t('hbackToTheEditor')),
         el('a', { class: 'btn ghost sm', href: '/' }, t('hhome')),
       ])
     );
@@ -1750,7 +1803,7 @@
         // المسودة جاهزة: نفتحها على المراجعة مباشرةً لا على أول الإعدادات
         state.builderStage = 'review';
         toast(t('htheDraftIsOpen'), 'ok');
-        location.hash = '#/';
+        location.hash = '#/new';
       },
     });
 
@@ -1836,7 +1889,7 @@
     if (!state.user) {
       return el(
         'a',
-        { class: 'btn ghost', href: '/login.html?next=' + encodeURIComponent('/host.html#/') },
+        { class: 'btn ghost', href: '/login.html?next=' + encodeURIComponent('/host.html#/new') },
         t('hsignInToSave')
       );
     }
