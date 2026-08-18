@@ -35,6 +35,10 @@
 
       // الصفحة الرئيسية
       homeTagline: 'أسئلة تفاعلية واستطلاعات حية — بلا حسابات وبلا تخزين دائم',
+      homeLoginShort: '🔐 دخول المعلّم',
+      homeMyActivitiesShort: '📚 نشاطاتي',
+      homeHaveCode: 'معك رمز دخول لنشاط؟ اضغط هنا ←',
+      joinBackHome: '↩ الصفحة الرئيسية',
       homeJoinTitle: 'ادخل إلى نشاط',
       homeCodeLabel: 'رمز الدخول',
       homeCodeAria: 'رمز الدخول المكوّن من ستة أرقام',
@@ -1132,6 +1136,10 @@
       langToggleToAr: 'العربية',
 
       homeTagline: 'Live interactive quizzes & polls — no accounts, no permanent storage',
+      homeLoginShort: '🔐 Teacher login',
+      homeMyActivitiesShort: '📚 My activities',
+      homeHaveCode: 'Have a join code for an activity? Tap here →',
+      joinBackHome: '↩ Home',
       homeJoinTitle: 'Join an activity',
       homeCodeLabel: 'Join code',
       homeCodeAria: 'Six-digit join code',

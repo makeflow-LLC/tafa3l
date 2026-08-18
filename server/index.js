@@ -22,7 +22,7 @@ const premium = require('./premium');
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder'],
+  features: ['pace:host/auto/self', 'scoring:speed/flat/none', 'streakBonus', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'questionBank', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -304,6 +304,21 @@ app.get('/api/qr', async (req, res) => {
 
 app.get('/j/:code', (req, res) => {
   res.redirect(`/play.html?code=${encodeURIComponent(req.params.code)}`);
+});
+
+/**
+ * الدخول بالرمز صار صفحةً مستقلّة لا حقلاً في الواجهة: زائرٌ لا رمز معه كان
+ * يظنّ أن عليه إدخال شيء ليتصفّح. و«‎/c‎» عنوانٌ قصير يُملى على الطلاب شفهياً.
+ */
+app.get('/c', (_req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'join.html'));
+});
+
+app.get('/c/:code', (req, res) => {
+  const code = String(req.params.code || '').replace(/\D/g, '');
+  // رمزٌ كامل يمضي مباشرةً إلى النشاط، والناقص يفتح الصفحة ليكمله
+  if (code.length === 6) return res.redirect(`/play.html?code=${code}`);
+  res.sendFile(path.join(__dirname, '..', 'public', 'join.html'));
 });
 
 app.use((req, res) => {
