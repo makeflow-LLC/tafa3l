@@ -768,15 +768,18 @@
     function drawReview() {
       const rows = el('div', { class: 'stack tight' });
       draft.questions.forEach((q, i) => {
+        const problem = questionProblem(q, i);
         const row = el('button', { class: 'review-row', type: 'button' }, [
           el('span', { class: 'n', text: String(i + 1) }),
           el('span', { class: 'grow stack tight', style: { textAlign: 'start' } }, [
             el('strong', { text: q.text || t('bStageEmptyQuestion') }),
             el('span', { class: 'muted small', text: TYPE_EMOJI[q.type] + ' ' + TYPE_LABELS[q.type] }),
+            // ما ينقص هذا السؤال بالضبط، هنا لا في رسالةٍ عابرة بعد الإطلاق
+            problem ? el('span', { class: 'small', style: { color: 'var(--bad)' }, text: '⚠️ ' + problem }) : null,
           ]),
           el('span', { class: 'badge', text: t('bStageEdit') }),
         ]);
-        if (!q.text || !q.text.trim()) row.classList.add('warn');
+        if (problem) row.classList.add('warn');
         row.addEventListener('click', () => {
           openIndex = i;
           stage = 'questions';
@@ -2127,34 +2130,49 @@
     return { draft };
   }
 
-  function validate(draft) {
-    for (let i = 0; i < draft.questions.length; i++) {
-      const question = draft.questions[i];
-      if (!question.text.trim()) return t('bValText', { n: i + 1 });
-      if (question.type === 'mc' || question.type === 'poll') {
-        const filled = question.options.filter((option) => option.text.trim());
-        if (filled.length < 2) return t('bValOptions', { n: i + 1 });
-      }
-      if (question.type === 'mc' && question.points > 0 && question.correct.length === 0) {
-        return t('bValCorrect', { n: i + 1 });
-      }
-      if (question.type === 'truefalse' && question.points > 0 && question.correct.length === 0) {
-        return t('bValCorrect2', { n: i + 1 });
-      }
-      if (question.type === 'order') {
-        const filled = question.items.filter((it) => String(it.text || '').trim());
-        if (filled.length < 2) return t('bValOrder', { n: i + 1 });
-      }
-      if (question.type === 'match') {
-        const filled = question.pairs.filter((pr) => String(pr.left || '').trim() && String(pr.right || '').trim());
-        if (filled.length < 2) return t('bValMatch', { n: i + 1 });
-      }
-      if (question.type === 'blank' && countBlanks(question.text) === 0) {
-        return t('bValBlank', { n: i + 1 });
-      }
+  /**
+   * ما ينقص سؤالاً واحداً، أو null إن كان تامّاً.
+   *
+   * مفصولةٌ عن `validate` عمداً كي تقرأها **صفحة المراجعة** لكل سؤال على
+   * حدة: كانت الأخطاء لا تظهر إلا رسالةً عابرة بعد ضغط «الإطلاق»، فسؤالُ
+   * «صح/خطأ» بلا إجابةٍ محدّدة يبدو تامّاً في المراجعة — وهو في الحقيقة
+   * سيصل إلى الطلاب استطلاعَ رأيٍ بلا تصحيح.
+   *
+   * @returns {string|null}
+   */
+  function questionProblem(question, i) {
+    if (!question.text.trim()) return t('bValText', { n: i + 1 });
+    if (question.type === 'mc' || question.type === 'poll') {
+      const filled = question.options.filter((option) => option.text.trim());
+      if (filled.length < 2) return t('bValOptions', { n: i + 1 });
+    }
+    if (question.type === 'mc' && question.points > 0 && question.correct.length === 0) {
+      return t('bValCorrect', { n: i + 1 });
+    }
+    if (question.type === 'truefalse' && question.points > 0 && question.correct.length === 0) {
+      return t('bValCorrect2', { n: i + 1 });
+    }
+    if (question.type === 'order') {
+      const filled = question.items.filter((it) => String(it.text || '').trim());
+      if (filled.length < 2) return t('bValOrder', { n: i + 1 });
+    }
+    if (question.type === 'match') {
+      const filled = question.pairs.filter((pr) => String(pr.left || '').trim() && String(pr.right || '').trim());
+      if (filled.length < 2) return t('bValMatch', { n: i + 1 });
+    }
+    if (question.type === 'blank' && countBlanks(question.text) === 0) {
+      return t('bValBlank', { n: i + 1 });
     }
     return null;
   }
 
-  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, parseImport, setPremium, countBlanks, DRAFT_KEY };
+  function validate(draft) {
+    for (let i = 0; i < draft.questions.length; i++) {
+      const problem = questionProblem(draft.questions[i], i);
+      if (problem) return problem;
+    }
+    return null;
+  }
+
+  global.Builder = { mount, loadDraft, saveDraft, defaultDraft, blankQuestion, validate, questionProblem, parseImport, setPremium, countBlanks, DRAFT_KEY };
 })(window);
