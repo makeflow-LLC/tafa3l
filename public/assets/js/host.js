@@ -78,20 +78,21 @@
   // -------------------------------------------------------------- التوجيه
 
   /**
-   * الجلسة المباشرة داكنة **افتراضاً** لا قسراً؛ والإعداد والتصفّح فاتحان
-   * افتراضاً. وكانت تُفرض بصنفٍ على <html> يتجاهل اختيار المعلّم، فمن اختار
-   * الداكنة يجد محرّره أبيض في كل مرة ولا يفهم لماذا لا يعمل زرّه.
-   * الآن نضبط **الافتراض** ونترك `Theme` يحسم: اختيارُ المعلّم يعلو عليه.
+   * كل شاشات المنصة فاتحة افتراضاً — بما فيها الجلسة المباشرة.
+   *
+   * كانت المباشرة تُفتح داكنةً بحجّة «شاشة العرض»، فتضيع ألوان المنصة عن
+   * أكثر لحظاتها ظهوراً: الحصّة أمام الصف. والداكن باقٍ لمن يختاره بزرّ
+   * السِمَة، فالخيار لم يُلغَ — الافتراض وحده تغيّر.
    */
-  function paintTheme(isLive) {
-    document.documentElement.setAttribute('data-theme-default', isLive ? 'dark' : 'light');
+  function paintTheme() {
+    document.documentElement.setAttribute('data-theme-default', 'light');
     window.Theme?.refresh();
   }
 
   function route() {
     const hash = location.hash.slice(1) || '/';
     const match = hash.match(/^\/live\/(\d{6})$/);
-    paintTheme(!!match);
+    paintTheme();
     if (match) return openLive(match[1]);
     if (hash === '/demo') return startDemo();
     if (hash === '/mine') return openMyActivities();
@@ -1298,6 +1299,38 @@
     return Math.ceil((ms - Date.now()) / 86400000);
   }
 
+  /**
+   * رسم التسجيلات اليومية — أعمدة بـ HTML لا مكتبة رسمٍ خارجية.
+   *
+   * الارتفاع نسبيّ لأعلى يومٍ في المدى لا لرقمٍ ثابت، فالفرق بين يومين يُرى
+   * سواء كانت الأرقام آحاداً أو مئات. واليوم الصفري يُرسم بخيطٍ رفيع لا بلا
+   * شيء: عمودٌ غائب يُقرأ كأن اليوم غير موجود لا كأن أحداً لم يسجّل فيه.
+   */
+  function signupChart(series) {
+    const max = Math.max(1, ...series.map((d) => d.count));
+    const total = series.reduce((n, d) => n + d.count, 0);
+    const label = (day) => new Date(day + 'T00:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short' });
+
+    const bars = series.map((d) =>
+      el('div', { class: 'sc-col', title: `${label(d.day)} · ${d.count}` }, [
+        el('div', { class: 'sc-bar' + (d.count ? '' : ' zero'), style: { height: `${d.count ? Math.max(6, (d.count / max) * 100) : 2}%` } }),
+      ])
+    );
+
+    return el('div', { class: 'card stack', style: { marginBottom: '12px' } }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 }, text: t('hadmChartTitle', { days: series.length }) }),
+        el('span', { class: 'badge ok', text: t('hadmChartTotal', { n: total }) }),
+      ]),
+      el('div', { class: 'signup-chart' }, bars),
+      el('div', { class: 'row between muted small' }, [
+        el('span', { text: label(series[0].day) }),
+        el('span', { text: t('hadmChartPeak', { n: max }) }),
+        el('span', { text: label(series[series.length - 1].day) }),
+      ]),
+    ]);
+  }
+
   /** لوحة المالك: كل المدربين وحالة اشتراكهم مع التحكّم بالمدة */
   async function openAdmin() {
     teardown();
@@ -1339,13 +1372,18 @@
         ])
       );
       app.append(el('h1', { text: t('hownerPanel2') }));
+      const series = data.signups || [];
+      const last7 = series.slice(-7).reduce((n, d) => n + d.count, 0);
       app.append(
         el('div', { class: 'stats' }, [
           stat(users.length, t('hregisteredTeachers')),
           stat(active, t('hactivePremiumSubscriptions')),
+          stat(users.filter((u) => u.onSignupTrial).length, t('hadmOnTrial')),
           stat(users.filter((u) => u.premiumUntil && !u.isPremium).length, t('hexpiredSubscriptions')),
+          stat(last7, t('hadmLast7')),
         ])
       );
+      if (series.length) app.append(signupChart(series));
 
       const rows = users.map((user) => {
         const left = daysLeft(user.premiumUntil);
@@ -1408,6 +1446,14 @@
             el('div', { class: 'stack tight' }, [el('strong', { text: user.name }), el('span', { class: 'muted small', text: user.email })]),
           ]),
           el('td', {}, fmtDate(user.createdAt)),
+          // ماذا فعل هذا المعلّم فعلاً؟ الحساب المسجّل الذي لم ينشئ شيئاً ليس
+          // مستخدماً بعد، والتمييز بينهما بنظرةٍ هو نصف قراءة اللوحة
+          el('td', {}, [
+            el('div', { class: 'stack tight' }, [
+              el('span', { text: `📝 ${user.activities || 0}` }),
+              el('span', { class: 'muted small', text: `🎮 ${user.games || 0}` }),
+            ]),
+          ]),
           el('td', {}, [el('div', { class: 'stack tight' }, [statusBadge, el('span', { class: 'muted small', text: fmtDate(user.premiumUntil) })])]),
           el('td', { style: { whiteSpace: 'normal' } }, [controls]),
         ]);
@@ -1419,7 +1465,13 @@
           el('p', { class: 'muted small', style: { margin: 0 }, text: t('hextensionsStartFromThe') }),
           el('div', { class: 'table-wrap' }, [
             el('table', {}, [
-              el('thead', {}, el('tr', {}, [el('th', {}, t('hteacher')), el('th', {}, t('hsignedUp')), el('th', {}, t('hsubscription')), el('th', {}, t('hcontrols'))])),
+              el('thead', {}, el('tr', {}, [
+                el('th', {}, t('hteacher')),
+                el('th', {}, t('hsignedUp')),
+                el('th', { title: t('hadmMadeHint') }, t('hadmMade')),
+                el('th', {}, t('hsubscription')),
+                el('th', {}, t('hcontrols')),
+              ])),
               el('tbody', {}, rows),
             ]),
           ]),
@@ -1624,6 +1676,30 @@
     );
   }
 
+  /**
+   * ماذا يستطيع المساعد أن يفعل بالضبط؟
+   *
+   * «صمّم بالذكاء الاصطناعي» عنوانٌ لا يقول شيئاً: المعلّم يقف أمام حقل كتابة
+   * فارغ ولا يعرف أيكتب سؤالاً أم موضوعاً أم أمراً. فنُسمّي الطرق الثلاث
+   * صراحةً — وأكثرها مفاجأةً للمعلّم هي لصق نصّ الدرس نفسه.
+   */
+  function aiWaysCard() {
+    const way = (emojiTitle, body) =>
+      el('div', { class: 'ai-way' }, [
+        el('strong', { text: emojiTitle }),
+        el('span', { class: 'muted small', text: body }),
+      ]);
+    return el('div', { class: 'card stack', style: { marginBottom: '12px' } }, [
+      el('h2', { style: { margin: 0 }, text: t('aiWaysTitle') }),
+      el('div', { class: 'ai-ways' }, [
+        way(t('aiWay1Title'), t('aiWay1Body')),
+        way(t('aiWay2Title'), t('aiWay2Body')),
+        way(t('aiWay3Title'), t('aiWay3Body')),
+      ]),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('aiWaysNote') }),
+    ]);
+  }
+
   /** صفحة المحادثة مع المساعد الذكي — تنتهي بمسودة تُفتح في المحرّر */
   function openAiDesigner() {
     teardown();
@@ -1660,10 +1736,13 @@
           el('p', { class: 'muted', style: { margin: 0 }, text: t('htellTheAssistantAbout2') }),
         ])
       );
+      root.append(aiWaysCard());
       root.append(upgradeCard(state.premium?.plan, t('hunlockTheAiAssistant')));
       return;
     }
 
+    // فوق `root` لا داخله: محادثة المساعد تمسح جذرها عند الرسم
+    app.insertBefore(aiWaysCard(), root);
     window.AiChat.render(root, {
       onApprove: (draft) => {
         window.Builder.saveDraft(draft);

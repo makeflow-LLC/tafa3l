@@ -3154,6 +3154,55 @@ body.screen-body .q-image {
   border: 1px solid var(--border);
 }
 
+/* طرق استخدام المساعد الذكي — ثلاث بطاقات متجاورة تشرح ما يمكن كتابته */
+.ai-ways {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.ai-way {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* رسم التسجيلات اليومية في لوحة المالك */
+.signup-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  /* المدى ثلاثون يوماً: على الجوال يُمرَّر أفقياً بدل أن تُسحق الأعمدة */
+  overflow-x: auto;
+}
+
+.sc-col {
+  flex: 1 0 8px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.sc-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  background: var(--brand);
+  transition: height 0.2s ease;
+}
+
+/* يومٌ بلا تسجيل: خيطٌ باهت يقول «مررنا بهذا اليوم» لا فراغ يُقرأ كانقطاع */
+.sc-bar.zero {
+  background: var(--border);
+}
+
 /* تهنئة الحساب الجديد بمنحته — أول ما يراه بعد أول تسجيل دخول */
 .welcome-pop {
   position: fixed;
