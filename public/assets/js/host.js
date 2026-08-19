@@ -133,7 +133,7 @@
         el('button', { class: 'icon-btn', type: 'button', title: t('hsignOut'), 'aria-label': t('hsignOut'), onclick: logout }, '🚪')
       );
     } else {
-      slot.append(el('a', { class: 'btn ghost sm', href: '/login.html' }, t('hsignIn')));
+      slot.append(el('a', { class: 'btn ghost sm', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/mine') }, t('hsignIn')));
     }
   }
 
@@ -244,7 +244,7 @@
 
     const user = state.user || (await loadAccount());
     if (!user) {
-      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/mine');
+      location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/mine');
       return;
     }
 
@@ -537,7 +537,7 @@
 
     const user = state.user || (await loadAccount());
     if (!user) {
-      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/games');
+      location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/games');
       return;
     }
 
@@ -710,7 +710,7 @@
 
     const user = state.user || (await loadAccount());
     if (!user) {
-      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/profile');
+      location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/profile');
       return;
     }
 
@@ -1083,7 +1083,7 @@
     app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
     const user = state.user || (await loadAccount());
     if (!user) {
-      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/library/' + id);
+      location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/library/' + id);
       return;
     }
 
@@ -1420,7 +1420,7 @@
 
     if (!state.user) await loadAccount();
     if (!state.user) {
-      location.href = '/login.html?next=' + encodeURIComponent('/host.html#/admin');
+      location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/admin');
       return;
     }
 
@@ -1578,7 +1578,7 @@
       el('h2', { style: { margin: 0 }, text: t('upSignupTitle', { days }) }),
       el('p', { style: { margin: 0 }, text: t('upSignupBody', { days }) }),
       el('div', { class: 'row' }, [
-        el('a', { class: 'btn accent', href: '/login.html?next=' + encodeURIComponent('/host.html#/ai') }, t('upSignupBtn')),
+        el('a', { class: 'btn accent', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/ai') }, t('upSignupBtn')),
       ]),
     ]);
   }
@@ -1709,7 +1709,7 @@
         ? el('a', { class: 'btn primary', href: whatsappLink(plan), target: '_blank', rel: 'noopener' }, t('hWhatsappBtn', { phone: plan.whatsapp }))
         : el('div', { class: 'stack tight' }, [
             el('span', { class: 'muted small', text: t('upSignInFirst') }),
-            el('a', { class: 'btn primary', href: '/login.html?next=' + encodeURIComponent('/host.html#/upgrade') }, t('upSignInBtn')),
+            el('a', { class: 'btn primary', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/upgrade') }, t('upSignInBtn')),
           ]);
 
     const proCard = el('div', { class: 'plan best' + (paid ? ' current' : '') }, [
@@ -1801,7 +1801,7 @@
         el('div', { class: 'card stack center' }, [
           el('h2', { text: t('hdesignYourActivityWith') }),
           el('p', { class: 'muted', text: t('hsignInFirstSo') }),
-          el('a', { class: 'btn primary', href: '/login.html?next=' + encodeURIComponent('/host.html#/ai') }, t('hsignInWithGoogle')),
+          el('a', { class: 'btn primary', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/ai') }, t('hsignInWithGoogle')),
         ])
       );
       return;
@@ -1864,7 +1864,7 @@
         if (!state.user && !(await loadAccount())) {
           toast(t('hLoginToLaunch'), 'bad');
           setTimeout(() => {
-            location.href = '/login.html?next=' + encodeURIComponent('/host.html#/new');
+            location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/new');
           }, 1200);
           return;
         }
@@ -1915,7 +1915,7 @@
     if (!state.user) {
       return el(
         'a',
-        { class: 'btn ghost', href: '/login.html?next=' + encodeURIComponent('/host.html#/new') },
+        { class: 'btn ghost', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/new') },
         t('hsignInToSave')
       );
     }

@@ -6,24 +6,25 @@
     <title>Tapio</title>
     <meta name="description" content="منصة خفيفة لإنشاء أسئلة تفاعلية واستطلاعات حية للمدربين والمعلمين. بلا تسجيل وبلا تخزين دائم." />
     <meta name="theme-color" content="#12102e" />
-    <link rel="icon" href="/assets/icon.svg?v=1.60.0" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.60.0" />
+    <link rel="icon" href="/assets/icon.svg?v=1.61.0" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.61.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.60.0" />
-    <script src="/assets/js/theme.js?v=1.60.0"></script>
-    <script src="/assets/js/i18n.js?v=1.60.0"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.61.0" />
+    <script src="/assets/js/theme.js?v=1.61.0"></script>
+    <script src="/assets/js/i18n.js?v=1.61.0"></script>
   </head>
   <body>
     <div class="wrap narrow">
       <div class="row" style="gap: 8px; padding-top: 10px">
         <!-- زرّ الحساب هنا وملوّن: معلّمون كثيرون لم يجدوه حين كان زرّاً شاحباً في آخر البطاقة -->
-        <a class="btn primary sm" href="/login.html" id="topAccount"></a>
+        <!-- إلى جوجل مباشرةً: صفحة دخولٍ وسيطة تسأل السؤال نفسه مرّةً ثانية -->
+        <a class="btn primary sm" href="/api/auth/google?next=%2Fhost.html%23%2Fmine" id="topAccount"></a>
         <span class="grow"></span>
         <span id="langRow"></span>
       </div>
       <div class="center" style="padding: 10px 0 18px">
         <div class="brand hero" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.60.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.60.0" alt="Tapio" width="249" height="159" />
+          <img class="logo light-only" src="/assets/logo.svg?v=1.61.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.61.0" alt="Tapio" width="249" height="159" />
         </div>
         <p class="muted small" style="margin-top: 8px" id="tagline"></p>
         <p id="welcome" class="hidden" style="margin: 10px 0 0; font-weight: 700"></p>
@@ -32,7 +33,8 @@
       <div class="card">
         <h2 id="teacherTitle"></h2>
         <p class="muted small" id="teacherBody"></p>
-        <a class="btn primary block big-cta" id="accountLink" href="/login.html"></a>
+        <a class="btn primary block big-cta" id="accountLink" href="/api/auth/google?next=%2Fhost.html%23%2Fmine"></a>
+        <p class="muted small center hidden" id="trialPromise" style="margin: 8px 0 0"></p>
         <a class="btn accent block" href="/host.html" id="createBtn" style="margin-top: 8px"></a>
         <a class="btn ghost block" href="/host.html#/demo" style="margin-top: 8px" id="demoBtn"></a>
         <a class="btn ghost block" href="/games.html" id="gamesBtn" style="margin-top: 8px"></a>
@@ -55,9 +57,9 @@
       <p class="footer" id="pageFooter"></p>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.60.0"></script>
-    <script src="/assets/js/common.js?v=1.60.0"></script>
-    <script src="/assets/js/footer.js?v=1.60.0"></script>
+    <script src="/assets/js/avatar.js?v=1.61.0"></script>
+    <script src="/assets/js/common.js?v=1.61.0"></script>
+    <script src="/assets/js/footer.js?v=1.61.0"></script>
     <script>
       (function () {
         const { $, api, store, serverAlive, showOfflineBanner } = window.T;
@@ -104,7 +106,17 @@
             // أول دخولٍ لحساب جديد: نُعلمه بمنحة التسجيل هنا أيضاً، فوجهة ما
             // بعد الدخول قد تكون هذه الصفحة لا لوحة المعلّم
             window.T.welcomeNewAccount(premium);
-            if (!user) return;
+            if (!user) {
+              // من لا حساب له: وعدُ المنحة تحت الزرّ مباشرةً. عدد الأيام من
+              // الخادم لا رقماً مكتوباً هنا، فلا تَعِد الصفحة بما لا يحدث.
+              const days = premium?.plan?.signupTrialDays || 0;
+              if (days) {
+                const note = $('#trialPromise');
+                note.textContent = t('loginTrialBadge', { days });
+                note.classList.remove('hidden');
+              }
+              return;
+            }
             const link = $('#accountLink');
             link.href = '/host.html#/mine';
             link.textContent = t('homeMyActivities', { name: user.name });

@@ -2041,7 +2041,7 @@
       const paint = (needle) => {
         results.innerHTML = '';
         if (myQuestions === 'anon') {
-          results.append(el('a', { class: 'btn ghost sm', href: '/login.html?next=' + encodeURIComponent('/host.html#/new') }, t('bsignInToUse')));
+          results.append(el('a', { class: 'btn ghost sm', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/new') }, t('bsignInToUse')));
           return;
         }
         if (!myQuestions) return results.append(el('span', { class: 'muted small', text: t('bloading') }));
