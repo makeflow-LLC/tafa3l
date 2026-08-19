@@ -10,6 +10,7 @@ const storage = require('./storage');
 const auth = require('./auth');
 const google = require('./google-auth');
 const premium = require('./premium');
+const countries = require('./countries');
 const { normalizeQuiz } = require('./session');
 
 const MAX_ACTIVITIES = 200;
@@ -196,6 +197,7 @@ function accountRoutes(store) {
           onSignupTrial: premium.onSignupTrial(u),
           activities: counts.get(u.id)?.activities || 0,
           games: counts.get(u.id)?.games || 0,
+          country: u.country || '',
         })),
       });
     } catch (err) {
@@ -807,7 +809,20 @@ function accountRoutes(store) {
     displayName: u.displayName || '',
     phone: u.phone || '',
     photo: Boolean(u.hasPhoto),
+    country: u.country || '',
     publicName: publicNameOf(u),
+  });
+
+  /**
+   * قائمة البلدان المسموح بها — رموز ISO فقط بلا أسماء.
+   *
+   * الأسماء يولّدها المتصفّح بـ`Intl.DisplayNames` بلغة قارئه، فلا نرسل
+   * قاموساً بلغتين ولا نصون أسماء مئتَي بلد. عامّةٌ بلا جلسة: من يفتح صفحة
+   * البروفايل يحتاجها قبل أن نعرف شيئاً عنه.
+   */
+  router.get('/countries', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.json({ arab: countries.ARAB, rest: countries.REST, overrides: countries.NAME_OVERRIDES });
   });
 
   router.get('/profile', auth.requireUser, async (req, res) => {
@@ -831,6 +846,13 @@ function accountRoutes(store) {
       if (body.displayName !== undefined) patch.displayName = clean(body.displayName, 60);
       if (body.phone !== undefined) patch.phone = cleanPhone(body.phone);
       if (body.photo !== undefined) patch.photo = body.photo ? readCover(body.photo, MAX_PHOTO_BYTES) : '';
+      // البلد يُقارَن بقائمة الخادم لا يُصدَّق كما وصل: رمزٌ خارجها يُرفض بلا
+      // مساومة — الواجهة تقترح، والخادم يقرّر
+      if (body.country !== undefined) {
+        const code = countries.clean(body.country);
+        if (body.country && !code) return res.status(400).json({ error: 'اختر بلداً من القائمة' });
+        patch.country = code;
+      }
       const updated = await storage.get().updateProfile(req.user.id, patch);
       if (!updated) return res.status(404).json({ error: 'الحساب غير موجود' });
       res.json({ profile: myProfile(updated) });

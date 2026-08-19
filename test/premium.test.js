@@ -310,3 +310,36 @@ test('لوحة المالك تعرض تسجيلات كل يوم وما أنشأ�
   // ولا يراها غير المالك
   assert.equal((await teacher.request('GET', '/api/admin/users')).status, 404);
 });
+
+test('الحسابات القديمة تُرحَّل إلى فلسطين، والجديدة تُترك لتختار', async () => {
+  const store = require('../server/storage').get();
+  const countries = require('../server/countries');
+
+  const old = client();
+  await old.login('legacy.teacher@example.com', 'أ. قديمة');
+  const fresh = client();
+  await fresh.login('brandnew.teacher@example.com', 'أ. جديدة');
+
+  const find = async (mail) => (await store.listUsers()).find((u) => u.email === mail);
+  const oldUser = await find('legacy.teacher@example.com');
+
+  // نُشيّخ الأول: كأنه أُنشئ قبل ساعة وبلا بلد — حال ما قبل هذه الميزة.
+  // التشييخ أولاً ثم الكتابة، كي يلحق الحفظُ المؤجَّل بالتعديلين معاً.
+  (await store.listUsers()).find((u) => u.id === oldUser.id).createdAt = Date.now() - 3600000;
+  await store.updateProfile(oldUser.id, { country: '' });
+  await new Promise((r) => setTimeout(r, 400));
+
+  // إعادة الإقلاع: هنا يجري الترحيل
+  await store.init();
+
+  assert.equal((await find('legacy.teacher@example.com')).country, countries.DEFAULT_COUNTRY, 'القديم صار فلسطينياً');
+  assert.equal((await find('brandnew.teacher@example.com')).country || '', '', 'والجديد تُرك ليختار بنفسه');
+
+  // ولا يدهس الترحيلُ بلداً اختاره صاحبه
+  const newUser = await find('brandnew.teacher@example.com');
+  (await store.listUsers()).find((u) => u.id === newUser.id).createdAt = Date.now() - 3600000;
+  await store.updateProfile(newUser.id, { country: 'MA' });
+  await new Promise((r) => setTimeout(r, 400));
+  await store.init();
+  assert.equal((await find('brandnew.teacher@example.com')).country, 'MA', 'اختياره باقٍ');
+});

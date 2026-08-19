@@ -17,6 +17,7 @@ const path = require('path');
 const crypto = require('crypto');
 // منحة التسجيل تُقرأ من إعدادات الاشتراك — premium.js بلا تبعيات فلا دورة هنا
 const premium = require('./premium');
+const countries = require('./countries');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'tafa3l.json');
@@ -87,6 +88,23 @@ function fileDriver() {
     writeTimer.unref?.();
   }
 
+  /**
+   * الحسابات التي أُنشئت قبل أن يُسأل أحدٌ عن بلده كلّها فلسطينية — نُثبت ذلك
+   * بدل تركه فراغاً يُخمَّن لاحقاً. والشرط الزمني يترك للحساب الجديد نافذةً
+   * ليجيب بنفسه: من سجّل قبل دقائق لم يُسأل بعد، فلا نفترض عنه.
+   */
+  function backfillCountry() {
+    const cutoff = Date.now() - 10 * 60000;
+    let changed = 0;
+    for (const u of Object.values(db.users)) {
+      if (!u.country && (u.createdAt || 0) < cutoff) {
+        u.country = countries.DEFAULT_COUNTRY;
+        changed += 1;
+      }
+    }
+    if (changed) schedule();
+  }
+
   return {
     kind: 'file',
     location: DATA_FILE,
@@ -107,6 +125,7 @@ function fileDriver() {
       } catch (err) {
         if (err.code !== 'ENOENT') console.error('ملف البيانات غير قابل للقراءة، سنبدأ فارغاً:', err.message);
       }
+      backfillCountry();
     },
 
     async findUserByEmail(email) {
@@ -136,7 +155,7 @@ function fileDriver() {
       const u = db.users[userId];
       if (!u) return null;
       // undefined = «لم يُرسَل هذا الحقل»؛ السلسلة الفارغة = «امسحه»
-      for (const key of ['displayName', 'phone', 'photo']) {
+      for (const key of ['displayName', 'phone', 'photo', 'country']) {
         if (patch[key] !== undefined) u[key] = patch[key] || '';
       }
       schedule();
@@ -428,6 +447,7 @@ function postgresDriver(connectionString) {
     googleId: r.google_id,
     premiumUntil: r.premium_until == null ? null : Number(r.premium_until),
     trialGrantedAt: r.trial_granted_at == null ? null : Number(r.trial_granted_at),
+    country: r.country || '',
     createdAt: Number(r.created_at),
   });
 
@@ -517,6 +537,10 @@ function postgresDriver(connectionString) {
         -- منحة التسجيل: لحظة منحها. وجودها يميّز التجربة المجانية عن اشتراكٍ
         -- مدفوع، ويمنع منحها مرتين لو أُعيد تشغيل الترقية على حسابٍ قائم.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_granted_at BIGINT;
+        -- بلد المعلّم برمز ISO ذي الحرفين. الحسابات التي أُنشئت قبل أن يُسأل
+        -- أحدٌ عن بلده كلّها فلسطينية، فنُثبت ذلك بدل تركه فراغاً يُخمَّن لاحقاً.
+        -- والشرط الزمني يترك للحساب الجديد نافذةً ليجيب بنفسه قبل أن نفترض عنه.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS country TEXT;
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -596,6 +620,14 @@ function postgresDriver(connectionString) {
         );
         CREATE INDEX IF NOT EXISTS classes_owner_idx ON classes(owner_id);
       `);
+
+      // ترحيلٌ لمرّة واحدة عملياً: الحسابات التي أُنشئت قبل أن يُسأل أحدٌ عن
+      // بلده كلّها فلسطينية. والشرط الزمني يترك للحساب الجديد نافذةً ليجيب
+      // بنفسه — من سجّل قبل دقائق لم يُسأل بعد، فلا نفترض عنه.
+      await pool.query('UPDATE users SET country = $1 WHERE country IS NULL AND created_at < $2', [
+        countries.DEFAULT_COUNTRY,
+        Date.now() - 10 * 60000,
+      ]);
     },
 
     async findUserByEmail(email) {
@@ -627,7 +659,7 @@ function postgresDriver(connectionString) {
     async updateProfile(userId, patch) {
       const sets = [];
       const params = [userId];
-      for (const [key, col] of [['displayName', 'display_name'], ['phone', 'phone'], ['photo', 'photo']]) {
+      for (const [key, col] of [['displayName', 'display_name'], ['phone', 'phone'], ['photo', 'photo'], ['country', 'country']]) {
         if (patch[key] === undefined) continue;
         params.push(patch[key] || null);
         sets.push(`${col} = $${params.length}`);
@@ -635,7 +667,7 @@ function postgresDriver(connectionString) {
       if (!sets.length) return this.findUserById(userId);
       const { rows } = await pool.query(
         `UPDATE users SET ${sets.join(', ')} WHERE id = $1
-         RETURNING id, email, name, display_name, phone, google_id, premium_until, created_at,
+         RETURNING id, email, name, display_name, phone, country, google_id, premium_until, trial_granted_at, created_at,
                    (photo IS NOT NULL AND photo <> '') AS has_photo`,
         params
       );

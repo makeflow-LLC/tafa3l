@@ -68,6 +68,26 @@
     const days = premium.daysLeft || premium.plan?.signupTrialDays || 0;
     const box = el('div', { class: 'welcome-pop' });
     const close = () => box.remove();
+
+    /**
+     * سؤال البلد هنا لا في شاشةٍ مستقلّة بعدها: هذه هي اللحظة الوحيدة التي
+     * يقف فيها المعلّم الجديد ساكناً يقرأ. وسؤالٌ ثانٍ في شاشةٍ ثالثة يُقرأ
+     * استجواباً. والحقل اختياري — من تخطّاه يُكمل، ويجده في بروفايله متى شاء.
+     */
+    const country = countrySelect('', { placeholder: t('cnPick') });
+    const countryNote = el('span', { class: 'muted small', text: t('cnWhy') });
+    country.addEventListener('change', async () => {
+      if (!country.value) return;
+      country.disabled = true;
+      try {
+        await api('/api/profile', { method: 'PUT', body: { country: country.value } });
+        countryNote.textContent = t('cnSaved');
+      } catch (err) {
+        countryNote.textContent = err.message;
+        country.disabled = false;
+      }
+    });
+
     box.append(
       el('div', { class: 'welcome-card stack' }, [
         el('div', { style: { fontSize: '2.6rem', textAlign: 'center' }, text: '🎉' }),
@@ -76,6 +96,7 @@
         el('ul', { class: 'plan-list' }, [t('upPro1'), t('upPro2'), t('upPro3')].map((line) =>
           el('li', {}, [el('span', { class: 'mark', 'aria-hidden': 'true', text: '✓' }), el('span', { text: line })])
         )),
+        el('label', { class: 'stack tight' }, [el('span', { class: 'small', text: t('cnLabel') }), country, countryNote]),
         el('a', { class: 'btn primary', href: '/host.html#/ai', onclick: close }, t('upWelcomeCta')),
         el('button', { class: 'btn ghost sm', type: 'button', onclick: close }, t('upWelcomeLater')),
       ])
@@ -87,6 +108,56 @@
       document.removeEventListener('keydown', esc);
     });
     document.body.append(box);
+  }
+
+  /**
+   * قائمة البلدان — رموزٌ من الخادم، وأسماءٌ يولّدها المتصفّح بلغة قارئه.
+   *
+   * لا نرسل قاموس أسماءٍ بلغتين لمئتَي بلد ولا نصونه: `Intl.DisplayNames`
+   * موجودة في كل متصفّحٍ حديث وتعرف الأسماء بكل اللغات. ونتجاوزها في حالةٍ
+   * واحدة يفرضها الخادم (فلسطين)، ونسقط إلى الرمز إن غابت الدالة أصلاً.
+   */
+  let countryCache = null;
+  async function countryList(lang) {
+    if (!countryCache) countryCache = await api('/api/countries');
+    const code = lang === 'en' ? 'en' : 'ar';
+    let display = null;
+    try {
+      display = new Intl.DisplayNames([code], { type: 'region', fallback: 'code' });
+    } catch {
+      /* متصفّح قديم: نعرض الرموز */
+    }
+    const overrides = countryCache.overrides?.[code] || {};
+    const name = (c) => overrides[c] || (display ? display.of(c) : c);
+    const sort = (list) => list.map((c) => ({ code: c, name: name(c) })).sort((a, b) => a.name.localeCompare(b.name, code));
+    // العربية أولاً بلا ترتيبٍ أبجدي مفروض: فلسطين رأس القائمة كما جاءت
+    return { arab: countryCache.arab.map((c) => ({ code: c, name: name(c) })), rest: sort(countryCache.rest) };
+  }
+
+  /**
+   * قائمة منسدلة للبلدان في مجموعتين. تُملأ بعد الرسم فلا تنتظر الشبكة:
+   * الحقل يظهر فوراً معطّلاً ثم يمتلئ — أهون من صفحةٍ تتجمّد حتى تصل القائمة.
+   */
+  function countrySelect(value, opts) {
+    const sel = el('select', { disabled: true });
+    const lang = global.I18n ? global.I18n.getLang() : 'ar';
+    const t = (key) => (global.I18n ? global.I18n.t(key) : key);
+    sel.append(el('option', { value: '', text: opts?.placeholder || t('cnPick') }));
+    countryList(lang)
+      .then(({ arab, rest }) => {
+        const group = (label, items) => {
+          const g = el('optgroup', { label });
+          items.forEach((c) => g.append(el('option', { value: c.code, text: c.name })));
+          return g;
+        };
+        sel.append(group(t('cnArab'), arab), group(t('cnOther'), rest));
+        if (value) sel.value = value;
+        sel.disabled = false;
+      })
+      .catch(() => {
+        sel.disabled = false;
+      });
+    return sel;
   }
 
   /** النص الافتراضي عربي دائماً؛ الصفحات المُترجمة (المحمَّل فيها i18n.js) تستبدله بلغتها الحالية */
@@ -461,6 +532,8 @@
     hideOfflineBanner,
     isFileProtocol,
     welcomeNewAccount,
+    countrySelect,
+    countryList,
     OFFLINE_HINT: offlineHint,
   };
 })(window);
