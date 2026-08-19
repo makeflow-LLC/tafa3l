@@ -185,8 +185,13 @@ test('بلا GOOGLE_CLIENT_ID/SECRET يرفض بدء تسجيل الدخول ب�
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GOOGLE_CLIENT_SECRET;
   try {
+    // هذا المسار صار مقصداً مباشراً لأزرار الدخول، فعطبُه يهبط بالزائر على
+    // صفحةٍ تشرح لا على JSON خام في نافذته
     const res = await fetch(base + '/api/auth/google', { redirect: 'manual' });
-    assert.equal(res.status, 503);
+    assert.equal(res.status, 302);
+    const to = res.headers.get('location') || '';
+    assert.match(to, /^\/login\.html\?error=/, 'يعود إلى صفحة الدخول بالسبب');
+    assert.match(decodeURIComponent(to), /غير مُفعّل/, 'والسبب مكتوب لا مبهم');
     const me = await fetch(base + '/api/auth/me').then((r) => r.json());
     assert.equal(me.googleConfigured, false);
   } finally {

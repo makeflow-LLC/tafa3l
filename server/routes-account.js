@@ -114,7 +114,9 @@ function accountRoutes(store) {
   /** يبدأ تسجيل الدخول: يحوّل المتصفح إلى صفحة اختيار حساب جوجل */
   router.get('/auth/google', (req, res) => {
     if (!google.isConfigured()) {
-      return res.status(503).json({ error: 'تسجيل الدخول عبر جوجل غير مُفعّل على هذا الخادم' });
+      // هذا المسار صار مقصداً مباشراً لأزرار الدخول في كل الصفحات، فخطؤه
+      // يجب أن يهبط بالزائر على صفحةٍ تشرح لا على JSON خام في نافذته
+      return res.redirect('/login.html?error=' + encodeURIComponent('تسجيل الدخول عبر جوجل غير مُفعّل على هذا الخادم'));
     }
     const next = safeNext(req.query.next);
     const { authUrl, cookiePayload } = google.buildAuthUrl(req, next);
