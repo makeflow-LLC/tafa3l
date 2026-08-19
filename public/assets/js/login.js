@@ -30,14 +30,18 @@
 
   async function boot() {
     let googleConfigured = true;
+    // عدد أيام المنحة من الخادم لا رقماً مكتوباً هنا: يتغيّر بمتغيّر بيئة،
+    // وصفحة الدخول أسوأ مكانٍ يَعِد فيه رقمٌ قديم بما لا يحدث
+    let trialDays = 0;
     try {
-      const { user, googleConfigured: configured } = await api('/api/auth/me');
+      const { user, googleConfigured: configured, premium } = await api('/api/auth/me');
       googleConfigured = configured !== false;
+      trialDays = premium?.plan?.signupTrialDays || 0;
       if (user) return renderAlready(user);
     } catch {
       /* الخادم قد يكون متوقفاً — نعرض الزر على أي حال */
     }
-    render(googleConfigured);
+    render(googleConfigured, trialDays);
     if (errorMsg) toast(errorMsg, 'bad');
   }
 
@@ -66,7 +70,7 @@
     );
   }
 
-  function render(googleConfigured) {
+  function render(googleConfigured, trialDays) {
     app.innerHTML = '';
 
     const googleBtn = el(
@@ -81,6 +85,8 @@
     app.append(
       el('div', { class: 'card stack center' }, [
         el('h1', { text: t('loginTitle') }),
+        // المنحة فوق الزرّ لا تحته: هي سببُ الضغط عليه
+        trialDays ? el('div', { class: 'trial', style: { margin: 0 } }, t('loginTrialBadge', { days: trialDays })) : null,
         el('p', { class: 'muted small', text: t('loginSubtitle') }),
         googleConfigured
           ? googleBtn
