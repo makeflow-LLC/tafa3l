@@ -81,6 +81,9 @@ async function attachUser(req, _res, next) {
             premiumUntil: user.premiumUntil ?? null,
             // يميّز منحة التسجيل عن اشتراكٍ مدفوع في ما تعرضه الواجهة
             trialGrantedAt: user.trialGrantedAt ?? null,
+            country: user.country || '',
+            // وجودُ الصورة فقط لا بايتاتها — كي يرسمها الشريط العلوي من مسارها
+            hasPhoto: Boolean(user.hasPhoto),
             createdAt: user.createdAt,
           };
         }

@@ -498,3 +498,62 @@ test('صور الأسئلة لا تُحمَّل في قائمة إعادة ال�
   assert.equal(one.question.image, undefined, 'الصورة لا تُرسل مع القائمة');
   assert.equal(one.question.hasImage, true, 'لكن يُقال إن للسؤال صورة');
 });
+
+test('قائمة البلدان لا تحتوي إسرائيل، والخادم يرفضها مهما أرسل المتصفّح', async () => {
+  const countries = require('../server/countries');
+
+  // القائمة المعروضة
+  const res = await fetch(base + '/api/countries');
+  assert.equal(res.status, 200);
+  const list = await res.json();
+  const all = [...list.arab, ...list.rest];
+  assert.equal(all.includes('IL'), false, 'إسرائيل ليست في القائمة');
+  assert.equal(all.length > 200, true, `${all.length} بلداً`);
+  assert.equal(new Set(all).size, all.length, 'بلا تكرار');
+  assert.equal(list.arab[0], 'PS', 'فلسطين رأس قائمة البلدان العربية');
+  assert.equal(list.overrides.ar.PS, 'فلسطين', 'ولا تُسمّى «الأراضي الفلسطينية»');
+
+  // والوحدة نفسها ترفضها مهما جاءت
+  for (const bad of ['IL', 'il', 'Il', ' IL ']) {
+    assert.equal(countries.isValid(bad), false, bad);
+    assert.equal(countries.clean(bad), '', bad);
+  }
+  // ورموزٌ لا وجود لها
+  assert.equal(countries.clean('ZZ'), '');
+  assert.equal(countries.clean('XX'), '');
+  assert.equal(countries.clean(''), '');
+  assert.equal(countries.clean(null), '');
+  // والصالحة تمرّ ولو بأحرفٍ صغيرة
+  assert.equal(countries.clean('jo'), 'JO');
+  assert.equal(countries.clean('PS'), 'PS');
+});
+
+test('المعلّم يحفظ بلده ويغيّره، والخادم يرفض ما ليس في القائمة', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'أ. سُهى' });
+
+  const before = await c.request('GET', '/api/profile');
+  assert.equal(before.data.profile.country, '', 'الحساب الجديد بلا بلد حتى يختار');
+
+  const saved = await c.request('PUT', '/api/profile', { country: 'JO' });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.profile.country, 'JO');
+
+  // إسرائيل مرفوضة من المسار نفسه لا من الواجهة وحدها
+  const refused = await c.request('PUT', '/api/profile', { country: 'IL' });
+  assert.equal(refused.status, 400, 'تُرفض');
+  assert.match(refused.data.error, /اختر بلداً/);
+  assert.equal((await c.request('GET', '/api/profile')).data.profile.country, 'JO', 'والبلد المحفوظ لم يُمَسّ');
+
+  // ورمزٌ مخترع
+  assert.equal((await c.request('PUT', '/api/profile', { country: 'QQ' })).status, 400);
+
+  // والتغيير إلى فلسطين يعمل، والمسح كذلك
+  assert.equal((await c.request('PUT', '/api/profile', { country: 'PS' })).data.profile.country, 'PS');
+  assert.equal((await c.request('PUT', '/api/profile', { country: '' })).data.profile.country, '');
+
+  // وحفظ الاسم وحده لا يمسح البلد
+  await c.request('PUT', '/api/profile', { country: 'EG' });
+  await c.request('PUT', '/api/profile', { displayName: 'أ. سُهى' });
+  assert.equal((await c.request('GET', '/api/profile')).data.profile.country, 'EG', 'البلد باقٍ');
+});

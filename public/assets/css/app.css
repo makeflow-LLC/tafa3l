@@ -3221,6 +3221,19 @@ body.screen-body .q-image {
   background: var(--surface-2);
 }
 
+/* مدخل البروفايل في الشريط العلوي — صورة المعلّم إن رفعها */
+.profile-btn {
+  overflow: hidden;
+  padding: 0;
+}
+
+.profile-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 /* رسم التسجيلات اليومية في لوحة المالك */
 .signup-chart {
   display: flex;

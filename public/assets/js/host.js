@@ -125,6 +125,12 @@
         el('span', { class: 'who', text: firstName(state.user.name) }),
       ]);
       slot.append(name);
+      // مدخل البروفايل في أعلى كل صفحة: صورته إن رفعها، وإلا أيقونة.
+      // الصورة نفسها أقوى دلالةٍ على «هذا حسابك» من أي نصّ.
+      const face = el('a', { class: 'icon-btn profile-btn', href: '#/profile', title: t('profNav'), 'aria-label': t('profNav') });
+      if (state.user.hasPhoto) face.append(el('img', { src: '/api/teachers/' + state.user.id + '/photo', alt: '' }));
+      else face.append(el('span', { text: '👤' }));
+      slot.append(face);
       if (state.premium?.isAdmin) {
         slot.append(el('a', { class: 'icon-btn', href: '#/admin', title: t('hownerPanel'), 'aria-label': t('hownerPanel') }, '👑'));
       }
@@ -738,6 +744,7 @@
 
     const displayName = el('input', { maxlength: 60, placeholder: t('profNamePlaceholder'), value: profile.displayName });
     const phone = el('input', { type: 'tel', dir: 'ltr', maxlength: 24, placeholder: t('profPhonePlaceholder'), value: profile.phone });
+    const country = window.T.countrySelect(profile.country || '');
     const face = el('div', { class: 'profile-face' });
     const photoInput = el('input', { type: 'file', accept: 'image/*' });
     const photoNote = el('div', { class: 'muted small' });
@@ -778,7 +785,7 @@
     save.addEventListener('click', async () => {
       save.disabled = true;
       try {
-        const body = { displayName: displayName.value, phone: phone.value };
+        const body = { displayName: displayName.value, phone: phone.value, country: country.value };
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
         toast(t('profSaved'), 'ok');
@@ -811,6 +818,11 @@
           el('span', { class: 'small', text: t('profPhone') }),
           el('span', { class: 'muted small', style: { display: 'block' }, text: t('profPhoneHint') }),
           phone,
+        ]),
+        el('label', {}, [
+          el('span', { class: 'small', text: t('cnLabel') }),
+          el('span', { class: 'muted small', style: { display: 'block' }, text: t('cnWhy') }),
+          country,
         ]),
         el('p', { class: 'note warn small', style: { margin: 0 }, text: t('profPublicWarning') }),
         el('div', { class: 'row', style: { gap: '6px' } }, [
@@ -1410,6 +1422,18 @@
     ]);
   }
 
+  /**
+   * اسم البلد للعرض في لوحة المالك. تُملأ الأسماء بعد وصول القائمة، فنكتفي
+   * الآن بالرمز — سطرٌ يقول «JO» أوضح من سطرٍ فارغ ينتظر الشبكة.
+   */
+  let countryNames = null;
+  window.T.countryList(loc())
+    .then(({ arab, rest }) => {
+      countryNames = new Map([...arab, ...rest].map((c) => [c.code, c.name]));
+    })
+    .catch(() => {});
+  const countryName = (code) => (code ? countryNames?.get(code) || code : t('cnNone'));
+
   /** لوحة المالك: كل المدربين وحالة اشتراكهم مع التحكّم بالمدة */
   async function openAdmin() {
     teardown();
@@ -1525,6 +1549,7 @@
             el('div', { class: 'stack tight' }, [el('strong', { text: user.name }), el('span', { class: 'muted small', text: user.email })]),
           ]),
           el('td', {}, fmtDate(user.createdAt)),
+          el('td', {}, countryName(user.country)),
           // ماذا فعل هذا المعلّم فعلاً؟ الحساب المسجّل الذي لم ينشئ شيئاً ليس
           // مستخدماً بعد، والتمييز بينهما بنظرةٍ هو نصف قراءة اللوحة
           el('td', {}, [
@@ -1547,6 +1572,7 @@
               el('thead', {}, el('tr', {}, [
                 el('th', {}, t('hteacher')),
                 el('th', {}, t('hsignedUp')),
+                el('th', {}, t('cnColumn')),
                 el('th', { title: t('hadmMadeHint') }, t('hadmMade')),
                 el('th', {}, t('hsubscription')),
                 el('th', {}, t('hcontrols')),
