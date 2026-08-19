@@ -266,7 +266,8 @@
   function gameThumb(game) {
     const box = el('div', { class: 'game-thumb' });
     if (game.cover) {
-      box.append(el('img', { src: '/api/games/' + game.id + '/cover', alt: game.title, loading: 'lazy' }));
+      // البصمة تجبر المتصفّح على جلب الصورة الجديدة بعد تبديلها
+      box.append(el('img', { src: `/api/games/${game.id}/cover?v=${game.coverAt || 0}`, alt: game.title, loading: 'lazy' }));
     } else {
       box.classList.add('blank');
       box.append(el('span', { text: (game.title || '🎮').trim().slice(0, 1) }));

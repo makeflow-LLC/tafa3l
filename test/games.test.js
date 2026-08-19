@@ -407,3 +407,62 @@ test('الرقم يُتحقَّق منه، والصورة تُتحقَّق كم�
   assert.equal(res.headers.get('content-type'), 'image/png');
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
 });
+
+test('صاحب اللعبة يبدّل صورتها وحده، وبلا أن يُعيد رفع اللعبة', async () => {
+  // JPEG صالحة صغيرة — تختلف عن PNG فنعرف أنّ التبديل حدث فعلاً
+  const JPG =
+    'data:image/jpeg;base64,' +
+    Buffer.from(
+      '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+      'base64'
+    ).toString('base64');
+
+  const owner = client();
+  await login(owner, 'مالك اللعبة', 'game.owner@example.com');
+  const created = await owner.request('POST', '/api/games', GAME({ title: 'لعبة الصورة' }));
+  const id = created.data.game.id;
+  const firstAt = created.data.game.coverAt;
+  assert.ok(firstAt > 0, 'بصمة الصورة تصل مع البطاقة');
+
+  const before = Buffer.from(await (await fetch(`${base}/api/games/${id}/cover`)).arrayBuffer());
+
+  // غريبٌ لا يبدّل صورة لعبة غيره — و404 لا 403 كي لا نكشف وجودها
+  const stranger = client();
+  await login(stranger, 'غريب', 'stranger@example.com');
+  assert.equal((await stranger.request('PATCH', `/api/games/${id}/cover`, { cover: JPG })).status, 404);
+
+  // ولا زائرٌ بلا حساب
+  assert.equal((await client().request('PATCH', `/api/games/${id}/cover`, { cover: JPG })).status, 401);
+
+  // والصورة لم تُمَسّ بعد المحاولتين
+  const untouched = Buffer.from(await (await fetch(`${base}/api/games/${id}/cover`)).arrayBuffer());
+  assert.equal(untouched.equals(before), true, 'محاولات الغرباء لا تغيّر شيئاً');
+
+  // صاحبها يبدّلها
+  const done = await owner.request('PATCH', `/api/games/${id}/cover`, { cover: JPG });
+  assert.equal(done.status, 200);
+  assert.equal(done.data.game.cover, true);
+  assert.ok(done.data.game.coverAt > firstAt, 'والبصمة تتقدّم فيُجدَّد ما خزّنه المتصفّح');
+
+  const after = await fetch(`${base}/api/games/${id}/cover`);
+  assert.equal(after.headers.get('content-type'), 'image/jpeg', 'الصورة الجديدة هي المعروضة');
+  assert.equal(Buffer.from(await after.arrayBuffer()).equals(before), false);
+
+  // واللعبة نفسها لم تُمَسّ: المسار يبدّل الصورة لا الشفرة
+  const frame = await fetch(`${base}/api/games/${id}/frame`);
+  assert.equal(frame.status, 200);
+  assert.match(await frame.text(), /<html|<!doctype/i, 'شفرة اللعبة كما هي');
+  const card = (await owner.request('GET', '/api/games?mine=1')).data.items.find((g) => g.id === id);
+  assert.equal(card.title, 'لعبة الصورة', 'وعنوانها كما هو');
+  assert.equal(card.bytes > 0, true, 'وحجمها كما هو');
+
+  // مدخلاتٌ غير صالحة تُرفض بلا أن تُتلف الصورة القائمة
+  assert.equal((await owner.request('PATCH', `/api/games/${id}/cover`, { cover: '' })).status, 400);
+  assert.equal((await owner.request('PATCH', `/api/games/${id}/cover`, { cover: 'https://x.test/a.png' })).status, 400);
+  const huge = 'data:image/png;base64,' + Buffer.alloc(401 * 1024, 1).toString('base64');
+  assert.equal((await owner.request('PATCH', `/api/games/${id}/cover`, { cover: huge })).status, 413);
+  assert.equal((await fetch(`${base}/api/games/${id}/cover`)).headers.get('content-type'), 'image/jpeg', 'وتبقى الجديدة سليمة');
+
+  // ولعبةٌ لا وجود لها
+  assert.equal((await owner.request('PATCH', '/api/games/g_ghost/cover', { cover: JPG })).status, 404);
+});

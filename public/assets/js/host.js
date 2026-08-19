@@ -872,6 +872,37 @@
   }
 
   function myGameCard(game) {
+    // --- تغيير صورة لعبةٍ مرفوعة ---
+    // حقلٌ مخفيّ وزرٌّ يفتحه: حقل الملف الخام قبيحٌ ومختلف بين المتصفّحات،
+    // والصورة تُصغَّر في المتصفّح قبل الرفع كما في نموذج الرفع نفسه.
+    const picker = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+    const thumb = gameThumb(game, 'sm');
+    const changeCover = el('button', { class: 'btn ghost sm', type: 'button' }, t('gChangeCover'));
+    changeCover.addEventListener('click', () => picker.click());
+    picker.addEventListener('change', async () => {
+      const picked = picker.files?.[0];
+      if (!picked) return;
+      changeCover.disabled = true;
+      const before = changeCover.textContent;
+      changeCover.textContent = t('gCoverWorking');
+      try {
+        const cover = await shrinkImage(picked);
+        const res = await api(`/api/games/${game.id}/cover`, { method: 'PATCH', body: { cover } });
+        // نبدّل الصورة في مكانها بدل إعادة رسم القائمة: المعلّم يرى النتيجة
+        // فوراً حيث ينظر، ولا يفقد موضعه في قائمةٍ طويلة
+        game.cover = true;
+        game.coverAt = res.game?.coverAt || Date.now();
+        thumb.replaceWith(gameThumb(game, 'sm'));
+        toast(t('gCoverChanged'), 'ok');
+      } catch (err) {
+        toast(err.message, 'bad');
+      } finally {
+        picker.value = '';
+        changeCover.disabled = false;
+        changeCover.textContent = before;
+      }
+    });
+
     const remove = el('button', { class: 'btn danger sm', type: 'button' }, t('hdelete'));
     remove.addEventListener('click', async () => {
       if (!confirm(t('gDeleteConfirm', { title: game.title }))) return;
@@ -884,8 +915,9 @@
       }
     });
     return el('div', { class: 'card stack tight' }, [
+      picker,
       el('div', { class: 'row', style: { gap: '10px', alignItems: 'flex-start' } }, [
-        gameThumb(game, 'sm'),
+        thumb,
         el('div', { class: 'stack tight grow' }, [
           el('div', { class: 'row between' }, [
             el('strong', { text: game.title }),
@@ -905,6 +937,7 @@
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [
         el('a', { class: 'btn primary sm', href: '/games.html#/g/' + game.id }, t('gOpen')),
+        changeCover,
         shareButton(location.origin + '/games.html#/g/' + game.id, t('gCopyLink')),
         el('span', { class: 'grow' }),
         remove,
@@ -916,7 +949,8 @@
   function gameThumb(game, size) {
     const box = el('div', { class: 'game-thumb' + (size === 'sm' ? ' sm' : '') });
     if (game.cover) {
-      box.append(el('img', { src: '/api/games/' + game.id + '/cover', alt: game.title, loading: 'lazy' }));
+      // البصمة تجبر المتصفّح على جلب الصورة الجديدة بعد تبديلها
+      box.append(el('img', { src: `/api/games/${game.id}/cover?v=${game.coverAt || 0}`, alt: game.title, loading: 'lazy' }));
     } else {
       box.classList.add('blank');
       box.append(el('span', { text: (game.title || '🎮').trim().slice(0, 1) }));
