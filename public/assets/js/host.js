@@ -77,22 +77,9 @@
 
   // -------------------------------------------------------------- التوجيه
 
-  /**
-   * كل شاشات المنصة فاتحة افتراضاً — بما فيها الجلسة المباشرة.
-   *
-   * كانت المباشرة تُفتح داكنةً بحجّة «شاشة العرض»، فتضيع ألوان المنصة عن
-   * أكثر لحظاتها ظهوراً: الحصّة أمام الصف. والداكن باقٍ لمن يختاره بزرّ
-   * السِمَة، فالخيار لم يُلغَ — الافتراض وحده تغيّر.
-   */
-  function paintTheme() {
-    document.documentElement.setAttribute('data-theme-default', 'light');
-    window.Theme?.refresh();
-  }
-
   function route() {
     const hash = location.hash.slice(1) || '/';
     const match = hash.match(/^\/live\/(\d{6})$/);
-    paintTheme();
     if (match) return openLive(match[1]);
     if (hash === '/demo') return startDemo();
     if (hash === '/mine') return openMyActivities();
@@ -1301,6 +1288,11 @@
         ])
       );
     }
+
+    // عدّاد المنحة على أول شاشة: التهنئة تظهر مرّةً واحدة، وما يذكّر المعلّم
+    // كل يومٍ بما لديه — وبما سينتهي — هو هذا السطر لا تلك البطاقة
+    const running = trialCountdown();
+    if (running) app.append(running);
 
     app.append(el('h1', { style: { marginBottom: '4px' }, text: t('startTitle') }));
     app.append(el('p', { class: 'muted small', style: { marginTop: 0 }, text: t('startIntro') }));
