@@ -557,3 +557,39 @@ test('المعلّم يحفظ بلده ويغيّره، والخادم يرفض 
   await c.request('PUT', '/api/profile', { displayName: 'أ. سُهى' });
   assert.equal((await c.request('GET', '/api/profile')).data.profile.country, 'EG', 'البلد باقٍ');
 });
+
+test('استعلامات المستخدم تجلب كل عمودٍ يقرؤه صفّه — لا حقلَ يُحفظ ثم يعود فارغاً', () => {
+  const src = fs.readFileSync(require.resolve('../server/storage'), 'utf8');
+
+  // الأعمدة التي يقرؤها `userRow` من الصفّ (r.xxx)، وما تجلبه استعلاماته
+  const rowBody = src.slice(src.indexOf('const userRow = (r) =>'), src.indexOf('const rowToActivity'));
+  const read = [...rowBody.matchAll(/r\.([a-z_]+)/g)].map((m) => m[1]);
+  const columns = src.slice(src.indexOf('const USER_COLUMNS ='), src.indexOf('const userRow = (r) =>'));
+
+  const missing = [...new Set(read)].filter((c) => !columns.includes(c));
+  assert.deepEqual(missing, [], `أعمدة يقرؤها userRow ولا تجلبها الاستعلامات: ${missing.join(', ')}`);
+
+  // ولا استعلام مستخدمٍ بأعمدة مكتوبة يدوياً خارج القائمة الموحّدة:
+  // تلك بالضبط هي الطريقة التي ضاع بها `country` و`trial_granted_at`
+  const handWritten = [...src.matchAll(/SELECT\s+id,\s*email,\s*name[^`]*FROM users/g)];
+  assert.equal(handWritten.length, 0, 'استعلام مستخدمٍ يكتب أعمدته يدوياً بدل USER_COLUMNS');
+});
+
+test('البلد يبقى بعد إعادة تحميل الصفحة — لا يُحفظ ثم يختفي', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: email(), name: 'أ. رند' });
+
+  // الحفظ يردّ البلد…
+  const saved = await c.request('PUT', '/api/profile', { country: 'PS' });
+  assert.equal(saved.data.profile.country, 'PS', 'ردّ الحفظ يحمل البلد');
+
+  // …وقراءةٌ جديدة تردّه أيضاً. هذان مساران مختلفان في الخادم، وكان أحدهما
+  // ينسى العمود — فينجح الحفظ ثم يجده المعلّم فارغاً حين يعود.
+  const reloaded = await c.request('GET', '/api/profile');
+  assert.equal(reloaded.data.profile.country, 'PS', 'وقراءةٌ جديدة تردّه كذلك');
+
+  // ونفس الشيء لمنحة التسجيل: تمرّ بالمسار نفسه
+  const me = await c.request('GET', '/api/auth/me');
+  assert.equal(me.data.premium.onSignupTrial, true, 'ومنحة التسجيل معروفةٌ بعد إعادة القراءة');
+  assert.equal(me.data.user.country, 'PS', 'والبلد يصل مع المستخدم في كل طلب');
+});

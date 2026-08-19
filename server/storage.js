@@ -89,15 +89,13 @@ function fileDriver() {
   }
 
   /**
-   * الحسابات التي أُنشئت قبل أن يُسأل أحدٌ عن بلده كلّها فلسطينية — نُثبت ذلك
-   * بدل تركه فراغاً يُخمَّن لاحقاً. والشرط الزمني يترك للحساب الجديد نافذةً
-   * ليجيب بنفسه: من سجّل قبل دقائق لم يُسأل بعد، فلا نفترض عنه.
+   * كل حسابٍ بلا بلد فلسطينيّ. بلا شرطٍ زمني: الافتراض صحيحٌ لجمهور المنصة
+   * اليوم، ومن أراد غيره يبدّله من بروفايله في ثانية.
    */
   function backfillCountry() {
-    const cutoff = Date.now() - 10 * 60000;
     let changed = 0;
     for (const u of Object.values(db.users)) {
-      if (!u.country && (u.createdAt || 0) < cutoff) {
+      if (!u.country) {
         u.country = countries.DEFAULT_COUNTRY;
         changed += 1;
       }
@@ -437,6 +435,20 @@ function postgresDriver(connectionString) {
   // خطأ في اتصال خامل يجب ألا يُسقط العملية
   pool.on('error', (err) => console.error('خطأ في اتصال Postgres خامل:', err.message));
 
+  /**
+   * أعمدة صفّ المستخدم — قائمةٌ واحدة تستعملها كل استعلاماته.
+   *
+   * كانت مكتوبةً يدوياً في كل استعلام، فأُضيف عمودان (`country` و
+   * `trial_granted_at`) إلى `userRow` ونُسيا هنا: كان الحفظ ينجح ثم يعود
+   * المعلّم فيجد بلده فارغاً، ومنحةُ التسجيل لا تُعرف أصلاً على Postgres.
+   * قائمةٌ واحدة تجعل ذلك مستحيلاً بالبناء لا بالانتباه.
+   *
+   * و`*` غير واردة: الصورة data URI ثقيلة، وهذه الدالة تُنادى مع كل طلبٍ مُصادق.
+   */
+  const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
+                        premium_until, trial_granted_at, created_at,
+                        (photo IS NOT NULL AND photo <> '') AS has_photo`;
+
   const userRow = (r) => ({
     id: r.id,
     email: r.email,
@@ -621,13 +633,9 @@ function postgresDriver(connectionString) {
         CREATE INDEX IF NOT EXISTS classes_owner_idx ON classes(owner_id);
       `);
 
-      // ترحيلٌ لمرّة واحدة عملياً: الحسابات التي أُنشئت قبل أن يُسأل أحدٌ عن
-      // بلده كلّها فلسطينية. والشرط الزمني يترك للحساب الجديد نافذةً ليجيب
-      // بنفسه — من سجّل قبل دقائق لم يُسأل بعد، فلا نفترض عنه.
-      await pool.query('UPDATE users SET country = $1 WHERE country IS NULL AND created_at < $2', [
-        countries.DEFAULT_COUNTRY,
-        Date.now() - 10 * 60000,
-      ]);
+      // كل حسابٍ بلا بلد فلسطينيّ. بلا شرطٍ زمني: الافتراض صحيحٌ لجمهور
+      // المنصة اليوم، ومن أراد غيره يبدّله من بروفايله في ثانية.
+      await pool.query('UPDATE users SET country = $1 WHERE country IS NULL OR country = \'\'', [countries.DEFAULT_COUNTRY]);
     },
 
     async findUserByEmail(email) {
@@ -636,13 +644,7 @@ function postgresDriver(connectionString) {
       return r ? userRow(r) : null;
     },
     async findUserById(id) {
-      // أعمدةٌ مسمّاة لا * : الصورة data URI ثقيلة وهذه الدالة تُنادى مع كل طلبٍ مُصادق
-      const { rows } = await pool.query(
-        `SELECT id, email, name, display_name, phone, google_id, premium_until, created_at,
-                (photo IS NOT NULL AND photo <> '') AS has_photo
-         FROM users WHERE id = $1`,
-        [id]
-      );
+      const { rows } = await pool.query(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [id]);
       const r = rows[0];
       return r ? userRow(r) : null;
     },
@@ -666,9 +668,7 @@ function postgresDriver(connectionString) {
       }
       if (!sets.length) return this.findUserById(userId);
       const { rows } = await pool.query(
-        `UPDATE users SET ${sets.join(', ')} WHERE id = $1
-         RETURNING id, email, name, display_name, phone, country, google_id, premium_until, trial_granted_at, created_at,
-                   (photo IS NOT NULL AND photo <> '') AS has_photo`,
+        `UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING ${USER_COLUMNS}`,
         params
       );
       return rows[0] ? userRow(rows[0]) : null;
