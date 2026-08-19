@@ -737,8 +737,12 @@ function accountRoutes(store) {
     return value;
   }
 
-  /** يقرأ حقول اللعبة من الطلب ويتحقّق منها */
-  function readGame(body) {
+  /**
+   * يقرأ حقول اللعبة من الطلب ويتحقّق منها.
+   * `coverRequired` تُطفأ عند التحديث: من يعدّل عنوان لعبته لا يُطالَب بإعادة
+   * رفع صورتها، والحقل الغائب يعني «أبقِ الصورة الحالية».
+   */
+  function readGame(body, { coverRequired = true } = {}) {
     const title = clean(body?.title, 120);
     if (!title) throw Object.assign(new Error('اكتب اسم اللعبة'), { status: 400 });
     const html = String(body?.html ?? '');
@@ -753,13 +757,14 @@ function accountRoutes(store) {
     // مصفوفة فارغة = «كل المراحل»
     const grades = Array.isArray(body?.grades) ? [...new Set(body.grades.map((g) => clean(g, 40)).filter(Boolean))].slice(0, 12) : [];
     const cover = readCover(body?.cover);
-    if (!cover) throw Object.assign(new Error('أرفق صورةً مصغّرة تدلّ على اللعبة'), { status: 400 });
+    if (!cover && coverRequired) throw Object.assign(new Error('أرفق صورةً مصغّرة تدلّ على اللعبة'), { status: 400 });
     return {
       title,
       html,
       bytes,
       grades,
-      cover,
+      // بلا صورةٍ جديدة لا نكتب الحقل أصلاً، فلا يُمحى ما هو محفوظ
+      ...(cover ? { cover } : {}),
       // الحفظ للعمل بلا إنترنت مسموحٌ ما لم يمنعه صاحب اللعبة صراحةً
       offlineOk: body?.offlineOk !== false,
       subject: clean(body?.subject, 40),
@@ -780,6 +785,9 @@ function accountRoutes(store) {
     bytes: g.bytes || 0,
     // وجودُ الصورة فقط؛ بايتاتها تأتي من مسارها الخاص القابل للتخزين
     cover: Boolean(g.hasCover),
+    // بصمةٌ تُلحَق بعنوان الصورة: مسارها مخزَّنٌ يوماً كاملاً، فبدون تغيّر
+    // العنوان يبقى المعلّم يرى صورته القديمة بعد أن بدّلها
+    coverAt: g.updatedAt || 0,
     offlineOk: g.offlineOk !== false,
     createdAt: g.createdAt,
     author: publicNameOf({ displayName: g.authorDisplayName, name: g.authorName }),
@@ -1005,13 +1013,40 @@ function accountRoutes(store) {
     try {
       const existing = await storage.get().getGame(req.params.id);
       if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'اللعبة غير موجودة' });
-      const fields = readGame(req.body);
+      const fields = readGame(req.body, { coverRequired: false });
       const updated = { ...existing, ...fields, updatedAt: Date.now() };
       delete updated.authorName;
       await storage.get().saveGame(updated);
       res.json({ game: gameCard({ ...updated, authorName: req.user.name }) });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر تحديث اللعبة' });
+    }
+  });
+
+  /**
+   * تغيير صورة لعبةٍ مرفوعة — مسارٌ مستقلّ لا تعديلٌ كامل.
+   *
+   * لعبةٌ بحجمها الأقصى ملفان ميغابايت من HTML؛ إرسالها كلها لتبديل صورةٍ
+   * بحجم عشرات الكيلوبايت هدرٌ ومخاطرة: أي عطبٍ في الرفع يستبدل اللعبة نفسها
+   * لا صورتها. هذا المسار لا يلمس شفرة اللعبة إطلاقاً.
+   */
+  router.patch('/games/:id/cover', auth.requireUser, async (req, res) => {
+    try {
+      const game = await storage.get().getGame(req.params.id);
+      // 404 لا 403: لا نكشف وجود لعبةٍ لغير صاحبها
+      if (!game || game.ownerId !== req.user.id) return res.status(404).json({ error: 'اللعبة غير موجودة' });
+      const cover = readCover(req.body?.cover);
+      if (!cover) return res.status(400).json({ error: 'أرفق صورةً مصغّرة تدلّ على اللعبة' });
+
+      const updated = { ...game, cover, updatedAt: Date.now() };
+      delete updated.authorName;
+      delete updated.authorDisplayName;
+      await storage.get().saveGame(updated);
+      // `updatedAt` الجديد هو بصمة الصورة في عنوانها: بدونه يبقى المتصفّح
+      // يعرض الصورة القديمة يوماً كاملاً (Cache-Control على مسار الصورة)
+      res.json({ game: gameCard({ ...updated, hasCover: true, authorName: req.user.name }) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر تغيير الصورة' });
     }
   });
 
