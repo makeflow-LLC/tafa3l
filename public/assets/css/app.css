@@ -3277,6 +3277,11 @@ body.screen-body .q-image {
   background: var(--scrim);
 }
 
+/* نافذةٌ لا مهرب منها: سؤال البلد مطلوب، فالأرضية أعتم ولا تُغلق بالنقر */
+.welcome-pop.locked {
+  background: color-mix(in srgb, var(--scrim) 85%, black);
+}
+
 .welcome-card {
   width: min(420px, 100%);
   max-height: 90vh;

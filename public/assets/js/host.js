@@ -3395,5 +3395,5 @@
   // نعرف المستخدم أولاً حتى تظهر أزرار الحساب صحيحة من أول رسم
   loadAccount()
     .finally(route)
-    .finally(() => window.T.welcomeNewAccount(state.premium));
+    .finally(() => window.T.afterLogin(state.user, state.premium));
 })();

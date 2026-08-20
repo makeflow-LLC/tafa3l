@@ -311,9 +311,10 @@ test('لوحة المالك تعرض تسجيلات كل يوم وما أنشأ�
   assert.equal((await teacher.request('GET', '/api/admin/users')).status, 404);
 });
 
-test('كل حسابٍ بلا بلد يصير فلسطين، ولا يُدهس بلدٌ اختاره صاحبه', async () => {
+test('الترحيل يجري مرّةً واحدة: القدماء فلسطين، والجديد يبقى بلا بلد ليُسأل', async () => {
   const store = require('../server/storage').get();
   const countries = require('../server/countries');
+  const file = path.join(process.env.DATA_DIR, 'tafa3l.json');
 
   const a = client();
   await a.login('legacy.teacher@example.com', 'أ. قديمة');
@@ -329,10 +330,21 @@ test('كل حسابٍ بلا بلد يصير فلسطين، ولا يُدهس ب
   await store.updateProfile(chooser.id, { country: 'MA' });
   await new Promise((r) => setTimeout(r, 400));
 
-  // إعادة الإقلاع: هنا يجري الترحيل
+  // نمحو علامة الترحيل لنُحاكي الترقية الأولى، ثم نُقلع
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete raw.meta?.countryBackfillAt;
+  fs.writeFileSync(file, JSON.stringify(raw));
   await store.init();
 
-  assert.equal((await find('legacy.teacher@example.com')).country, countries.DEFAULT_COUNTRY, 'الفارغ صار فلسطين');
+  assert.equal((await find('legacy.teacher@example.com')).country, countries.DEFAULT_COUNTRY, 'القديم صار فلسطينياً');
   assert.equal(countries.DEFAULT_COUNTRY, 'PS');
-  assert.equal((await find('chooser.teacher@example.com')).country, 'MA', 'واختيار صاحبه باقٍ');
+  assert.equal((await find('chooser.teacher@example.com')).country, 'MA', 'واختيار صاحبه لم يُدهس');
+
+  // وحسابٌ جديد **بعد** الترحيل يبقى بلا بلد — وإلا لما سُئل أحدٌ بعد اليوم
+  const fresh = client();
+  await fresh.login('after.migration@example.com', 'أ. لاحقة');
+  await new Promise((r) => setTimeout(r, 400));
+  await store.init();
+  assert.equal((await find('after.migration@example.com')).country || '', '', 'الجديد بلا بلد فيُسأل');
+  assert.equal((await fresh.request('GET', '/api/auth/me')).data.user.country || '', '', 'والواجهة ترى ذلك فتسأله');
 });
