@@ -51,7 +51,7 @@ function sortGames(sort) {
 
 function fileDriver() {
   /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
-  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, liveSessions: {}, classes: {} };
+  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, liveSessions: {}, classes: {}, meta: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -89,18 +89,19 @@ function fileDriver() {
   }
 
   /**
-   * كل حسابٍ بلا بلد فلسطينيّ. بلا شرطٍ زمني: الافتراض صحيحٌ لجمهور المنصة
-   * اليوم، ومن أراد غيره يبدّله من بروفايله في ثانية.
+   * ترحيلٌ يجري **مرّةً واحدة في عمر التخزين**: كل حسابٍ كان موجوداً لحظة
+   * الترقية يصير فلسطينياً — فأولئك هم عملاء المنصة اليوم وكلهم من فلسطين.
+   *
+   * والعلامة ضرورية لا زينة: بدونها يجري الترحيل عند كل إقلاع، فيختم بفلسطين
+   * على حسابٍ سجّل قبل دقائق ولم يُسأل بعد — فلا يُسأل أبداً. والسؤال مطلوب.
    */
   function backfillCountry() {
-    let changed = 0;
+    if (db.meta?.countryBackfillAt) return;
     for (const u of Object.values(db.users)) {
-      if (!u.country) {
-        u.country = countries.DEFAULT_COUNTRY;
-        changed += 1;
-      }
+      if (!u.country) u.country = countries.DEFAULT_COUNTRY;
     }
-    if (changed) schedule();
+    db.meta = { ...(db.meta || {}), countryBackfillAt: Date.now() };
+    schedule();
   }
 
   return {
@@ -119,6 +120,7 @@ function fileDriver() {
           bankQuestions: parsed.bankQuestions || {},
           liveSessions: parsed.liveSessions || {},
           classes: parsed.classes || {},
+          meta: parsed.meta || {},
         };
       } catch (err) {
         if (err.code !== 'ENOENT') console.error('ملف البيانات غير قابل للقراءة، سنبدأ فارغاً:', err.message);
@@ -631,11 +633,25 @@ function postgresDriver(connectionString) {
           updated_at BIGINT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS classes_owner_idx ON classes(owner_id);
+        -- علاماتٌ تُكتب مرّةً: ترحيلاتٌ جرت، فلا تُعاد عند كل إقلاع
+        CREATE TABLE IF NOT EXISTS app_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
       `);
 
-      // كل حسابٍ بلا بلد فلسطينيّ. بلا شرطٍ زمني: الافتراض صحيحٌ لجمهور
-      // المنصة اليوم، ومن أراد غيره يبدّله من بروفايله في ثانية.
-      await pool.query('UPDATE users SET country = $1 WHERE country IS NULL OR country = \'\'', [countries.DEFAULT_COUNTRY]);
+      // ترحيلٌ يجري **مرّةً واحدة في عمر القاعدة**: كل حسابٍ كان موجوداً لحظة
+      // الترقية يصير فلسطينياً — فأولئك هم عملاء المنصة اليوم وكلهم من فلسطين.
+      // والعلامة ضرورية لا زينة: بدونها يجري الترحيل عند كل إقلاع، فيختم
+      // بفلسطين على حسابٍ سجّل قبل دقائق ولم يُسأل بعد — فلا يُسأل أبداً.
+      const done = await pool.query('SELECT 1 FROM app_meta WHERE key = $1', ['country_backfill_at']);
+      if (!done.rowCount) {
+        await pool.query("UPDATE users SET country = $1 WHERE country IS NULL OR country = ''", [countries.DEFAULT_COUNTRY]);
+        await pool.query('INSERT INTO app_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [
+          'country_backfill_at',
+          String(Date.now()),
+        ]);
+      }
     },
 
     async findUserByEmail(email) {
