@@ -103,13 +103,20 @@
         render();
         flushPending();
         break;
-      case 'answer:accepted':
-        vibrate(msg.correct === true ? [18, 60, 18] : 18);
-        Fx.play(msg.correct === true ? 'correct' : msg.correct === false ? 'wrong' : 'sent');
-        if (msg.correct === true) Fx.confetti(70);
+      case 'answer:accepted': {
+        /*
+         * الاحتفال يقول «صحيحة» بلا كلمات: القصاصات والنغمة والنبضة المزدوجة
+         * تكشف الجواب قبل أن يكشفه المدرب. فإن أطفأ الكشف اكتفينا بنغمة
+         * «وصلت» ونبضةٍ محايدة، وتبقى الشاشة على حالة الانتظار.
+         */
+        const reveals = !!state.last?.settings?.revealAnswer;
+        vibrate(reveals && msg.correct === true ? [18, 60, 18] : 18);
+        Fx.play(reveals ? (msg.correct === true ? 'correct' : msg.correct === false ? 'wrong' : 'sent') : 'sent');
+        if (reveals && msg.correct === true) Fx.confetti(70);
         state.submitting = false;
         dropPending();
         break;
+      }
       case 'review':
         state.review = Array.isArray(msg.items) ? msg.items : [];
         renderReview();
