@@ -806,9 +806,17 @@
     ]);
   }
 
+  /**
+   * بطاقة ما بعد الإجابة للأنواع التي لم تُهجَّر بعد (النصّية والمقياس وغيرها).
+   *
+   * قاعدةٌ واحدة مع شاشة الاختيار: إن أطفأ المدرب كشف الإجابة فلا تتسرّب
+   * صحّةُ إجابةٍ ولا نقاطُها ولا سلسلةٌ ولا حتى وجهٌ ضاحك — «وصلت إجابتك»
+   * وحدها. والعلامة اليدوية كذلك: تصحيحُ المدرب لا يُعرض قبل كشفه.
+   */
   function waitingCard(s, q, selfPaced) {
     const answered = s.answered;
-    const scored = q.scored;
+    const reveals = !!s.settings?.revealAnswer;
+    const scored = q.scored && reveals;
     let emoji = '⏳';
     let msg = t('pReceived');
     if (!answered) {
@@ -821,7 +829,7 @@
         el('div', { class: 'msg', text: t('pPendingGrade') }),
         el('p', { class: 'muted small', text: t('pPendingHint', { max: answered.maxPoints }) }),
       ]);
-    } else if (q.manual) {
+    } else if (q.manual && reveals) {
       const full = answered.points >= (answered.maxPoints || q.points);
       return el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: full ? '🎉' : answered.points > 0 ? '👍' : '💡' }),
@@ -846,6 +854,8 @@
       // النقاط والسلسلة لغةُ وضع النقاط وحده — في وضع العلامات يكفي «صحيحة»
       showsPoints(s) && scored && answered?.points ? el('div', { class: 'badge ok' }, t('pPlusPoints', { points: answered.points })) : null,
       showsPoints(s) && scored && s.me.streak > 1 ? el('div', { class: 'badge streak' }, t('pStreakRow', { n: s.me.streak })) : null,
+      // بانتظار كشف المدرب: نقول ذلك صراحةً بدل صمتٍ يُفسَّر خطأً
+      !reveals && answered ? el('p', { class: 'muted small', text: t('pNoRevealNote') }) : null,
       selfPaced ? null : el('p', { class: 'muted small', text: t('pWaitOthers') }),
     ]);
   }
