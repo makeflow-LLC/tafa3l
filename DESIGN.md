@@ -187,3 +187,21 @@ Fill `#1A2250`, 1px `#2A3158`, radius 14px, padding 14px 16px, text 16/500 white
 - **Answer press** (implied): fill darkens one step on press, `~80ms ease-out`; no scale, no shadow.
 - **Selection**: 3px border + chip appear instantly (no transition) — speed over polish during a live countdown.
 - **Reveal**: state swap is a hard cut; optional 150ms ease-out fade on the status line. No confetti, no bounces.
+
+## Behaviour rules (mandatory, not optional)
+
+- Participant question must fit the viewport. No scrolling during an
+  active question. Use 100dvh and respect safe-area-inset-bottom.
+- Minimum tap target on the participant screen: 56px.
+- Every view needs all of: loading skeleton, empty state, error state,
+  success state. A view missing any of these is not done.
+- Connection state is always visible on live screens. On disconnect:
+  a persistent non-blocking banner, never a modal. Auto-reconnect with
+  backoff, then resync to the class's current question.
+- Queue the student's answer locally and submit on reconnect if the
+  question is still open. Optimistic UI on submit.
+- Disable the answer grid the instant one option is tapped. No double-submit.
+- Honour prefers-reduced-motion: replace all movement with instant cut.
+- Participant join to answerable question: under 2 seconds on 3G.
+- Never hardcode a colour, font size, spacing or radius. Tokens only.
+- Do not disable zoom. Never use user-scalable=no.
