@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme-default="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tapio — معاينة رئيسية المعلّم</title>
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.65.0" />
+    <link rel="stylesheet" href="/assets/css/tapio-base.css?v=1.65.0" />
+    <link rel="stylesheet" href="/assets/css/teacher.css?v=1.65.0" />
+    <script src="/assets/js/theme.js?v=1.65.0"></script>
+    <style>
+      /* لوحة معاينة ساكنة: الشاشة وحالاتها بسِمَة الصفحة، ومبدّلٌ يقلبها كلها */
+      .canvas {
+        min-height: 100dvh;
+        padding: var(--tp-s-24);
+        background: var(--tp-canvas);
+        color: var(--tp-text);
+      }
+      .head-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--tp-s-16);
+        flex-wrap: wrap;
+      }
+      .canvas h1 {
+        font-size: var(--tp-fs-22);
+        margin: 0 0 var(--tp-s-8);
+      }
+      .canvas .lead {
+        margin: 0 0 var(--tp-s-24);
+        color: var(--tp-muted);
+        font-size: var(--tp-fs-14);
+        max-width: 70ch;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--tp-s-24);
+      }
+      .cell {
+        display: flex;
+        flex-direction: column;
+        gap: var(--tp-s-8);
+        margin: 0;
+        flex: 0 0 auto;
+        width: var(--tp-frame-w);
+        max-width: 100%;
+      }
+      .cell > figcaption {
+        font-size: var(--tp-fs-13);
+        font-weight: var(--tp-w-700);
+        color: var(--tp-muted);
+      }
+      /* شريطٌ علويٌّ مصغَّر داخل الإطار — تمثيلٌ ساكن لما تبنيه host.html */
+      .bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--tp-s-8);
+        padding-bottom: var(--tp-s-12);
+        margin-bottom: var(--tp-s-12);
+        border-bottom: var(--tp-hair) solid var(--tp-border);
+      }
+      .bar__end {
+        display: flex;
+        align-items: center;
+        gap: var(--tp-s-8);
+        color: var(--tp-muted);
+        font-size: var(--tp-fs-13);
+        font-weight: var(--tp-w-700);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas tp">
+      <div class="head-row">
+        <h1>رئيسية المعلّم (جوال) — الشاشة وحالاتها</h1>
+        <span id="themeRow"></span>
+      </div>
+      <p class="lead">
+        معاينة ساكنة بمكوّنات <code>teacher-ui.js</code> نفسها التي تعمل في <code>host.html</code>.
+        الإطارات تتبع سِمَة الصفحة — بدّلها بالزرّ أعلاه. العرض 390px مقاس مخطوطة، والشاشة الحقيقية مرنة.
+      </p>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <script src="/assets/js/teacher-ui.js?v=1.65.0"></script>
+    <script>
+      (function () {
+        'use strict';
+        const UI = window.TeacherUI;
+        const el = UI.el;
+
+        window.Theme?.mountToggle(document.getElementById('themeRow'), {
+          toDark: 'السِمَة الداكنة',
+          toLight: 'السِمَة الفاتحة',
+        });
+
+        function bar() {
+          return el('div', { class: 'bar' }, [
+            el('span', { class: 'tp-who' }, [UI.Avatar({ name: 'جهاد' }), el('span', { class: 'tp-who__name', text: 'جهاد' })]),
+            el('div', { class: 'bar__end' }, [el('span', { text: 'EN' }), el('span', { text: 'tapio' }), el('span', { text: '⋯' })]),
+          ]);
+        }
+
+        function chips() {
+          return el('div', { class: 'tp-chips' }, [
+            UI.NavChip({ label: '➕ نشاط جديد', href: '#', primary: true }),
+            UI.NavChip({ label: '🤖 صمّم بالذكاء الاصطناعي', href: '#' }),
+            UI.NavChip({ label: '🌍 المكتبة', href: '#' }),
+            UI.NavChip({ label: '🎮 الألعاب', href: '#' }),
+          ]);
+        }
+
+        function greet() {
+          return el('div', { class: 'tp-greet' }, [
+            el('h1', { text: '👋 أهلاً جهاد' }),
+            el('p', { text: 'جاهز لنشاطٍ جديد؟' }),
+          ]);
+        }
+
+        function creation() {
+          return el('div', { class: 'tp-create' }, [
+            UI.CreationCard({
+              ai: true,
+              title: 'دع الذكاء الاصطناعي ينشئه لك',
+              body: 'احكِ عن درسك، أو ألصق نصّه، أو اطلب أي موضوع — وتكون الأسئلة جاهزة بثوانٍ.',
+              cta: '🤖 ابدأ بالمساعد الذكي',
+              href: '#',
+            }),
+            UI.CreationCard({
+              title: 'أنشئه بنفسك',
+              body: 'اكتب أسئلتك خطوةً بخطوة، بعشرة أنواع أسئلة وكل التحكّم بيدك.',
+              cta: '✍️ ابدأ الإنشاء اليدوي',
+              href: '#',
+            }),
+          ]);
+        }
+
+        function draft() {
+          return UI.DraftBar({
+            title: 'لديك مسودة غير مكتملة: «مسودة الفصل الثاني»',
+            meta: '3 أسئلة محفوظة في متصفّحك — تابعها من حيث توقّفت',
+            cta: 'متابعة المسودة',
+            href: '#',
+          });
+        }
+
+        function activity(opts) {
+          return UI.ActivityCard({
+            title: opts.title,
+            meta: [
+              UI.Badge({ label: opts.count + ' سؤالاً' }),
+              UI.Badge({ label: 'بإيقاع المدرب' }),
+              opts.published ? UI.Badge({ label: 'منشور في المكتبة', kind: 'ok' }) : null,
+              opts.live ? UI.Badge({ label: '🔑 ' + opts.live, kind: 'live', ltr: true }) : null,
+              el('span', {}, ['آخر تعديل ', UI.ltr({ text: '21 أغسطس 2026' })]),
+            ].filter(Boolean),
+            actions: [
+              UI.Button({ label: opts.live ? '🖥 العودة إلى الجلسة' : '🚀 إطلاق جلسة', kind: 'cyan', href: '#' }),
+              UI.Button({ label: '✏️ فتح وتعديل', kind: 'outline', href: '#' }),
+            ],
+            links: [
+              UI.TextLink({ label: '📄 استنساخ', href: '#' }),
+              UI.TextLink({ label: '🌍 انشر في المكتبة', href: '#' }),
+              UI.TextLink({ label: '🖨 نسخة ورقية', href: '#' }),
+              UI.TextLink({ label: '🗑 حذف', danger: true, href: '#' }),
+            ],
+          });
+        }
+
+        const CELLS = [
+          {
+            id: 'home-full',
+            name: 'الرئيسية كاملة',
+            build: () =>
+              el('div', { class: 'tp-home' }, [
+                chips(),
+                greet(),
+                creation(),
+                draft(),
+                el('h2', { class: 'tp-section', text: '📚 نشاطاتي' }),
+                activity({ title: 'عواصم الدول العربية', count: 10, published: true }),
+                activity({ title: 'جدول الضرب — مراجعة سريعة', count: 6, live: '482913' }),
+              ]),
+          },
+          {
+            id: 'home-loading',
+            name: 'حالة التحميل — هيكل بمقاس البطاقات',
+            build: () =>
+              el('div', { class: 'tp-home' }, [
+                chips(),
+                greet(),
+                el('h2', { class: 'tp-section', text: '📚 نشاطاتي' }),
+                UI.Skeleton(2),
+              ]),
+          },
+          {
+            id: 'home-empty',
+            name: 'حالة الفراغ — أول يومٍ للمعلّم',
+            build: () =>
+              el('div', { class: 'tp-home' }, [
+                chips(),
+                greet(),
+                el('h2', { class: 'tp-section', text: '📚 نشاطاتي' }),
+                UI.EmptyState({
+                  emoji: '📭',
+                  title: 'لا نشاطات محفوظة بعد',
+                  body: 'أنشئ نشاطاً ثم احفظه — وستجده هنا في كل مرة.',
+                  cta: 'أنشئ نشاطاً',
+                  href: '#',
+                }),
+              ]),
+          },
+          {
+            id: 'home-error',
+            name: 'حالة الخطأ + تحذير التخزين',
+            build: () =>
+              el('div', { class: 'tp-home' }, [
+                chips(),
+                greet(),
+                UI.Warning({
+                  title: '⚠️ التخزين غير دائم على هذا الخادم',
+                  body: 'الحسابات والأنشطة محفوظة في ملف محلي وتضيع مع كل نشر — اضبط DATABASE_URL لقاعدة Postgres.',
+                }),
+                el('h2', { class: 'tp-section', text: '📚 نشاطاتي' }),
+                UI.ErrorState({
+                  title: 'تعذّر جلب أنشطتك',
+                  body: 'انقطع الاتصال بالخادم أثناء الجلب.',
+                  cta: 'أعد المحاولة',
+                }),
+              ]),
+          },
+        ];
+
+        const grid = document.getElementById('grid');
+        CELLS.forEach((cell) => {
+          grid.append(
+            el('figure', { class: 'cell' }, [
+              el('figcaption', { text: cell.name }),
+              el('div', { class: 'tp tp-phone', 'data-shot': cell.id }, [bar(), cell.build()]),
+            ])
+          );
+        });
+      })();
+    </script>
+  </body>
+</html>

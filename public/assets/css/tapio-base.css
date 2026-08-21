@@ -1,0 +1,251 @@
+/**
+ * أساس تصميم Tapio: الرموز (DESIGN.md §1) وقطعة الشريط العلوي المشتركة.
+ *
+ * ملفٌّ واحد تشترك فيه شاشات التصميم الجديدة كلها (شاشة المتدرب، ورئيسية
+ * المعلّم، وما يأتي بعدهما). كل رمزٍ مسبوق بـ `--tp-` ومعرَّف على الصنف
+ * `.tp` وحده، فلا يلمس رموز app.css ولا بقية الصفحات.
+ *
+ * القاعدة: لا لون ولا قياس خط ولا مسافة ولا استدارة يُكتب مباشرةً في أي
+ * قاعدة — كلها من هنا.
+ */
+
+/* ------------------------------------------------------------ الرموز */
+
+.tp {
+  /* العلامة */
+  --tp-navy: #10173a;
+  --tp-purple: #6c3df4;
+  --tp-purple-light: #8b66f7;
+  --tp-purple-tint: #b9a4ff;
+  --tp-cyan: #3bd6ee;
+
+  /* الأسطح والنصوص — السِمَة الفاتحة */
+  --tp-bg: #faf9f7;
+  --tp-surface: #faf9f7;
+  --tp-border: #d8dae6;
+  --tp-track: #e3e2ec;
+  --tp-slot: #efeef4;
+  --tp-neutral-fill: #ecebf2;
+  --tp-text: #10173a;
+  --tp-muted: #6e7290;
+  --tp-faded: #8a8fad;
+  --tp-white: #ffffff;
+
+  /* درجات الإجابات — واحدة في السِمَتين */
+  --tp-a: #d6403f;
+  --tp-b: #0e8fa0;
+  --tp-c: #c8811a;
+  --tp-d: #6c3df4;
+  --tp-correct: #1f9d55;
+
+  /* ما يختلف بين السِمَتين من أدوارٍ لا ألوان */
+  --tp-accent: var(--tp-purple);
+  --tp-waiting: var(--tp-purple);
+  --tp-select-ring: var(--tp-navy);
+  --tp-chip-bg: var(--tp-navy);
+  --tp-chip-text: var(--tp-white);
+  --tp-neutral-text: var(--tp-faded);
+  --tp-neutral-badge-bg: var(--tp-white);
+  --tp-neutral-badge-text: var(--tp-faded);
+  --tp-status-correct: var(--tp-correct);
+  --tp-status-wrong: var(--tp-a);
+  --tp-ghost-text: var(--tp-purple);
+  --tp-scrim: rgba(16, 23, 58, 0.45);
+  --tp-canvas: #edecea;
+  --tp-dim: 0.35;
+
+  /* المسافات — القيم المستعملة في DESIGN.md وحدها */
+  --tp-s-2: 2px;
+  --tp-s-4: 4px;
+  --tp-s-6: 6px;
+  --tp-s-8: 8px;
+  --tp-s-10: 10px;
+  --tp-s-12: 12px;
+  --tp-s-14: 14px;
+  --tp-s-16: 16px;
+  --tp-s-18: 18px;
+  --tp-s-20: 20px;
+  --tp-s-24: 24px;
+
+  /* الاستدارات */
+  --tp-r-pill: 99px;
+  --tp-r-frame: 28px;
+  --tp-r-16: 16px;
+  --tp-r-14: 14px;
+  --tp-r-12: 12px;
+  --tp-r-10: 10px;
+
+  /* قياسات الخط والأوزان */
+  --tp-fs-26: 26px;
+  --tp-fs-22: 22px;
+  --tp-fs-19: 19px;
+  --tp-fs-18: 18px;
+  --tp-fs-17: 17px;
+  --tp-fs-16: 16px;
+  --tp-fs-15: 15px;
+  --tp-fs-14: 14px;
+  --tp-fs-13: 13px;
+  --tp-fs-12: 12px;
+  --tp-w-700: 700;
+  --tp-w-600: 600;
+  --tp-w-500: 500;
+  --tp-lh: 1.7;
+
+  /* قياسات المكوّنات */
+  --tp-tap: 56px; /* الحد الأدنى لخيار الإجابة */
+  --tp-tap-min: 44px; /* الحد الأدنى لكل زرٍّ آخر */
+  --tp-opt-min: 60px;
+  --tp-badge: 34px;
+  --tp-mark: 30px;
+  --tp-num-w: 30px;
+  --tp-bar-h: 6px;
+  --tp-dot: 6px;
+  --tp-ring: 3px;
+  --tp-hair: 1px;
+  --tp-media-h: 110px;
+  --tp-btn-h: 48px; /* زرّ البطاقة الأساسي */
+  --tp-avatar: 36px;
+  --tp-skel-h: 132px; /* هيكل انتظارٍ بمقاس بطاقة النشاط */
+  /* مقاس إطار المخطوطة — لصفحة المعاينة وحدها، لا للشاشة الحقيقية */
+  --tp-frame-w: 390px;
+  --tp-frame-h: 780px;
+
+  /* الحركة */
+  --tp-t-press: 80ms;
+  --tp-t-fade: 150ms;
+  --tp-t-timer: 1s;
+  --tp-t-pulse: 1.2s;
+  --tp-t-breathe: 1.6s;
+
+  line-height: var(--tp-lh);
+  color: var(--tp-text);
+}
+
+/* السِمَة الداكنة: سِمَة الجلسة `.stage` وسِمَة الزائر `.dark` كلتاهما داكنة.
+   `:where` تُصفّر الأولوية فيبقى الفرضُ الصريح `.tp-dark` / `.tp-light` أعلى. */
+:where(html.dark, html.stage) .tp,
+.tp.tp-dark {
+  --tp-bg: #10173a;
+  --tp-surface: #1a2250;
+  --tp-border: #2a3158;
+  --tp-track: #2a3158;
+  --tp-slot: #1a2250;
+  --tp-neutral-fill: #1a2250;
+  --tp-text: #ffffff;
+  --tp-muted: #9ba0c0;
+  --tp-faded: #9ba0c0;
+  --tp-accent: var(--tp-purple-light);
+  --tp-waiting: var(--tp-purple-tint);
+  --tp-select-ring: var(--tp-white);
+  --tp-chip-bg: var(--tp-white);
+  --tp-chip-text: var(--tp-navy);
+  --tp-neutral-text: #9ba0c0;
+  --tp-neutral-badge-bg: #2a3158;
+  --tp-neutral-badge-text: #9ba0c0;
+  --tp-status-correct: #4fce85;
+  --tp-status-wrong: #ff7a72;
+  --tp-ghost-text: var(--tp-purple-tint);
+  --tp-canvas: #10173a;
+  --tp-dim: 0.3;
+}
+
+/* الفرض الصريح للسِمَة الفاتحة داخل صفحةٍ داكنة (صفحة المعاينة تعرض السِمَتين معاً) */
+.tp.tp-light {
+  --tp-bg: #faf9f7;
+  --tp-surface: #faf9f7;
+  --tp-border: #d8dae6;
+  --tp-track: #e3e2ec;
+  --tp-slot: #efeef4;
+  --tp-neutral-fill: #ecebf2;
+  --tp-text: #10173a;
+  --tp-muted: #6e7290;
+  --tp-faded: #8a8fad;
+  --tp-accent: var(--tp-purple);
+  --tp-waiting: var(--tp-purple);
+  --tp-select-ring: var(--tp-navy);
+  --tp-chip-bg: var(--tp-navy);
+  --tp-chip-text: var(--tp-white);
+  --tp-neutral-text: #8a8fad;
+  --tp-neutral-badge-bg: #ffffff;
+  --tp-neutral-badge-text: #8a8fad;
+  --tp-status-correct: #1f9d55;
+  --tp-status-wrong: #d6403f;
+  --tp-ghost-text: var(--tp-purple);
+  --tp-canvas: #edecea;
+  --tp-dim: 0.35;
+}
+
+/* ------------------- قائمة الشريط العلوي — مشتركة بين الشاشتين */
+
+.tp-menu {
+  position: relative;
+}
+
+.tp-menu__panel {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + var(--tp-s-6));
+  z-index: 30;
+  min-width: min(220px, 70vw);
+  padding: var(--tp-s-8);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-6);
+}
+
+.tp-menu__panel[hidden] {
+  display: none;
+}
+
+.tp-menu__item {
+  min-height: var(--tp-tap-min);
+  padding: var(--tp-s-6) var(--tp-s-12);
+  border-radius: var(--tp-r-10);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-text);
+  font: inherit;
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-600);
+  text-align: start;
+  cursor: pointer;
+}
+
+/* سطر معلومةٍ داخل القائمة (البريد مثلاً) — لا يُضغط */
+.tp-menu__note {
+  padding: var(--tp-s-2) var(--tp-s-12);
+  font-size: var(--tp-fs-12);
+  color: var(--tp-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tp-menu__item--danger {
+  color: var(--tp-status-wrong);
+  border-color: var(--tp-status-wrong);
+}
+
+/* زرّ القائمة نفسه: كل ضاغطٍ خارج الخيارات لا يقلّ عن 44px */
+.tp-menu > .icon-btn {
+  min-height: var(--tp-tap-min);
+  min-width: var(--tp-tap-min);
+}
+
+/* مبدّلا اللغة والسِمَة يُركَّبان داخل القائمة بأزرارهما الخاصة */
+.tp-menu__panel > span {
+  display: flex;
+  gap: var(--tp-s-6);
+}
+
+.tp-menu__panel > span > * {
+  flex: 1 1 auto;
+}
+
+.tp-menu__panel button,
+/* أزرار الشريط العلوي في app.css تفرض 36px، وهي هنا داخل قائمة لا شريط */
+.tp-menu__panel .icon-btn {
+  min-height: var(--tp-tap-min);
+}

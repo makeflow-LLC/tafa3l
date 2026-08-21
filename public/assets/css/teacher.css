@@ -1,0 +1,465 @@
+/**
+ * رئيسية المعلّم (جوال أولاً) — تطبيق DESIGN.md §2.5 و§3.6–3.11.
+ *
+ * الرموز في `tapio-tokens.css` ويجب تحميله قبل هذا الملف. لا لون ولا قياس
+ * مكتوب مباشرة هنا، ولا قاعدة تستهدف صنفاً من app.css إلا داخل `.tp-extras`
+ * — وهي المنطقة التي تعيش فيها بطاقاتٌ قديمة لم تُهجَّر بعد، فنكسوها بالرموز
+ * الجديدة من غير أن نعيد بناءها.
+ */
+
+/* ------------------------------------------------- الشريط العلوي */
+
+/* هوية المعلّم في طرف الشريط: صورته واسمه، ومنهما إلى صفحته */
+.tp-who {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-8);
+  min-height: var(--tp-tap-min);
+  text-decoration: none;
+  color: var(--tp-text);
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-700);
+}
+
+.tp-who__name {
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 3.11 الأفاتار */
+.tp-avatar {
+  width: var(--tp-avatar);
+  height: var(--tp-avatar);
+  flex: 0 0 auto;
+  border-radius: var(--tp-r-pill);
+  background: var(--tp-border);
+  color: var(--tp-muted);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: var(--tp-fs-14);
+}
+
+.tp-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tp-bar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-8);
+}
+
+/* ------------------------------------------------------ الشاشة */
+
+.tp-home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-12);
+  padding-bottom: max(var(--tp-s-16), env(safe-area-inset-bottom));
+  /* استعلامُ حاويةٍ لا نافذة: الشاشة نفسها تُعرض داخل إطارٍ ضيّق في صفحة
+     المعاينة، فلو قِسنا النافذة لَرأينا في المعاينة تخطيطاً لا يراه أحد */
+  container-type: inline-size;
+}
+
+/* 3.7 شرائح التنقّل — تلتفّ ولا تتزاحم */
+.tp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tp-s-8);
+}
+
+.tp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tp-s-6);
+  min-height: var(--tp-tap-min);
+  padding: var(--tp-s-8) var(--tp-s-16);
+  border-radius: var(--tp-r-pill);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-text);
+  font: inherit;
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-500);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tp-chip--primary {
+  background: var(--tp-cyan);
+  border-color: var(--tp-cyan);
+  color: var(--tp-navy);
+  font-weight: var(--tp-w-700);
+}
+
+/* التحية */
+.tp-greet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-4);
+  margin-block: var(--tp-s-8);
+}
+
+.tp-greet h1 {
+  margin: 0;
+  font-size: var(--tp-fs-26);
+  font-weight: var(--tp-w-700);
+  line-height: var(--tp-lh);
+  color: var(--tp-text);
+}
+
+.tp-greet p {
+  margin: 0;
+  font-size: var(--tp-fs-13);
+  color: var(--tp-muted);
+}
+
+.tp-section {
+  margin: var(--tp-s-8) 0 0;
+  font-size: var(--tp-fs-18);
+  font-weight: var(--tp-w-700);
+  color: var(--tp-text);
+}
+
+/* ------------------------------------------------- 3.6 الأزرار */
+
+.tp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--tp-s-6);
+  min-height: var(--tp-btn-h);
+  padding: var(--tp-s-8) var(--tp-s-16);
+  border: 0;
+  border-radius: var(--tp-r-pill);
+  font: inherit;
+  font-size: var(--tp-fs-15);
+  font-weight: var(--tp-w-700);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter var(--tp-t-press) ease-out;
+}
+
+.tp-btn--cyan {
+  background: var(--tp-cyan);
+  color: var(--tp-navy);
+}
+
+.tp-btn--purple {
+  background: var(--tp-purple);
+  color: var(--tp-white);
+}
+
+.tp-btn--outline {
+  background: transparent;
+  border: var(--tp-hair) solid var(--tp-border);
+  color: var(--tp-text);
+  font-weight: var(--tp-w-600);
+}
+
+/* زرّ الشبح بلون العلامة — «متابعة» في شريط المسودة */
+.tp-btn--ghost {
+  background: transparent;
+  border: var(--tp-hair) solid var(--tp-purple);
+  color: var(--tp-ghost-text);
+  min-height: var(--tp-tap-min);
+  font-size: var(--tp-fs-14);
+}
+
+.tp-btn--sm {
+  min-height: var(--tp-tap-min);
+  font-size: var(--tp-fs-14);
+}
+
+.tp-btn--block {
+  width: 100%;
+}
+
+.tp-btn[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .tp-btn:hover:not([disabled]) {
+    filter: brightness(1.08);
+  }
+}
+
+.tp-btn:active:not([disabled]) {
+  filter: brightness(0.92);
+}
+
+.tp-btn:focus-visible,
+.tp-chip:focus-visible,
+.tp-link:focus-visible,
+.tp-who:focus-visible {
+  outline: var(--tp-s-2) solid var(--tp-purple);
+  outline-offset: var(--tp-s-2);
+}
+
+/* روابط نصّية — مساحة ضغطها 44px ولو كان النصّ صغيراً */
+.tp-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tp-tap-min);
+  padding: 0 var(--tp-s-2);
+  background: none;
+  border: 0;
+  color: var(--tp-muted);
+  font: inherit;
+  font-size: var(--tp-fs-13);
+  font-weight: var(--tp-w-600);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tp-link--danger {
+  color: var(--tp-status-wrong);
+}
+
+.tp-link[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* --------------------------------------- 3.8 و3.9 البطاقات */
+
+.tp-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-12);
+  padding: var(--tp-s-16);
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+  color: var(--tp-text);
+}
+
+/* بطاقة «صمّمه لك الذكاء الاصطناعي» تحمل إطار العلامة وحدها */
+.tp-card--ai {
+  border-color: var(--tp-purple);
+}
+
+.tp-card__title {
+  margin: 0;
+  font-size: var(--tp-fs-16);
+  font-weight: var(--tp-w-700);
+  color: var(--tp-text);
+}
+
+.tp-card__body {
+  margin: 0;
+  font-size: var(--tp-fs-13);
+  color: var(--tp-muted);
+}
+
+.tp-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tp-s-8);
+  font-size: var(--tp-fs-13);
+  color: var(--tp-muted);
+}
+
+/* زرّان متساويان لا يتزاحمان على العرض */
+.tp-card__actions {
+  display: flex;
+  gap: var(--tp-s-8);
+}
+
+.tp-card__actions > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tp-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tp-s-16);
+}
+
+/* شارة صغيرة داخل صفّ البيانات */
+.tp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tp-s-4);
+  padding: var(--tp-s-2) var(--tp-s-10);
+  border-radius: var(--tp-r-pill);
+  border: var(--tp-hair) solid var(--tp-border);
+  font-size: var(--tp-fs-12);
+  font-weight: var(--tp-w-600);
+  color: var(--tp-muted);
+  white-space: nowrap;
+}
+
+.tp-badge--live {
+  border-color: var(--tp-cyan);
+  color: var(--tp-cyan);
+}
+
+.tp-badge--ok {
+  border-color: var(--tp-correct);
+  color: var(--tp-status-correct);
+}
+
+/* بطاقتا الإنشاء جنباً إلى جنب على الشاشات الأوسع */
+.tp-create {
+  display: grid;
+  gap: var(--tp-s-12);
+}
+
+@container (min-width: 720px) {
+  .tp-create {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* --------------------------------------- 3.10 شريط المسودة */
+
+.tp-draft {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-12);
+  padding: var(--tp-s-14) var(--tp-s-16);
+  border-radius: var(--tp-r-16);
+  /* متقطّع عمداً: عملٌ لم يكتمل بعد، لا بطاقةٌ مستقرّة */
+  border: var(--tp-hair) dashed var(--tp-border);
+}
+
+.tp-draft__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tp-draft__title {
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-600);
+  color: var(--tp-text);
+}
+
+.tp-draft__meta {
+  font-size: var(--tp-fs-12);
+  color: var(--tp-muted);
+}
+
+/* -------------------------------- الحالات: فارغ، تحميل، خطأ */
+
+.tp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--tp-s-8);
+  padding: var(--tp-s-24) var(--tp-s-16);
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) dashed var(--tp-border);
+  text-align: center;
+}
+
+.tp-empty__emoji {
+  font-size: var(--tp-fs-26);
+  line-height: 1;
+}
+
+/* هيكل انتظارٍ بمقاس البطاقة نفسها، فلا تقفز الصفحة حين تصل البيانات */
+.tp-skel {
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+  height: var(--tp-skel-h);
+  animation: tapio-breathe var(--tp-t-breathe) ease-in-out infinite;
+}
+
+.tp-skel + .tp-skel {
+  margin-top: var(--tp-s-12);
+}
+
+@keyframes tapio-breathe {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+/* تحذيرٌ يحمي عمل المعلّم: يبقى ظاهراً بلونٍ يوقف العين */
+.tp-warn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-4);
+  padding: var(--tp-s-12) var(--tp-s-16);
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-status-wrong);
+  color: var(--tp-text);
+  font-size: var(--tp-fs-13);
+}
+
+.tp-warn strong {
+  font-size: var(--tp-fs-14);
+  color: var(--tp-status-wrong);
+}
+
+/* -------------------- ما لم يُهجَّر بعد: كسوةٌ بالرموز الجديدة */
+
+/*
+ * بطاقات الإرشاد والفصول والمنحة تبقى ببنيتها القديمة (لا وقت لإعادة بنائها
+ * الآن)، لكنها في شاشةٍ جديدة — فنُلبسها الرموز حتى لا تبدو غريبةً عمّا فوقها.
+ */
+.tp-extras {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-12);
+}
+
+.tp-extras .card,
+.tp-extras .trial,
+.tp-extras .banner {
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+  color: var(--tp-text);
+  box-shadow: none;
+}
+
+.tp-extras .btn {
+  border-radius: var(--tp-r-pill);
+  min-height: var(--tp-tap-min);
+}
+
+.tp-extras h2 {
+  font-size: var(--tp-fs-16);
+  color: var(--tp-text);
+}
+
+/* ------------------------------------- احترام تقليل الحركة */
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-skel {
+    animation: none;
+  }
+}
+
+/* ----------------------------------- إطار صفحة المعاينة فقط */
+
+.tp-phone {
+  width: min(var(--tp-frame-w), 100%);
+  padding: var(--tp-s-20);
+  border-radius: var(--tp-r-frame);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-bg);
+  overflow: hidden;
+}

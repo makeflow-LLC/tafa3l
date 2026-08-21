@@ -26,8 +26,13 @@
     node.title = t(key);
     node.setAttribute('aria-label', t(key));
   }
+  // أزرار القائمة تحمل نصّاً لا رمزاً وحده: القائمة سطورٌ تُقرأ لا شريط أيقونات
+  if ($('#homeBtn')) $('#homeBtn').textContent = t('hhomePage');
+  if ($('#menuMine')) $('#menuMine').textContent = t('hmyActivities');
+  if (guide) guide.textContent = t('hteacherGuide');
   if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
-  window.Theme?.mountToggle($('#langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
+  // اللغة تبقى في الشريط (رمز EN)، والسِمَة تنزل إلى القائمة
+  window.Theme?.mountToggle($('#themeRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
 
   const app = $('#app');
   const bar = $('#bar');
@@ -114,33 +119,52 @@
     return state.user;
   }
 
+  /**
+   * الشريط العلوي: صورة المعلّم واسمه في طرف، وما عداهما داخل القائمة.
+   *
+   * الصورة أقوى دلالةٍ على «هذا حسابك» من أي نصّ، والاسم بجانبها يكفي —
+   * وما كان يزاحمها من أزرار (الدليل، الرئيسية، الصوت، السِمَة، الترقية،
+   * لوحة المالك، البريد، الخروج) صار خلف زرٍّ واحد.
+   */
   function paintAccount() {
+    const who = $('#whoLink');
+    const avatar = $('#whoAvatar');
+    const name = $('#whoName');
+    if (who && avatar && name) {
+      who.hidden = !state.user;
+      if (state.user) {
+        who.title = `${state.user.name} · ${state.user.email}`;
+        who.setAttribute('aria-label', t('profNav'));
+        avatar.replaceChildren(
+          state.user.hasPhoto
+            ? el('img', { src: '/api/teachers/' + state.user.id + '/photo', alt: '' })
+            : el('span', { text: (firstName(state.user.name) || '').charAt(0) || '👤' })
+        );
+        name.textContent = firstName(state.user.name);
+      }
+    }
+
     const slot = $('#account');
     if (!slot) return;
     slot.innerHTML = '';
-    if (state.user) {
-      // الاسم الأول فقط ومقصوص: الاسم الكامل كان يدفع بقية الأزرار إلى سطر جديد
-      const name = el('a', { class: 'btn ghost sm', href: '#/mine', title: `${state.user.name} · ${state.user.email}` }, [
-        el('span', { text: '📚 ' }),
-        el('span', { class: 'who', text: firstName(state.user.name) }),
-      ]);
-      slot.append(name);
-      // مدخل البروفايل في أعلى كل صفحة: صورته إن رفعها، وإلا أيقونة.
-      // الصورة نفسها أقوى دلالةٍ على «هذا حسابك» من أي نصّ.
-      const face = el('a', { class: 'icon-btn profile-btn', href: '#/profile', title: t('profNav'), 'aria-label': t('profNav') });
-      if (state.user.hasPhoto) face.append(el('img', { src: '/api/teachers/' + state.user.id + '/photo', alt: '' }));
-      else face.append(el('span', { text: '👤' }));
-      slot.append(face);
-      if (state.premium?.isAdmin) {
-        slot.append(el('a', { class: 'icon-btn', href: '#/admin', title: t('hownerPanel'), 'aria-label': t('hownerPanel') }, '👑'));
-      }
-      // زر خروج ظاهر دائماً — لا مدفون داخل صفحة «نشاطاتي»
-      slot.append(
-        el('button', { class: 'icon-btn', type: 'button', title: t('hsignOut'), 'aria-label': t('hsignOut'), onclick: logout }, '🚪')
-      );
-    } else {
-      slot.append(el('a', { class: 'btn ghost sm', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/mine') }, t('hsignIn')));
+    if (!state.user) {
+      slot.append(el('a', { class: 'tp-menu__item', href: '/login.html', role: 'menuitem' }, t('homeLoginShort')));
+      return;
     }
+    slot.append(el('a', { class: 'tp-menu__item', href: '#/profile', role: 'menuitem' }, t('profNav')));
+    slot.append(el('a', { class: 'tp-menu__item', href: '#/upgrade', role: 'menuitem' }, t('upNav')));
+    if (state.premium?.isAdmin) {
+      slot.append(el('a', { class: 'tp-menu__item', href: '#/admin', role: 'menuitem' }, '👑 ' + t('hownerPanel')));
+    }
+    // البريد يقول بأي حسابٍ أنت داخل — سطرُ معلومةٍ لا زرّ
+    slot.append(el('span', { class: 'tp-menu__note', text: state.user.email }));
+    slot.append(
+      el(
+        'button',
+        { class: 'tp-menu__item tp-menu__item--danger', type: 'button', role: 'menuitem', onclick: logout },
+        '🚪 ' + t('hsignOut')
+      )
+    );
   }
 
   /** الاسم الأول فقط — الترحيب بالاسم الكامل يبدو رسمياً وطويلاً */
@@ -164,7 +188,7 @@
    *
    * @returns {HTMLElement|null} null إن اكتملت أو أُخفيت
    */
-  function onboardingCard(activityCount) {
+  function onboardingCard(activityCount, refresh) {
     if (store.local.get(GUIDE_OFF, false)) return null;
     const launched = Object.keys(store.local.get(HOSTS_KEY, {})).length > 0;
     const sawResults = store.local.get(SAW_RESULTS, false);
@@ -211,7 +235,7 @@
     const hide = el('button', { class: 'btn ghost sm', type: 'button' }, t('gdHide'));
     hide.addEventListener('click', () => {
       store.local.set(GUIDE_OFF, true);
-      openMyActivities();
+      (refresh || openMyActivities)();
     });
 
     return el('div', { class: 'card stack', style: { marginBottom: '12px' } }, [
@@ -1266,7 +1290,15 @@
    * يرى نموذجاً بدأ يملؤه، ولا يلتفت إلى أن هناك من يملؤه عنه. والقرار بين
    * الطريقين قرارٌ يستحق شاشته: بطاقتان كبيرتان لا ثالث لهما.
    */
-  function openStart() {
+  /**
+   * رئيسية المعلّم (DESIGN.md §2.5) — جوال أولاً.
+   *
+   * ترتيبها من أعلى: شرائح تنقّل، ثم تحية، ثم بطاقتا الإنشاء، ثم شريط
+   * المسودة إن كانت، ثم قائمة «نشاطاتي» — كانت في مسارٍ آخر فصار المعلّم
+   * يقطع خطوةً ليصل إلى أهمّ ما في الصفحة. وما بقي من بطاقات (المنحة،
+   * والإرشاد، والفصول) تحتها.
+   */
+  async function openStart() {
     teardown();
     setEditingActivity(null);
     codeBadge.classList.add('hidden');
@@ -1274,72 +1306,251 @@
     bar.innerHTML = '';
     app.innerHTML = '';
 
-    app.append(
-      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
-          el('a', { class: 'btn ghost sm', href: '#/library' }, t('lNav')),
-          el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuide')),
-        ]),
+    const UI = window.TeacherUI;
+    const home = el('div', { class: 'tp-home' });
+    app.append(home);
+
+    home.append(
+      el('div', { class: 'tp-chips' }, [
+        UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
+        UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
+        UI.NavChip({ label: t('lNav'), href: '#/library' }),
+        UI.NavChip({ label: t('gNav'), href: '/games.html' }),
+        UI.NavChip({ label: t('hteacherGuide'), href: '/help.html' }),
       ])
     );
 
-    if (state.user) {
-      app.append(
-        el('div', { class: 'welcome' }, [
-          el('div', { class: 'row between' }, [
-            el('h1', { style: { margin: 0 }, text: t('hHelloUser', { name: firstName(state.user.name) }) }),
-            el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upNav')),
-          ]),
-          el('p', {
-            class: 'muted small',
-            style: { margin: 0 },
-            text: state.premium?.isPremium ? t('hyourAccountIsPremium') : t('hreadyForANew'),
-          }),
-        ])
-      );
-    }
-
-    // عدّاد المنحة على أول شاشة: التهنئة تظهر مرّةً واحدة، وما يذكّر المعلّم
-    // كل يومٍ بما لديه — وبما سينتهي — هو هذا السطر لا تلك البطاقة
-    const running = trialCountdown();
-    if (running) app.append(running);
-
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('startTitle') }));
-    app.append(el('p', { class: 'muted small', style: { marginTop: 0 }, text: t('startIntro') }));
-
-    const choice = (href, emoji, title, body, cta, cls) =>
-      el('a', { class: 'start-card' + (cls ? ' ' + cls : ''), href }, [
-        el('div', { class: 'start-emoji', 'aria-hidden': 'true', text: emoji }),
-        el('strong', { class: 'start-name', text: title }),
-        el('span', { class: 'muted small', text: body }),
-        el('span', { class: 'btn ' + (cls === 'ai' ? 'accent' : 'primary') + ' block', text: cta }),
-      ]);
-
-    app.append(
-      el('div', { class: 'start-grid' }, [
-        choice('#/ai', '🤖', t('startAiTitle'), t('startAiBody'), t('startAiCta'), 'ai'),
-        choice('#/new', '✍️', t('startManualTitle'), t('startManualBody'), t('startManualCta')),
+    home.append(
+      el('div', { class: 'tp-greet' }, [
+        el('h1', {
+          text: state.user ? t('hHelloUser', { name: firstName(state.user.name) }) : t('startTitle'),
+        }),
+        el('p', {
+          text: state.user
+            ? state.premium?.isPremium
+              ? t('hyourAccountIsPremium')
+              : t('hreadyForANew')
+            : t('startIntro'),
+        }),
       ])
     );
 
-    // مسودةٌ نصف مكتوبة لا يجوز أن تختفي خلف شاشة اختيار: نعرضها صراحةً
+    home.append(
+      el('div', { class: 'tp-create' }, [
+        UI.CreationCard({ ai: true, title: t('startAiTitle'), body: t('startAiBody'), cta: t('startAiCta'), href: '#/ai' }),
+        UI.CreationCard({ title: t('startManualTitle'), body: t('startManualBody'), cta: t('startManualCta'), href: '#/new' }),
+      ])
+    );
+
+    /*
+     * مسودةٌ نصف مكتوبة لا يجوز أن تختفي خلف شاشة اختيار: نعرضها صراحةً.
+     * لكن «المسودة الفارغة» ليست مسودة — قارئ المسودات يعيد هيكلاً فيه سؤال
+     * فارغ حتى لو لم يكتب المعلّم حرفاً، فكان الشريط يظهر لمن لم يبدأ شيئاً.
+     */
     const draft = window.Builder?.loadDraft?.();
-    if (draft?.questions?.length) {
-      app.append(
-        el('div', { class: 'card row between', style: { marginTop: '12px' } }, [
-          el('div', { class: 'stack tight' }, [
-            el('strong', { text: t('startDraftTitle', { title: draft.title || t('startDraftUntitled') }) }),
-            el('span', { class: 'muted small', text: t('startDraftBody', { n: draft.questions.length }) }),
-          ]),
-          el('a', { class: 'btn ghost', href: '#/new' }, t('startDraftCta')),
-        ])
+    const started = !!draft && (String(draft.title || '').trim() || (draft.questions || []).some((q) => String(q?.text || '').trim()));
+    if (started) {
+      home.append(
+        UI.DraftBar({
+          title: t('startDraftTitle', { title: draft.title || t('startDraftUntitled') }),
+          meta: t('startDraftBody', { n: draft.questions.length }),
+          cta: t('startDraftCta'),
+          href: '#/new',
+        })
       );
     }
 
+    /*
+     * تحذير التخزين غير الدائم يسبق القائمة ولا يُطوى: المعلّم الذي لا يعرف
+     * أن أنشطته قد تضيع مع أول نشرٍ سيكتشف ذلك بعد ضياعها.
+     */
+    if (state.durable === false) {
+      home.append(UI.Warning({ title: t('hstorageIsNotDurable'), body: t('haccountsAndActivitiesAre') }));
+    }
+
+    home.append(el('h2', { class: 'tp-section', text: t('hmyActivities') }));
+    const listBox = el('div', { class: 'tp-home' });
+    home.append(listBox);
+
+    const extras = el('div', { class: 'tp-extras' });
+    home.append(extras);
+
+    // زائرٌ بلا حساب: لا نداءَ شبكةٍ أصلاً، ودعوةٌ صريحة للدخول
+    if (!state.user) {
+      listBox.append(
+        UI.EmptyState({
+          emoji: '🔐',
+          title: t('hHomeSignedOutTitle'),
+          body: t('hHomeSignedOutBody'),
+          cta: t('homeLoginShort'),
+          href: '/login.html',
+        })
+      );
+      paintExtras(extras, 0);
+      return;
+    }
+
+    listBox.append(UI.Skeleton(2));
+    listBox.setAttribute('aria-busy', 'true');
+    listBox.setAttribute('aria-label', t('hHomeLoading'));
+
+    let activities = [];
+    try {
+      activities = (await api('/api/activities')).activities;
+    } catch (err) {
+      listBox.removeAttribute('aria-busy');
+      listBox.replaceChildren(
+        UI.ErrorState({ title: t('hcouldNotLoadYour'), body: err.message, cta: t('hHomeRetry'), onClick: () => openStart() })
+      );
+      paintExtras(extras, 0);
+      return;
+    }
+
+    listBox.removeAttribute('aria-busy');
+    listBox.replaceChildren();
+    if (!activities.length) {
+      listBox.append(
+        UI.EmptyState({
+          emoji: '📭',
+          title: t('hnoSavedActivitiesYet'),
+          body: t('hcreateAnActivityThen'),
+          cta: t('hcreateAnActivity'),
+          href: '#/new',
+        })
+      );
+    } else {
+      activities.forEach((activity) => listBox.append(homeActivityCard(activity)));
+    }
+
+    paintExtras(extras, activities.length);
+  }
+
+  /** ما تبقّى من بطاقات الرئيسية: المنحة، والإرشاد، والفصول، وحال الخادم */
+  function paintExtras(extras, activityCount) {
+    extras.replaceChildren();
+    const running = trialCountdown();
+    if (running) extras.append(running);
+    const guideCard = onboardingCard(activityCount, () => openStart());
+    if (guideCard) extras.append(guideCard);
+    if (state.user) extras.append(classesCard());
     serverAlive().then((alive) => {
-      if (!alive) showOfflineBanner(app);
+      if (!alive) showOfflineBanner(extras);
+    });
+  }
+
+  /**
+   * بطاقة نشاطٍ في الرئيسية — §3.8: زرّان متساويان ثم روابط ثانوية.
+   *
+   * نسخةٌ مستقلّة عن `activityCard` القديمة عمداً: تلك ما زالت تخدم مسار
+   * «نشاطاتي» بتصميمه القديم، وتُحذف هي وهذه التفرقة حين يُهجَّر المسار.
+   */
+  function homeActivityCard(activity) {
+    const UI = window.TeacherUI;
+    const refresh = () => openStart();
+    const when = new Date(activity.updatedAt).toLocaleDateString(loc(), { year: 'numeric', month: 'short', day: 'numeric' });
+    const pace = { host: t('hteacherPaced'), auto: t('hauto'), self: t('hselfPaced') }[activity.settings?.pace] || '';
+    const slot = el('div', {});
+
+    // الفعل الأول: إطلاق جلسة — أو العودة إليها إن كانت قائمة الآن
+    const primary = activity.live
+      ? UI.Button({ label: t('hbackToTheSession'), href: '#/live/' + activity.live.code, kind: 'cyan' })
+      : UI.Button({
+          label: t('hlaunchASession'),
+          kind: 'cyan',
+          onClick: async () => {
+            primary.disabled = true;
+            primary.textContent = t('hlaunching');
+            try {
+              const created = await api(`/api/activities/${activity.id}/launch`, { method: 'POST' });
+              rememberHost(created.code, created.hostToken, created.title);
+              location.hash = '#/live/' + created.code;
+            } catch (err) {
+              toast(err.message, 'bad');
+              primary.disabled = false;
+              primary.textContent = t('hlaunchASession');
+            }
+          },
+        });
+
+    const duplicate = UI.TextLink({
+      label: t('hduplicate'),
+      onClick: async () => {
+        duplicate.disabled = true;
+        try {
+          const { activity: copy } = await api(`/api/activities/${activity.id}/duplicate`, { method: 'POST' });
+          toast(t('hCopiedTo', { title: copy.title }), 'ok');
+          refresh();
+        } catch (err) {
+          toast(err.message, 'bad');
+          duplicate.disabled = false;
+        }
+      },
+    });
+
+    const share = UI.TextLink({
+      label: activity.published ? t('lUnpublish') : t('lPublish'),
+      onClick: async () => {
+        if (activity.published) {
+          share.disabled = true;
+          try {
+            await api(`/api/activities/${activity.id}/unpublish`, { method: 'POST' });
+            toast(t('lUnpublishedOk'), 'ok');
+            refresh();
+          } catch (err) {
+            toast(err.message, 'bad');
+            share.disabled = false;
+          }
+          return;
+        }
+        if (slot.firstChild) return slot.replaceChildren();
+        slot.append(publishForm(activity, refresh, () => slot.replaceChildren()));
+      },
+    });
+
+    // النسخة الورقية تحتاج أسئلة النشاط، والبطاقة تحمل عددها لا نصّها
+    const paper = UI.TextLink({
+      label: t('bPaperPrint'),
+      onClick: async () => {
+        paper.disabled = true;
+        try {
+          const { activity: full } = await api('/api/activities/' + activity.id);
+          if (!window.Exporter.toPaper(full, { teacher: state.user?.name || '' })) toast(t('bPaperBlocked'), 'warn');
+        } catch (err) {
+          toast(err.message, 'bad');
+        } finally {
+          paper.disabled = false;
+        }
+      },
+    });
+
+    const remove = UI.TextLink({
+      label: t('hdelete'),
+      danger: true,
+      onClick: async () => {
+        if (!confirm(t('hDeleteConfirm', { title: activity.title }))) return;
+        try {
+          await api(`/api/activities/${activity.id}`, { method: 'DELETE' });
+          toast(t('hactivityDeleted'), 'ok');
+          refresh();
+        } catch (err) {
+          toast(err.message, 'bad');
+        }
+      },
+    });
+
+    return UI.ActivityCard({
+      title: activity.title,
+      meta: [
+        UI.Badge({ label: t('hQuestionCount', { count: activity.questionCount }) }),
+        pace ? UI.Badge({ label: pace }) : null,
+        activity.published ? UI.Badge({ label: t('lPublished'), kind: 'ok' }) : null,
+        activity.published && activity.copies ? UI.Badge({ label: t('lCopies', { n: activity.copies }) }) : null,
+        activity.live ? UI.Badge({ label: t('hLiveCode', { code: activity.live.code }), kind: 'live', ltr: true }) : null,
+        el('span', {}, [t('hlastEdited'), UI.ltr({ text: when })]),
+      ].filter(Boolean),
+      actions: [primary, UI.Button({ label: t('hopenAndEdit'), href: '#/edit/' + activity.id, kind: 'outline' })],
+      links: [duplicate, share, paper, remove],
+      slot,
     });
   }
 
@@ -3356,6 +3567,32 @@
     state.stopDeadline = null;
   }
 
+  // قائمة الشريط العلوي: تُفتح بزرٍّ واحد وتُغلق بالضغط خارجها أو بـ Escape
+  const menuBtn = $('#menuBtn');
+  const hostMenu = $('#hostMenu');
+  if (menuBtn && hostMenu) {
+    const setOpen = (open) => {
+      hostMenu.hidden = !open;
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    menuBtn.title = t('hMenuAria');
+    menuBtn.setAttribute('aria-label', t('hMenuAria'));
+    menuBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setOpen(hostMenu.hidden);
+    });
+    document.addEventListener('click', (event) => {
+      if (!hostMenu.hidden && !hostMenu.contains(event.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    });
+    // اختيار سطرٍ من القائمة يغلقها: التنقّل بالمرساة لا يعيد رسم الصفحة
+    hostMenu.addEventListener('click', (event) => {
+      if (event.target.closest('a, button')) setOpen(false);
+    });
+  }
+
   /**
    * زر الصفحة الرئيسية: مغادرة الجلسة المباشرة لا تُنهيها — تبقى قائمة
    * ويستطيع المدرب استئنافها، لذلك نوضّح ذلك بدل تحذير مبهم.
@@ -3374,7 +3611,7 @@
   // زر كتم الصوت
   const soundBtn = $('#soundBtn');
   if (soundBtn) {
-    const paint = () => (soundBtn.textContent = Fx.soundOn() ? '🔊' : '🔇');
+    const paint = () => (soundBtn.textContent = (Fx.soundOn() ? '🔊 ' : '🔇 ') + t('hsound'));
     paint();
     soundBtn.addEventListener('click', () => {
       Fx.setSound(!Fx.soundOn());
