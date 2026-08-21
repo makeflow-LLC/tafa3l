@@ -113,6 +113,9 @@
   --tp-pill: 34px; /* حبّة رقم السؤال — داخل هدفٍ 44px */
   --tp-panel-w: 280px; /* اللوحة الجانبية للمصمّم */
   --tp-textarea-h: 72px;
+  --tp-review-h: 64px; /* صفّ المراجعة */
+  --tp-switch-w: 28px;
+  --tp-switch-h: 28px;
   --tp-s-11: 11px;
   --tp-r-20: 20px;
   --tp-menu-min: 220px;

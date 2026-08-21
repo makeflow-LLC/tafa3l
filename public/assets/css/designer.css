@@ -128,9 +128,16 @@
 /* على الشاشات الضيّقة يبقى الثلاثة في سطر، ويصغر النصّ لا الهدف */
 @container (max-width: 420px) {
   .tp-d-tab {
-    font-size: var(--tp-fs-13);
+    font-size: var(--tp-fs-12);
     gap: var(--tp-s-4);
-    padding: var(--tp-s-6) var(--tp-s-4);
+    padding: var(--tp-s-6) var(--tp-s-2);
+  }
+
+  /* اسمُ الخطوة في سطرٍ واحد: «الإعدادات» مقطوعةً نصفين لا تُقرأ */
+  .tp-d-tab > span:last-child {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -546,4 +553,196 @@
   border: var(--tp-hair) solid var(--tp-border);
   background: var(--tp-bg);
   overflow: hidden;
+}
+
+/* ------------------------------------ تبويب المراجعة: صفٌّ لكل سؤال */
+
+.tp-d-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-8);
+}
+
+/* الصفّ كلّه ضاغط: المعلّم يقرأ السؤال ثم ينقره ليعدّله، لا يبحث عن زرّ */
+.tp-d-review__row {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-12);
+  width: 100%;
+  min-height: var(--tp-review-h);
+  padding: var(--tp-s-10) var(--tp-s-12);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* ما ينقصه يُقرأ من إطاره قبل نصّه */
+.tp-d-review__row.is-warn {
+  border-color: var(--tp-status-wrong);
+}
+
+.tp-d-review__n {
+  flex: 0 0 auto;
+  width: var(--tp-pill);
+  height: var(--tp-pill);
+  border-radius: var(--tp-r-10);
+  border: var(--tp-hair) solid var(--tp-border);
+  display: grid;
+  place-items: center;
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-700);
+  font-variant-numeric: tabular-nums;
+  color: var(--tp-muted);
+}
+
+.tp-d-review__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-2);
+}
+
+.tp-d-review__title {
+  font-size: var(--tp-fs-15);
+  font-weight: var(--tp-w-600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-d-review__meta {
+  font-size: var(--tp-fs-12);
+  color: var(--tp-muted);
+}
+
+.tp-d-review__warn {
+  font-size: var(--tp-fs-12);
+  color: var(--tp-status-wrong);
+}
+
+.tp-d-review__edit {
+  flex: 0 0 auto;
+  padding: var(--tp-s-2) var(--tp-s-10);
+  border-radius: var(--tp-r-pill);
+  border: var(--tp-hair) solid var(--tp-border);
+  font-size: var(--tp-fs-12);
+  font-weight: var(--tp-w-600);
+  color: var(--tp-muted);
+}
+
+/* لوح الإطلاق: الفعل الأخير وحده بلون الفعل، وما حوله نصٌّ هادئ */
+.tp-d-launch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-12);
+  padding: var(--tp-s-16);
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+}
+
+.tp-d-launch .tp-d-note {
+  text-align: center;
+}
+
+/* ------------------------------------ تبويب الإعدادات: أقسام ومفاتيح */
+
+.tp-d-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-14);
+  padding: var(--tp-s-16);
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+}
+
+.tp-d-section__title {
+  margin: 0;
+  font-size: var(--tp-fs-16);
+  font-weight: var(--tp-w-700);
+  color: var(--tp-text);
+}
+
+/*
+ * مفتاحٌ في سطر: اسمه وشرحه في جهة، والمفتاح في الأخرى، والسطر كلّه ضاغط
+ * (label يلفّ الصندوق) — فلا يطارد الإبهامُ مربّعاً صغيراً.
+ */
+.tp-d-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-12);
+  min-height: var(--tp-menu-row);
+  padding: var(--tp-s-8) var(--tp-s-12);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  cursor: pointer;
+}
+
+.tp-d-switch__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-2);
+}
+
+.tp-d-switch__label {
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-600);
+  color: var(--tp-text);
+}
+
+.tp-d-switch input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: var(--tp-switch-w);
+  height: var(--tp-switch-h);
+  margin: 0;
+  accent-color: var(--tp-purple);
+  cursor: pointer;
+}
+
+/* ------------------- جسرٌ لما لم يُهجَّر بعد داخل المصمّم */
+
+/*
+ * محرّرات الجدولة والفصول والاستيراد وأزرار المضيف الإضافية ما زالت مكتوبة
+ * بأصناف app.css. إعادة بنائها كلها اليوم تضاعف حجم التغيير بلا مكسبٍ
+ * للمعلّم، فنكسوها بالرموز الجديدة: استدارةٌ واحدة، وسطحٌ واحد، وهدفُ لمسٍ
+ * واحد. ويسقط هذا القسم حين تُهجَّر آخر شاشة.
+ */
+.tp-d .card,
+.tp-extras .card {
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+  box-shadow: none;
+}
+
+.tp-d .btn,
+.tp-extras .btn {
+  border-radius: var(--tp-r-pill);
+  min-height: var(--tp-tap-min);
+  font-weight: var(--tp-w-700);
+}
+
+.tp-d .btn.sm,
+.tp-extras .btn.sm {
+  min-height: var(--tp-tap-min);
+  font-size: var(--tp-fs-14);
+}
+
+.tp-d .switch {
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  min-height: var(--tp-menu-row);
+}
+
+.tp-d .badge {
+  border-radius: var(--tp-r-pill);
+  border-color: var(--tp-border);
 }

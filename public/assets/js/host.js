@@ -268,13 +268,45 @@
   }
 
   /** لوحة «نشاطاتي»: فتح، إطلاق، حذف */
+  /**
+   * «نشاطاتي» — القائمة نفسها التي في الرئيسية ببطاقتها نفسها.
+   *
+   * كانت لهذه الصفحة بطاقةُ نشاطٍ ثانية بتصميمٍ آخر، فصار للفعل الواحد
+   * («إطلاق»، «حذف») شكلان يتعلّمهما المعلّم مرّتين. حُذفت الثانية.
+   * والبريد والخروج انتقلا إلى قائمة الشريط العلوي، فلا يتكرّران هنا.
+   */
   async function openMyActivities() {
     teardown();
     codeBadge.classList.add('hidden');
     connBadge.classList.add('hidden');
     bar.innerHTML = '';
-    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+    app.innerHTML = '';
 
+    const UI = window.TeacherUI;
+    const page = el('div', { class: 'tp-home' });
+    app.append(page);
+
+    page.append(
+      el('div', { class: 'tp-chips' }, [
+        UI.NavChip({ label: t('hnewActivity'), href: '#/', primary: true }),
+        UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
+        UI.NavChip({ label: t('lNav'), href: '#/library' }),
+        UI.NavChip({ label: t('gNav'), href: '/games.html' }),
+      ])
+    );
+    page.append(el('h1', { class: 'tp-greet', style: { display: 'block' } }, el('span', { class: 'tp-section', text: t('hmyActivities') })));
+
+    // تحذير التخزين يسبق القائمة ولا يُطوى — يحمي عمل المعلّم
+    if (state.durable === false) {
+      page.append(UI.Warning({ title: t('hstorageIsNotDurable'), body: t('haccountsAndActivitiesAre') }));
+    }
+
+    const listBox = el('div', { class: 'tp-home' });
+    page.append(listBox);
+    const extras = el('div', { class: 'tp-extras' });
+    page.append(extras);
+
+    listBox.append(UI.Skeleton(2));
     const user = state.user || (await loadAccount());
     if (!user) {
       location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/mine');
@@ -285,182 +317,30 @@
     try {
       activities = (await api('/api/activities')).activities;
     } catch (err) {
-      app.innerHTML = '';
-      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('hcouldNotLoadYour') }), el('p', { class: 'muted small', text: err.message })]));
+      listBox.replaceChildren(
+        UI.ErrorState({ title: t('hcouldNotLoadYour'), body: err.message, cta: t('hHomeRetry'), onClick: () => openMyActivities() })
+      );
       return;
     }
 
-    app.innerHTML = '';
-    app.append(
-      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('a', { class: 'btn ghost sm', href: '#/library' }, t('lNav')),
-          el('a', { class: 'btn ghost sm', href: '/games.html' }, t('gNav')),
-          el('a', { class: 'btn ghost sm', href: '#/ai' }, t('hdesignWithAi')),
-          el('a', { class: 'btn accent sm', href: '#/' }, t('hnewActivity')),
-        ]),
-      ])
-    );
-    app.append(el('h1', { text: t('hHelloUser', { name: firstName(user.name) }) }));
-    app.append(el('h2', { style: { margin: '0 0 6px' }, text: t('hmyActivities') }));
-    app.append(
-      el('p', { class: 'muted small' }, t('hMineIntro', { name: user.name, count: activities.length }))
-    );
-
-    if (state.durable === false) {
-      app.append(
-        el('div', { class: 'banner', style: { marginBottom: '12px' } }, [
-          el('strong', { text: t('hstorageIsNotDurable') }),
-          el('div', { class: 'small', text: t('haccountsAndActivitiesAre') }),
-        ])
-      );
-    }
-
-    const guide = onboardingCard(activities.length);
-    if (guide) app.append(guide);
-
+    listBox.replaceChildren();
     if (!activities.length) {
-      // البطاقة الفارغة تكفي وحدها إن كان الدليل ظاهراً فوقها — ولا تُكرَّر معه
-      if (!guide) {
-        app.append(
-          el('div', { class: 'card stack center' }, [
-            el('div', { style: { fontSize: '2.4rem' }, text: '📭' }),
-            el('h2', { text: t('hnoSavedActivitiesYet') }),
-            el('p', { class: 'muted small', text: t('hcreateAnActivityThen') }),
-            el('a', { class: 'btn primary', href: '#/' }, t('hcreateAnActivity')),
-          ])
-        );
-      }
+      listBox.append(
+        UI.EmptyState({
+          emoji: '📭',
+          title: t('hnoSavedActivitiesYet'),
+          body: t('hcreateAnActivityThen'),
+          cta: t('hcreateAnActivity'),
+          href: '#/new',
+        })
+      );
     } else {
-      const list = el('div', { class: 'stack' });
-      activities.forEach((activity) => list.append(activityCard(activity)));
-      app.append(list);
+      activities.forEach((activity) => listBox.append(homeActivityCard(activity, () => openMyActivities())));
     }
 
-    app.append(classesCard());
-
-    app.append(
-      el('div', { class: 'card stack' }, [
-        el('div', { class: 'row between' }, [
-          el('span', { class: 'muted small', text: state.user.email }),
-          el(
-            'button',
-            { class: 'btn ghost sm', type: 'button', onclick: logout },
-            t('hsignOut3')
-          ),
-        ]),
-      ])
-    );
-  }
-
-  function activityCard(activity) {
-    const when = new Date(activity.updatedAt).toLocaleDateString(loc(), { year: 'numeric', month: 'short', day: 'numeric' });
-    const pace = { host: t('hteacherPaced'), auto: t('hauto'), self: t('hselfPaced') }[activity.settings?.pace] || '';
-
-    const launch = el('button', { class: 'btn accent sm', type: 'button' }, t('hlaunchASession'));
-    launch.addEventListener('click', async () => {
-      launch.disabled = true;
-      launch.textContent = t('hlaunching');
-      try {
-        const created = await api(`/api/activities/${activity.id}/launch`, { method: 'POST' });
-        rememberHost(created.code, created.hostToken, created.title);
-        location.hash = '#/live/' + created.code;
-      } catch (err) {
-        toast(err.message, 'bad');
-        launch.disabled = false;
-        launch.textContent = t('hlaunchASession');
-      }
-    });
-
-    const remove = el('button', { class: 'btn danger sm', type: 'button' }, t('hdelete'));
-    remove.addEventListener('click', async () => {
-      if (!confirm(t('hDeleteConfirm', { title: activity.title }))) return;
-      try {
-        await api(`/api/activities/${activity.id}`, { method: 'DELETE' });
-        toast(t('hactivityDeleted'), 'ok');
-        openMyActivities();
-      } catch (err) {
-        toast(err.message, 'bad');
-      }
-    });
-
-    const duplicate = el('button', { class: 'btn ghost sm', type: 'button' }, t('hduplicate'));
-    duplicate.addEventListener('click', async () => {
-      duplicate.disabled = true;
-      try {
-        const { activity: copy } = await api(`/api/activities/${activity.id}/duplicate`, { method: 'POST' });
-        toast(t('hCopiedTo', { title: copy.title }), 'ok');
-        openMyActivities();
-      } catch (err) {
-        toast(err.message, 'bad');
-        duplicate.disabled = false;
-      }
-    });
-
-    /**
-     * نسخة ورقية من نشاطٍ محفوظ. لا تُفتح إلا بجلب أسئلته: البطاقة تحمل
-     * عددها لا نصّها، ولو حمّلنا كل الأسئلة مع كل بطاقة لصارت صفحةُ عشرين
-     * نشاطاً بميغابايتات لا يقرؤها أحد.
-     */
-    const paper = el('button', { class: 'icon-btn', type: 'button', title: t('bPaperPrint') }, '🖨');
-    paper.addEventListener('click', async () => {
-      paper.disabled = true;
-      try {
-        const { activity: full } = await api('/api/activities/' + activity.id);
-        if (!window.Exporter.toPaper(full, { teacher: state.user?.name || '' })) toast(t('bPaperBlocked'), 'warn');
-      } catch (err) {
-        toast(err.message, 'bad');
-      } finally {
-        paper.disabled = false;
-      }
-    });
-
-    // النشر في المكتبة: زرّ واحد يفتح نموذجاً في البطاقة، وسحبٌ فوري إن كان منشوراً
-    const slot = el('div', { class: 'stack tight' });
-    const share = el('button', { class: 'btn ghost sm', type: 'button' }, activity.published ? t('lUnpublish') : t('lPublish'));
-    share.addEventListener('click', async () => {
-      if (activity.published) {
-        share.disabled = true;
-        try {
-          await api(`/api/activities/${activity.id}/unpublish`, { method: 'POST' });
-          toast(t('lUnpublishedOk'), 'ok');
-          openMyActivities();
-        } catch (err) {
-          toast(err.message, 'bad');
-          share.disabled = false;
-        }
-        return;
-      }
-      if (slot.firstChild) return slot.replaceChildren();
-      slot.append(publishForm(activity, openMyActivities, () => slot.replaceChildren()));
-    });
-
-    return el('div', { class: 'card stack' }, [
-      el('div', { class: 'row between' }, [
-        el('h2', { text: activity.title, style: { margin: 0, fontSize: '1.05rem' } }),
-        activity.live ? el('span', { class: 'badge live' }, t('hLiveCode', { code: activity.live.code })) : null,
-      ]),
-      el('div', { class: 'row', style: { gap: '6px' } }, [
-        el('span', { class: 'badge', text: t('hQuestionCount', { count: activity.questionCount }) }),
-        pace ? el('span', { class: 'badge', text: pace }) : null,
-        activity.published ? el('span', { class: 'badge ok', text: t('lPublished') }) : null,
-        activity.published && activity.copies ? el('span', { class: 'badge', text: t('lCopies', { n: activity.copies }) }) : null,
-        el('span', { class: 'muted small', text: t('hlastEdited') + when }),
-      ]),
-      el('div', { class: 'row', style: { gap: '6px' } }, [
-        activity.live
-          ? el('a', { class: 'btn primary sm', href: '#/live/' + activity.live.code }, t('hbackToTheSession'))
-          : launch,
-        el('a', { class: 'btn ghost sm', href: '#/edit/' + activity.id }, t('hopenAndEdit')),
-        duplicate,
-        share,
-        paper,
-        el('span', { class: 'grow' }),
-        remove,
-      ]),
-      slot,
-    ]);
+    const guide = onboardingCard(activities.length, () => openMyActivities());
+    if (guide) extras.append(guide);
+    extras.append(classesCard());
   }
 
   // ------------------------------------------------------------- الفصول
@@ -1008,7 +888,10 @@
     bar.innerHTML = '';
     if (!keepFilters) Object.assign(library, { q: '', subject: '', grade: '', lang: '', page: 0, items: [], total: 0 });
     if (!state.user) loadAccount();
-    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+    const UI = window.TeacherUI;
+    app.innerHTML = '';
+    const loading = el('div', { class: 'tp-home' }, UI.Skeleton(3));
+    app.append(loading);
 
     let data;
     try {
@@ -1016,24 +899,29 @@
       data = await api('/api/library?' + query);
     } catch (err) {
       app.innerHTML = '';
-      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('lTitle') }), el('p', { class: 'muted small', text: err.message })]));
+      app.append(
+        el('div', { class: 'tp-home' }, [
+          UI.ErrorState({ title: t('lTitle'), body: err.message, cta: t('hHomeRetry'), onClick: () => openLibrary(true) }),
+        ])
+      );
       return;
     }
     library.items = library.page ? [...library.items, ...data.items] : data.items;
     library.total = data.total;
 
     app.innerHTML = '';
-    app.append(
-      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '/' }, t('hhomePage')),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
-          el('a', { class: 'btn accent sm', href: '#/' }, t('hnewActivity')),
-        ]),
+    const page = el('div', { class: 'tp-home tp-d' });
+    app.append(page);
+    page.append(
+      el('div', { class: 'tp-chips' }, [
+        UI.NavChip({ label: t('hnewActivity'), href: '#/', primary: true }),
+        UI.NavChip({ label: t('hmyActivities'), href: '#/mine' }),
+        UI.NavChip({ label: t('gNav'), href: '/games.html' }),
       ])
     );
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('lTitle') }));
-    app.append(el('p', { class: 'muted small', text: t('lIntro') }));
+    page.append(
+      el('div', { class: 'tp-greet' }, [el('h1', { text: t('lTitle') }), el('p', { text: t('lIntro') })])
+    );
 
     // البحث بالضغط على Enter أو الزر لا عند كل حرف: كل حرف طلبٌ للخادم
     const search = el('input', { type: 'search', placeholder: t('lSearchPlaceholder'), value: library.q, maxlength: 80 });
@@ -1053,66 +941,65 @@
       });
       return sel;
     };
-    app.append(
-      el('div', { class: 'card stack tight' }, [
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('span', { class: 'grow' }, search),
-          el('button', { class: 'btn primary sm', type: 'button', onclick: run }, '🔍'),
+    // البحث والمرشِّحات في صندوقٍ واحد: سطرُ بحثٍ ثم قوائم أصلية تُفتح
+    // بلمسةٍ واحدة على الجوال — أسرع من شرائح تتمدّد وتلتفّ
+    page.append(
+      el('div', { class: 'tp-d-section' }, [
+        el('div', { class: 'tp-d-row' }, [
+          el('span', { style: { flex: '1 1 auto', minWidth: '0' } }, search),
+          el('button', { class: 'tp-btn tp-btn--purple tp-btn--sm', type: 'button', onclick: run, 'aria-label': t('lSearchPlaceholder') }, '🔍'),
         ]),
-        el('div', { class: 'row filters', style: { gap: '6px' } }, [
+        el('div', { class: 'tp-d-row' }, [
           pick('subject', t('lAllSubjects'), facet('subject')),
           pick('grade', t('lAllGrades'), facet('grade')),
           pick('lang', t('lAllLangs'), [{ value: 'ar', label: t('lArabic') }, { value: 'en', label: t('lEnglish') }]),
-          el('span', { class: 'grow' }),
-          el('span', { class: 'muted small', text: t('lCount', { n: library.total }) }),
         ]),
+        el('p', { class: 'tp-d-note', text: t('lCount', { n: library.total }) }),
       ])
     );
 
     if (!library.items.length) {
       const filtered = library.q || library.subject || library.grade || library.lang;
-      app.append(
-        el('div', { class: 'card stack center' }, [
-          el('div', { style: { fontSize: '2.4rem' }, text: filtered ? '🔍' : '🌍' }),
-          el('p', { class: 'muted', text: filtered ? t('lEmpty') : t('lEmptyAll') }),
-          el('a', { class: 'btn primary', href: '#/mine' }, t('hmyActivities')),
-        ])
+      page.append(
+        UI.EmptyState({
+          emoji: filtered ? '🔍' : '🌍',
+          title: filtered ? t('lEmpty') : t('lEmptyAll'),
+          body: '',
+          cta: t('hmyActivities'),
+          href: '#/mine',
+        })
       );
       return;
     }
 
-    const list = el('div', { class: 'stack' });
-    library.items.forEach((item) => list.append(libraryCard(item)));
-    app.append(list);
+    library.items.forEach((item) => page.append(libraryCard(item)));
 
     if (library.items.length < library.total) {
-      const more = el('button', { class: 'btn ghost block', type: 'button' }, t('lMore'));
+      const more = el('button', { class: 'tp-btn tp-btn--outline tp-btn--block', type: 'button' }, t('lMore'));
       more.addEventListener('click', () => {
         library.page += 1;
         openLibrary(true);
       });
-      app.append(more);
+      page.append(more);
     }
   }
 
+  /** بطاقة نشاطٍ في المكتبة — بمفردات بطاقة «نشاطاتي» نفسها */
   function libraryCard(item) {
-    return el('div', { class: 'card stack tight' }, [
-      el('div', { class: 'row between' }, [
-        el('h2', { text: item.title, style: { margin: 0, fontSize: '1.05rem' } }),
-        item.copies ? el('span', { class: 'badge', text: t('lCopies', { n: item.copies }) }) : null,
-      ]),
-      el('div', { class: 'row', style: { gap: '6px' } }, [
-        el('span', { class: 'badge', text: t('hQuestionCount', { count: item.questionCount }) }),
-        item.subject ? el('span', { class: 'badge', text: item.subject }) : null,
-        item.grade ? el('span', { class: 'badge', text: item.grade }) : null,
-        el('span', { class: 'badge', text: item.lang === 'en' ? t('lEnglish') : t('lArabic') }),
-        ...item.types.slice(0, 5).map((type) => el('span', { class: 'badge', text: TYPE_EMOJI[type] || '•' })),
-      ]),
-      el('div', { class: 'row between' }, [
-        el('span', { class: 'muted small', text: item.author ? t('lBy', { name: item.author }) : '' }),
-        el('a', { class: 'btn ghost sm', href: '#/library/' + item.id }, t('lPreview')),
-      ]),
-    ]);
+    const UI = window.TeacherUI;
+    return UI.ActivityCard({
+      title: item.title,
+      meta: [
+        UI.Badge({ label: t('hQuestionCount', { count: item.questionCount }) }),
+        // اسمُ المادة والصفّ بلغة المعلّم لا معرّفهما («math» و«g5» لا يقولان شيئاً)
+        item.subject ? UI.Badge({ label: tagLabel('subject', item.subject) }) : null,
+        item.grade ? UI.Badge({ label: tagLabel('grade', item.grade) }) : null,
+        UI.Badge({ label: item.lang === 'en' ? t('lEnglish') : t('lArabic') }),
+        item.copies ? UI.Badge({ label: t('lCopies', { n: item.copies }) }) : null,
+        item.author ? el('span', { text: t('lBy', { name: item.author }) }) : null,
+      ].filter(Boolean),
+      actions: [UI.Button({ label: t('lPreview'), href: '#/library/' + item.id, kind: 'cyan' })],
+    });
   }
 
   /** معاينة نشاط من المكتبة قبل نسخه — الأسئلة كما سيراها الطالب */
@@ -1442,14 +1329,14 @@
   }
 
   /**
-   * بطاقة نشاطٍ في الرئيسية — §3.8: زرّان متساويان ثم روابط ثانوية.
+   * بطاقة نشاطٍ محفوظ — §3.8: زرّان متساويان ثم روابط ثانوية.
    *
-   * نسخةٌ مستقلّة عن `activityCard` القديمة عمداً: تلك ما زالت تخدم مسار
-   * «نشاطاتي» بتصميمه القديم، وتُحذف هي وهذه التفرقة حين يُهجَّر المسار.
+   * واحدةٌ تخدم الرئيسية و«نشاطاتي» معاً، و`refresh` تقول أيّ شاشةٍ تُعاد
+   * رسمها بعد فعلٍ يغيّر القائمة (إطلاق، استنساخ، نشر، حذف).
    */
-  function homeActivityCard(activity) {
+  function homeActivityCard(activity, onChange) {
     const UI = window.TeacherUI;
-    const refresh = () => openStart();
+    const refresh = onChange || (() => openStart());
     const when = new Date(activity.updatedAt).toLocaleDateString(loc(), { year: 'numeric', month: 'short', day: 'numeric' });
     const pace = { host: t('hteacherPaced'), auto: t('hauto'), self: t('hselfPaced') }[activity.settings?.pace] || '';
     const slot = el('div', {});

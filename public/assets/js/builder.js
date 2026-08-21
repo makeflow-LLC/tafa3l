@@ -430,12 +430,19 @@
      */
     function draw() {
       root.innerHTML = '';
-      root.append(designerBar());
-      // تبويب الأسئلة يرسم خطواته داخل إطاره (DESIGN.md §2.6)
-      if (stage === 'questions') return drawQuestions();
-      root.append(stageBar());
-      if (stage === 'settings') return drawSettings();
-      return drawReview();
+      /*
+       * إطارٌ واحد لكل التبويبات: هو حاويةُ القياس التي تتبعها الأعمدة
+       * والخطوات (استعلام حاوية لا نافذة)، وهو كذلك ما يكسو الحقول القديمة
+       * بالرموز الجديدة. وحين كان شريط الخطوات خارجه انكسرت أسماؤه سطرين
+       * على الجوال لأن استعلام الحاوية لم يجد له حاوية.
+       */
+      const shell = el('div', { class: 'tp-d' });
+      root.append(shell);
+      shell.append(designerBar());
+      if (stage === 'questions') return drawQuestions(shell);
+      shell.append(stageBar());
+      if (stage === 'settings') return drawSettings(shell);
+      return drawReview(shell);
     }
 
     /**
@@ -505,19 +512,16 @@
       );
     }
 
-    function drawSettings() {
-
-      // ---- القوالب أولاً: اختيار قالب يستبدل الإعدادات، فيجب أن يسبقها
-      const templatesBox = el('div', { class: 'card stack' }, [
-        el('h2', { text: t('bstartFromAReady') }),
-        el('div', { class: 'row', id: 'tmplRow' }, el('span', { class: 'muted small', text: t('bloading') })),
-        el('div', { class: 'muted small', text: t('bchoosingATemplateReplaces') }),
-      ]);
-      root.append(templatesBox);
-      loadTemplates(templatesBox.querySelector('#tmplRow'));
-
-      // ---- استيراد بنك أسئلة من جدول: أسرع طريق لمعلّم أسئلته في Excel
-      root.append(sheetImportCard());
+    /**
+     * تبويب الإعدادات: قرارات النشاط كلّه.
+     *
+     * الترتيب مقصود: المعلومات، ثم سير النشاط، ثم ما يُضبط مرّةً في السنة
+     * (النزاهة والفرق والجدولة والفصول) مطويّاً، ثم مداخل البدء (قالبٌ أو
+     * استيراد) في الآخر — لأنها ليست إعداداً بل طريقاً آخر للبدء، ومن جاء
+     * ليضبط نشاطه لا يريد أن يستقبله عرضُ قوالب.
+     */
+    function drawSettings(shell) {
+      const page = shell;
 
       // ---- العنوان والإعدادات
       const titleInput = el('input', { maxlength: 120, placeholder: t('beGUnit3'), value: draft.title });
@@ -526,9 +530,9 @@
         saveDraft(draft);
       });
 
-      root.append(
-        el('div', { class: 'card stack' }, [
-          el('h2', { text: t('bSectionInfo') }),
+      page.append(
+        el('div', { class: 'tp-d-section' }, [
+          el('h2', { class: 'tp-d-section__title', text: t('bSectionInfo') }),
           el('div', {}, [el('label', { text: t('bactivityTitle') }), titleInput]),
           switchRow(t('baskForAName'), 'requireName', t('bturnItOffFor')),
           switchRow(t('ballowLateJoining'), 'allowLateJoin', t('bstudentsCanJoinAfter')),
@@ -542,9 +546,9 @@
       // فنُوفّق المفتاح مع القيمة المخزّنة قبل الرسم كي لا يظهر مطفأً وهو عامل
       const hostPaced = draft.settings.pace === 'host' || draft.settings.pace === 'auto';
       if (draft.settings.pace === 'auto') draft.settings.autoAdvance = true;
-      root.append(
-        el('div', { class: 'card stack' }, [
-          el('h2', { text: t('bSectionFlow') }),
+      page.append(
+        el('div', { class: 'tp-d-section' }, [
+          el('h2', { class: 'tp-d-section__title', text: t('bSectionFlow') }),
           el('label', { text: t('bwhoMovesToThe') }),
           /**
            * خياران لا ثلاثة. كان «⏱️ تلقائي» وضعاً ثالثاً بجوار «المدرّب»
@@ -640,37 +644,55 @@
             t('bafterAnsweringTheLearner')
           ),
 
-          el('label', { text: t('bIntegrity'), style: { marginTop: '6px' } }),
-          switchRow(t('bShuffleQuestions'), 'shuffleQuestions', t('bShuffleQuestionsHint')),
-          switchRow(t('bShuffleOptions'), 'shuffleOptions', t('bShuffleOptionsHint')),
-
-          el('label', { text: t('bteamMode'), style: { marginTop: '6px' } }),
-          switchRow(t('bsplitAutomaticallyIntoTeams'), 'teamMode', t('beachParticipantIsAssigned')),
-          draft.settings.teamMode ? teamCountRow() : null,
-
-          el('label', { text: t('bscheduleAndDuration'), style: { marginTop: '6px' } }),
-          scheduleRow(),
-
-          el('label', { text: t('hClassAttach'), style: { marginTop: '6px' } }),
-          rosterRow(),
         ])
       );
 
+      // ما يُضبط مرّةً ثم يُنسى: مطويٌّ حتى يُطلب
+      page.append(
+        el('details', { class: 'tp-d-adv' }, [
+          el('summary', { text: t('bSectionMore') }),
+          el('div', { class: 'tp-d-adv__body' }, [
+            el('label', { text: t('bIntegrity') }),
+            switchRow(t('bShuffleQuestions'), 'shuffleQuestions', t('bShuffleQuestionsHint')),
+            switchRow(t('bShuffleOptions'), 'shuffleOptions', t('bShuffleOptionsHint')),
 
-      root.append(
-        el('div', { class: 'card row', style: { gap: '8px' } }, [
-          el('span', { class: 'grow' }),
-          el('button', {
-            class: 'btn primary', type: 'button',
-            onclick: () => {
-              if (!draft.questions.length) draft.questions.push(blankQuestion('mc'));
-              openIndex = 0;
-              stage = 'questions';
-              update();
-            },
-          }, t('bStageToQuestions')),
+            el('label', { text: t('bteamMode') }),
+            switchRow(t('bsplitAutomaticallyIntoTeams'), 'teamMode', t('beachParticipantIsAssigned')),
+            draft.settings.teamMode ? teamCountRow() : null,
+
+            el('label', { text: t('bscheduleAndDuration') }),
+            scheduleRow(),
+
+            el('label', { text: t('hClassAttach') }),
+            rosterRow(),
+          ]),
         ])
       );
+
+      // ---- مداخل البدء: قالبٌ جاهز أو استيرادٌ من جدول
+      const templatesRow = el('div', { class: 'tp-d-row', id: 'tmplRow' }, el('span', { class: 'tp-d-note', text: t('bloading') }));
+      page.append(
+        el('details', { class: 'tp-d-adv' }, [
+          el('summary', { text: t('bSectionStartFrom') }),
+          el('div', { class: 'tp-d-adv__body' }, [
+            el('label', { text: t('bstartFromAReady') }),
+            templatesRow,
+            el('p', { class: 'tp-d-note', text: t('bchoosingATemplateReplaces') }),
+            sheetImportCard(),
+          ]),
+        ])
+      );
+      loadTemplates(templatesRow);
+
+
+      const toQuestions = el('button', { class: 'tp-btn tp-btn--purple tp-btn--block', type: 'button' }, t('bStageToQuestions'));
+      toQuestions.addEventListener('click', () => {
+        if (!draft.questions.length) draft.questions.push(blankQuestion('mc'));
+        openIndex = 0;
+        stage = 'questions';
+        update();
+      });
+      page.append(toQuestions);
     }
 
     /** ذاكرة الأنواع داخل الجلسة: ما كُتب في نوعٍ يعود إن رجع المعلّم إليه */
@@ -730,7 +752,7 @@
      * على الجوال تنطوي اللوحة في سطرٍ يفتح ورقةً سفلية، ويثبت زرّ «سؤال
      * جديد» في زاوية الإبهام فلا يُمرَّر إلى آخر سؤالٍ طويل ليُضاف غيره.
      */
-    function drawQuestions() {
+    function drawQuestions(shell) {
       const DUI = global.DesignerUI;
       if (!draft.questions.length) {
         // لا شاشةَ فارغة: أول سؤالٍ يُفتح جاهزاً باختيارٍ من متعدد
@@ -742,9 +764,7 @@
       if (openIndex < 0 || openIndex >= total) openIndex = Math.max(0, Math.min(openIndex, total - 1));
       const question = draft.questions[openIndex];
 
-      const wrap = el('div', { class: 'tp-d' });
-      root.append(wrap);
-
+      const wrap = shell;
       wrap.append(stageBar());
 
       /*
@@ -873,27 +893,32 @@
       if (!global.Exporter.toPaper(draft, { teacher: (opts && opts.teacherName) || '' })) toast(t('bPaperBlocked'), 'warn');
     }
 
-    function drawReview() {
-      const rows = el('div', { class: 'stack tight' });
+    /**
+     * المراجعة: كل الأسئلة في نظرة واحدة قبل الإطلاق — والنقر على أيٍّ منها
+     * يعيد المعلّم إلى صفحته لتعديله، وما ينقصه مكتوبٌ في صفّه لا في رسالةٍ
+     * عابرة بعد الإطلاق.
+     */
+    function drawReview(shell) {
+      const DUI = global.DesignerUI;
+      const wrap = shell;
+
+      const rows = el('div', { class: 'tp-d-review' });
       draft.questions.forEach((q, i) => {
         const problem = questionProblem(q, i);
-        const row = el('button', { class: 'review-row', type: 'button' }, [
-          el('span', { class: 'n', text: String(i + 1) }),
-          el('span', { class: 'grow stack tight', style: { textAlign: 'start' } }, [
-            el('strong', { text: q.text || t('bStageEmptyQuestion') }),
-            el('span', { class: 'muted small', text: TYPE_EMOJI[q.type] + ' ' + TYPE_LABELS[q.type] }),
-            // ما ينقص هذا السؤال بالضبط، هنا لا في رسالةٍ عابرة بعد الإطلاق
-            problem ? el('span', { class: 'small', style: { color: 'var(--bad)' }, text: '⚠️ ' + problem }) : null,
-          ]),
-          el('span', { class: 'badge', text: t('bStageEdit') }),
-        ]);
-        if (problem) row.classList.add('warn');
-        row.addEventListener('click', () => {
-          openIndex = i;
-          stage = 'questions';
-          draw();
-        });
-        rows.append(row);
+        rows.append(
+          DUI.ReviewRow({
+            number: i + 1,
+            title: q.text || t('bStageEmptyQuestion'),
+            type: TYPE_EMOJI[q.type] + ' ' + TYPE_LABELS[q.type],
+            problem,
+            editLabel: t('bStageEdit'),
+            onClick: () => {
+              openIndex = i;
+              stage = 'questions';
+              draw();
+            },
+          })
+        );
       });
 
       const counted = countedQuestions(draft);
@@ -902,36 +927,33 @@
       const markOff =
         draft.settings.reward === 'marks' && (draft.settings.markMode || 'equal') === 'custom' && counted.length && Math.abs(sum - total) >= 0.01;
 
-      root.append(
-        el('div', { class: 'card stack' }, [
-          el('div', { class: 'row between' }, [
-            el('h2', { text: t('bStageReviewTitle', { n: draft.questions.length }), style: { margin: 0 } }),
-            el('button', { class: 'btn ghost sm', type: 'button', onclick: () => { stage = 'settings'; draw(); } }, t('bStageBackSettings')),
-          ]),
+      const addBtn = el('button', { class: 'tp-btn tp-btn--outline tp-btn--sm tp-btn--block', type: 'button' }, t('bStepAdd'));
+      addBtn.addEventListener('click', () => {
+        openIndex = Math.max(0, draft.questions.length - 1);
+        stage = 'questions';
+        addQuestion();
+      });
+
+      wrap.append(
+        el('div', { class: 'tp-d-main' }, [
+          el('h2', { class: 'tp-section', text: t('bStageReviewTitle', { n: draft.questions.length }) }),
           rows,
-          markOff ? el('div', { class: 'note warn small', style: { margin: 0 } }, t('bMarkSumOff', { sum, total })) : null,
-          el('button', {
-            class: 'btn ghost block', type: 'button',
-            onclick: () => {
-              openIndex = Math.max(0, draft.questions.length - 1);
-              stage = 'questions';
-              addQuestion();
-            },
-          }, t('bStepAdd')),
-          /**
+          markOff ? el('div', { class: 'tp-warn' }, [el('span', { text: t('bMarkSumOff', { sum, total }) })]) : null,
+          addBtn,
+          /*
            * النسخة الورقية هنا لا في مكانٍ آخر: هذه لحظةُ «أسئلتي جاهزة»
            * بالضبط، وهي نفسها لحظةُ من يريد ورقةً لصفٍّ بلا جوالات أو
            * لطالبٍ غاب. ووضعُها بعد الإطلاق يعني أنه لن يجدها.
            */
-          el('div', { class: 'row between', style: { gap: '10px', marginTop: '4px' } }, [
-            el('span', { class: 'muted small grow', text: t('bPaperHint') }),
-            el('button', { class: 'btn ghost sm', type: 'button', onclick: printPaper }, t('bPaperPrint')),
+          el('div', { class: 'tp-d-row' }, [
+            el('span', { class: 'tp-d-note', style: { flex: '1 1 auto' }, text: t('bPaperHint') }),
+            el('button', { class: 'tp-btn tp-btn--outline tp-btn--sm', type: 'button', onclick: printPaper }, t('bPaperPrint')),
           ]),
         ])
       );
 
-      // ---- الإطلاق
-      const launch = el('button', { class: 'btn accent block' }, t('bstartTheSessionAnd'));
+      // ---- الإطلاق: الفعل الأخير، وحده بلون الفعل
+      const launch = el('button', { class: 'tp-btn tp-btn--cyan tp-btn--block', type: 'button' }, t('bstartTheSessionAnd'));
       launch.addEventListener('click', () => {
         const problem = validate(draft);
         if (problem) return toast(problem, 'bad');
@@ -943,32 +965,26 @@
         });
       });
 
-      root.append(
-        el('div', { class: 'card stack' }, [
+      const clear = el('button', { class: 'tp-link tp-link--danger', type: 'button' }, t('bclearTheDraft'));
+      clear.addEventListener('click', () => {
+        if (!confirm(t('bclearTheDraftAnd'))) return;
+        Object.assign(draft, defaultDraft());
+        openIndex = 0;
+        update();
+      });
+
+      wrap.append(
+        el('div', { class: 'tp-d-launch' }, [
           launch,
           // أزرار إضافية من صفحة المدرب (مثل الحفظ في الحساب)
           ...(typeof extraActions === 'function' ? [extraActions(draft, validate)] : []).filter(Boolean),
           // لغة النشاط تُثبَّت وقت الإطلاق على لغة اللوحة، فليعرف المعلّم ذلك قبل الضغط
-          el('p', { class: 'muted small center', style: { margin: 0 }, text: t('blangNote') }),
-          el('p', { class: 'muted small center', style: { margin: 0 }, text: t('bstorageIsTemporaryThe') }),
-          el(
-            'button',
-            {
-              class: 'btn ghost sm',
-              type: 'button',
-              onclick: () => {
-                if (!confirm(t('bclearTheDraftAnd'))) return;
-                Object.assign(draft, defaultDraft());
-                openIndex = 0;
-                update();
-              },
-            },
-            t('bclearTheDraft')
-          ),
+          el('p', { class: 'tp-d-note', text: t('blangNote') }),
+          el('p', { class: 'tp-d-note', text: t('bstorageIsTemporaryThe') }),
+          el('div', { class: 'tp-d-row', style: { justifyContent: 'center' } }, [clear]),
         ])
       );
     }
-
     /**
      * استيراد من جدول. المعلّم الذي يملك بنك أسئلة في Excel لن يعيد كتابته
      * يدوياً — إما ننقله له في دقيقة أو يبقى حيث هو. يقبل ملفاً أو لصقاً
@@ -1109,11 +1125,11 @@
     function choiceGroup(key, options, onPick, io) {
       const read = io?.read || (() => draft.settings[key]);
       const write = io?.write || ((value) => { draft.settings[key] = value; });
-      const group = el('div', { class: 'types' });
+      const group = el('div', { class: 'tp-d-types' });
       options.forEach((option) => {
         const on = (read() || options[0].value) === option.value;
-        const button = el('button', { class: 'type-btn' + (on ? ' on' : ''), type: 'button', title: option.hint }, [
-          el('span', { class: 'em', text: option.emoji }),
+        const button = el('button', { class: 'tp-d-type' + (on ? ' is-on' : ''), type: 'button', title: option.hint }, [
+          el('span', { 'aria-hidden': 'true', text: option.emoji }),
           el('span', { text: option.title }),
         ]);
         button.addEventListener('click', () => {
@@ -1124,7 +1140,7 @@
         group.append(button);
       });
       const current = options.find((option) => option.value === (read() || options[0].value));
-      return el('div', {}, [group, el('div', { class: 'muted small', style: { marginTop: '6px' }, text: current ? current.hint : '' })]);
+      return el('div', { class: 'tp-d-field' }, [group, el('p', { class: 'tp-d-note', text: current ? current.hint : '' })]);
     }
 
     function autoDelayRow() {
@@ -1504,8 +1520,11 @@
         // بعض المفاتيح تُظهر أو تُخفي عناصر إعداد أخرى (مثل عدد الفرق) فيجب إعادة الرسم
         update();
       });
-      return el('label', { class: 'switch' }, [
-        el('span', { class: 'grow' }, [el('span', { text: label }), el('div', { class: 'muted small', text: hint })]),
+      return el('label', { class: 'tp-d-switch' }, [
+        el('span', { class: 'tp-d-switch__text' }, [
+          el('span', { class: 'tp-d-switch__label', text: label }),
+          hint ? el('span', { class: 'tp-d-note', text: hint }) : null,
+        ]),
         input,
       ]);
     }

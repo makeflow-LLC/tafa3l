@@ -138,6 +138,24 @@
     return el('p', { class: 'tp-d-hint', text: text || '' });
   }
 
+  // ------------------------------------------ صفّ المراجعة
+
+  /** سؤالٌ في المراجعة: رقمه، ونصّه ونوعه، وما ينقصه — والصفّ كلّه يُنقر */
+  function ReviewRow(opts) {
+    const o = opts || {};
+    const row = el('button', { class: 'tp-d-review__row' + (o.problem ? ' is-warn' : ''), type: 'button' }, [
+      ltr({ class: 'tp-d-review__n', text: String(o.number || 1) }),
+      el('div', { class: 'tp-d-review__body' }, [
+        el('span', { class: 'tp-d-review__title', text: o.title || '' }),
+        el('span', { class: 'tp-d-review__meta', text: o.type || '' }),
+        o.problem ? el('span', { class: 'tp-d-review__warn', text: '⚠️ ' + o.problem }) : null,
+      ]),
+      el('span', { class: 'tp-d-review__edit', text: o.editLabel || '' }),
+    ]);
+    if (o.onClick) row.addEventListener('click', o.onClick);
+    return row;
+  }
+
   // ------------------------------------------- ورقة سفلية عامّة
 
   /**
@@ -173,5 +191,5 @@
     };
   }
 
-  global.DesignerUI = { el, ltr, TabStep, QuestionPill, TypeTile, TypeGrid, OptionRow, Field, HintBox, Sheet };
+  global.DesignerUI = { el, ltr, TabStep, QuestionPill, TypeTile, TypeGrid, OptionRow, ReviewRow, Field, HintBox, Sheet };
 })(window);
