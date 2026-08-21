@@ -13,8 +13,21 @@
   /** لغة التنسيق للتواريخ والأرقام */
   const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
 
-  // اللغة وحدها تبقى في الشريط (رمز EN)، وكل ما عداها داخل القائمة
+  /*
+   * اللغة والسِمَة كلتاهما في الشريط، لا داخل القائمة.
+   *
+   * كانتا مفترقتين: `EN` ظاهرٌ في الشريط ومبدّل السِمَة مدفونٌ في قائمة
+   * النقاط الثلاث — بينما تعرضهما كل صفحةٍ أخرى (الرئيسية، الدخول، الدليل،
+   * الألعاب…) جنباً إلى جنب. فبدا للمعلّم أن الوضع الداكن «اختفى» من صفحاته
+   * الداخلية وحدها. مبدّلان متجاوران في كل صفحة: قاعدةٌ واحدة لا استثناء.
+   */
   if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
+  if ($('#langRow')) {
+    window.Theme?.mountToggle($('#langRow'), {
+      toDark: window.I18n?.t('themeToDark'),
+      toLight: window.I18n?.t('themeToLight'),
+    });
+  }
 
   const app = $('#app');
   const bar = $('#bar');
@@ -136,20 +149,16 @@
       menu.append(sep());
     }
 
-    // تنقّل
+    // تنقّل — الألعاب منها: الصفحات الداخلية لا تعرض شريط الشرائح، فبلا
+    // سطرٍ هنا لا يبقى للمعلّم طريقٌ إلى قسم الألعاب من بروفايله أو باقاته
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
+    menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
     menu.append(UI.MenuRow({ label: t('hteacherGuide'), href: '/help.html', title: t('hteacherGuideTip') }));
 
-    // إعدادات
+    // إعدادات — السِمَة ليست هنا بل في الشريط بجوار EN، فلا يُبنى مبدّلان
+    // لأمرٍ واحد: مبدّلٌ مرئيٌّ دائماً خيرٌ من آخر مخبوءٍ يكرّره
     menu.append(sep());
-    menu.append(
-      UI.MenuToggle(
-        t('hMenuTheme'),
-        () => (window.Theme?.effective() === 'dark' ? t('hThemeDark') : t('hThemeLight')),
-        () => window.Theme?.set(window.Theme.effective() === 'dark' ? 'light' : 'dark')
-      )
-    );
     menu.append(
       UI.MenuToggle(
         t('hsound'),
@@ -1905,7 +1914,7 @@
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '#/new' }, t('hbackToTheEditor')),
-        el('a', { class: 'btn ghost sm', href: '/' }, t('hhome')),
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hhome')),
       ])
     );
     const root = el('div', { class: 'stack' });
