@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme-default="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tapio — معاينة مصمّم النشاط</title>
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.66.0" />
+    <link rel="stylesheet" href="/assets/css/tapio-base.css?v=1.66.0" />
+    <link rel="stylesheet" href="/assets/css/teacher.css?v=1.66.0" />
+    <link rel="stylesheet" href="/assets/css/designer.css?v=1.66.0" />
+    <script src="/assets/js/theme.js?v=1.66.0"></script>
+    <style>
+      .canvas {
+        min-height: 100dvh;
+        padding: var(--tp-s-24);
+        background: var(--tp-canvas);
+        color: var(--tp-text);
+      }
+      .head-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--tp-s-16);
+        flex-wrap: wrap;
+      }
+      .canvas h1 {
+        font-size: var(--tp-fs-22);
+        margin: 0 0 var(--tp-s-8);
+      }
+      .canvas .lead {
+        margin: 0 0 var(--tp-s-24);
+        color: var(--tp-muted);
+        font-size: var(--tp-fs-14);
+        max-width: 70ch;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--tp-s-24);
+      }
+      .cell {
+        display: flex;
+        flex-direction: column;
+        gap: var(--tp-s-8);
+        margin: 0;
+        flex: 0 0 auto;
+        max-width: 100%;
+      }
+      .cell--desktop {
+        width: 1000px;
+      }
+      .cell--phone {
+        width: var(--tp-frame-w);
+      }
+      .cell > figcaption {
+        font-size: var(--tp-fs-13);
+        font-weight: var(--tp-w-700);
+        color: var(--tp-muted);
+      }
+      /* الورقة في المعاينة تُعرض داخل الإطار لا فوق الصفحة كلها */
+      .sheet-demo .tp-sheet {
+        position: static;
+        background: none;
+        padding-top: var(--tp-s-12);
+      }
+      .sheet-demo .tp-sheet__panel {
+        border: var(--tp-hair) solid var(--tp-border);
+        border-radius: var(--tp-r-16);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas tp">
+      <div class="head-row">
+        <h1>مصمّم النشاط — تبويب الأسئلة</h1>
+        <span id="themeRow"></span>
+      </div>
+      <p class="lead">
+        معاينة ساكنة بمكوّنات <code>designer-ui.js</code> نفسها التي تعمل في الباني.
+        الإطار الأول بعرض 1000px (عمودان ولوحة 280px)، والثاني بعرض 390px (سطر النوع وورقته وزرّ الإضافة الثابت).
+        الإطارات تتبع سِمَة الصفحة — بدّلها بالزرّ أعلاه.
+      </p>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <script src="/assets/js/designer-ui.js?v=1.66.0"></script>
+    <script>
+      (function () {
+        'use strict';
+        const UI = window.DesignerUI;
+        const el = UI.el;
+
+        window.Theme?.mountToggle(document.getElementById('themeRow'), {
+          toDark: 'السِمَة الداكنة',
+          toLight: 'السِمَة الفاتحة',
+        });
+
+        const TYPES = [
+          ['اختيار من متعدد', '🎯'],
+          ['صح / خطأ', '✅'],
+          ['استطلاع رأي', '📊'],
+          ['مقياس', '📈'],
+          ['سحابة كلمات', '☁️'],
+          ['إجابة مفتوحة', '💬'],
+          ['أكمل الفراغ', '✏️'],
+          ['رتّب بالترتيب', '🔢'],
+          ['طابق بين طرفين', '🔗'],
+          ['شريحة عرض', '🖼'],
+        ];
+        const typeItems = (active) => TYPES.map(([label, icon], i) => ({ label, icon, active: i === active }));
+
+        function bar() {
+          return el('div', { class: 'tp-d-bar' }, [
+            el('span', { class: 'tp-d-bar__btn', text: '⟨' }),
+            el('div', { class: 'tp-d-bar__mid' }, [
+              el('span', { class: 'tp-d-title', text: 'عواصم الدول العربية' }),
+              el('span', { class: 'tp-d-save', text: 'يُحفظ تلقائياً' }),
+            ]),
+            el('span', { class: 'tp-d-bar__btn', text: '؟' }),
+          ]);
+        }
+
+        function tabs() {
+          return el('div', { class: 'tp-d-tabs' }, [
+            UI.TabStep({ number: 1, label: 'الإعدادات' }),
+            UI.TabStep({ number: 2, label: 'الأسئلة', active: true }),
+            UI.TabStep({ number: 3, label: 'المراجعة' }),
+          ]);
+        }
+
+        function nav(count, active) {
+          const pills = el('div', { class: 'tp-d-pills' });
+          for (let i = 0; i < count; i++) {
+            pills.append(UI.QuestionPill({ number: i + 1, active: i === active, done: i < 3 }));
+          }
+          return el('div', { class: 'tp-d-nav' }, [
+            el('span', { class: 'tp-d-nav__label', text: `السؤال ${active + 1} من ${count}` }),
+            pills,
+            el('button', { class: 'tp-btn tp-btn--cyan tp-btn--sm tp-d-nav__add', type: 'button', text: '+ سؤال جديد' }),
+          ]);
+        }
+
+        function field(label, value, opts) {
+          const control = el(opts && opts.area ? 'textarea' : 'input', { value: value });
+          if (opts && opts.area) control.value = value;
+          return UI.Field({ label, control, hint: opts && opts.hint });
+        }
+
+        function options() {
+          const row = (text, correct) =>
+            UI.OptionRow({
+              field: el('input', { value: text }),
+              correct,
+              correctLabel: 'علّمها إجابةً صحيحة',
+              removeLabel: 'حذف الخيار',
+              onToggle: () => {},
+              onRemove: () => {},
+            });
+          return el('div', { class: 'tp-d-field' }, [
+            el('label', { text: 'الخيارات (اضغط ✓ للإجابة الصحيحة)' }),
+            el('div', { class: 'tp-d-opts' }, [
+              row('الرباط', false),
+              row('الجزائر', true),
+              row('تونس', false),
+            ]),
+          ]);
+        }
+
+        function editor() {
+          const main = el('div', { class: 'tp-d-main' }, [
+            field('نص السؤال', 'ما عاصمة الجزائر؟', { area: true }),
+            el('div', { class: 'tp-d-row' }, [el('button', { class: 'tp-btn tp-btn--outline tp-btn--sm', type: 'button', text: '🖼 إضافة صورة' })]),
+            options(),
+            el('div', { class: 'tp-d-row' }, [field('مدة الإجابة', '30 ثانية لكل سؤال'), field('علامة السؤال', '1000')]),
+            el('details', { class: 'tp-d-adv' }, [
+              el('summary', { text: 'إعدادات السؤال' }),
+              el('div', { class: 'tp-d-adv__body' }, [field('شرح الإجابة الصحيحة', '', { area: true })]),
+            ]),
+          ]);
+          return main;
+        }
+
+        function panel() {
+          return el('div', { class: 'tp-d-panel' }, [
+            el('h2', { class: 'tp-d-panel__title', text: 'نوع السؤال' }),
+            UI.TypeGrid(typeItems(0)),
+            UI.HintBox('اختر نوع السؤال أولاً — النوع يحدّد شكل إجابة الطالب وطريقة تصحيحه.'),
+          ]);
+        }
+
+        const grid = document.getElementById('grid');
+
+        // ---- سطح المكتب: عمودان ولوحة 280px
+        grid.append(
+          el('figure', { class: 'cell cell--desktop' }, [
+            el('figcaption', { text: 'سطح المكتب 1000px — عمودان ولوحة جانبية 280px' }),
+            el('div', { class: 'tp tp-d-frame', 'data-shot': 'designer-desktop' }, [
+              el('div', { class: 'tp-d' }, [bar(), tabs(), nav(10, 0), el('div', { class: 'tp-d-cols' }, [editor(), panel()])]),
+            ]),
+          ])
+        );
+
+        // ---- الجوال: سطر النوع بدل اللوحة، وزرّ إضافةٍ ثابت
+        const phone = el('div', { class: 'tp-d' }, [
+          bar(),
+          tabs(),
+          nav(10, 0),
+          el('div', { class: 'tp-d-cols' }, [
+            el('div', { class: 'tp-d-main' }, [
+              el('button', { class: 'tp-d-typerow', type: 'button' }, [
+                el('span', { text: 'نوع السؤال' }),
+                el('span', { class: 'tp-d-typerow__value', text: '🎯 اختيار من متعدد' }),
+              ]),
+              editor(),
+              UI.HintBox('اختر نوع السؤال أولاً — النوع يحدّد شكل إجابة الطالب وطريقة تصحيحه.'),
+            ]),
+          ]),
+        ]);
+        grid.append(
+          el('figure', { class: 'cell cell--phone' }, [
+            el('figcaption', { text: 'الجوال 390px — سطر النوع بدل اللوحة' }),
+            el('div', { class: 'tp tp-d-frame', 'data-shot': 'designer-phone' }, phone),
+          ])
+        );
+
+        // ---- ورقة الأنواع كما تُفتح على الجوال
+        const sheet = UI.Sheet({ title: 'نوع السؤال', closeLabel: 'إغلاق', content: UI.TypeGrid(typeItems(0), { sheet: true }) });
+        sheet.open();
+        grid.append(
+          el('figure', { class: 'cell cell--phone sheet-demo' }, [
+            el('figcaption', { text: 'ورقة الأنواع على الجوال — عمودان، عشرة أنواع' }),
+            el('div', { class: 'tp tp-d-frame', 'data-shot': 'designer-types' }, sheet.node),
+          ])
+        );
+      })();
+    </script>
+  </body>
+</html>

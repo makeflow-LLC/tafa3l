@@ -1,0 +1,549 @@
+/**
+ * مصمّم النشاط — تبويب الأسئلة (DESIGN.md §2.6 و§3.12–3.16).
+ *
+ * الرموز في `tapio-base.css` ويجب تحميله قبل هذا الملف.
+ *
+ * المقاسات تُقاس بعرض **الحاوية** لا النافذة: الشاشة نفسها تُعرض داخل إطارٍ
+ * ضيّق في صفحة المعاينة، فلو قِسنا النافذة لَرأينا هناك تخطيطاً لا يراه معلّم.
+ *
+ * وفي هذا الملف وحده قواعدُ تستهدف عناصر HTML عامّة (input, textarea, label)
+ * داخل `.tp-d`: محرّرات الأنواع العشرة مكتوبةٌ بعناصر عارية منذ سنة، وإعادة
+ * بنائها كلها اليوم خارج نطاق تبويب الأسئلة — فنكسوها بالرموز الجديدة.
+ */
+
+.tp-d {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-16);
+  container-type: inline-size;
+  padding-bottom: max(var(--tp-s-24), env(safe-area-inset-bottom));
+}
+
+/* ------------------------------------------ شريط المصمّم العلوي */
+
+.tp-d-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-12);
+}
+
+.tp-d-bar__mid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-2);
+  align-items: center;
+  text-align: center;
+}
+
+/* العنوان يُقرأ هنا ويُحرَّر في تبويب الإعدادات — فضغطه ينقل إليه */
+.tp-d-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--tp-fs-16);
+  font-weight: var(--tp-w-700);
+  color: var(--tp-text);
+  cursor: pointer;
+}
+
+.tp-d-save {
+  font-size: var(--tp-fs-12);
+  color: var(--tp-muted);
+}
+
+.tp-d-bar__btn {
+  flex: 0 0 auto;
+  min-height: var(--tp-tap-min);
+  min-width: var(--tp-tap-min);
+  display: inline-grid;
+  place-items: center;
+  padding: 0 var(--tp-s-10);
+  border-radius: var(--tp-r-10);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-text);
+  font: inherit;
+  font-size: var(--tp-fs-14);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* ------------------------------------------- 3.12 خطوات التبويب */
+
+.tp-d-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--tp-s-8);
+}
+
+.tp-d-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--tp-s-8);
+  min-height: var(--tp-tab-h);
+  padding: var(--tp-s-6) var(--tp-s-8);
+  border-radius: var(--tp-r-14);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-muted);
+  font: inherit;
+  font-size: var(--tp-fs-15);
+  font-weight: var(--tp-w-600);
+  cursor: pointer;
+}
+
+.tp-d-tab__num {
+  flex: 0 0 auto;
+  width: var(--tp-tab-num);
+  height: var(--tp-tab-num);
+  border-radius: var(--tp-r-pill);
+  background: var(--tp-border);
+  color: var(--tp-text);
+  display: grid;
+  place-items: center;
+  font-size: var(--tp-fs-12);
+  font-weight: var(--tp-w-700);
+}
+
+.tp-d-tab.is-on {
+  border: var(--tp-s-2) solid var(--tp-purple);
+  background: var(--tp-surface);
+  color: var(--tp-text);
+  font-weight: var(--tp-w-700);
+}
+
+.tp-d-tab.is-on .tp-d-tab__num {
+  background: var(--tp-purple);
+  color: var(--tp-white);
+}
+
+/* على الشاشات الضيّقة يبقى الثلاثة في سطر، ويصغر النصّ لا الهدف */
+@container (max-width: 420px) {
+  .tp-d-tab {
+    font-size: var(--tp-fs-13);
+    gap: var(--tp-s-4);
+    padding: var(--tp-s-6) var(--tp-s-4);
+  }
+}
+
+/* ------------------------------- صفّ التنقّل بين الأسئلة (3.13) */
+
+.tp-d-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-12);
+}
+
+.tp-d-nav__label {
+  flex: 0 0 auto;
+  font-size: var(--tp-fs-13);
+  font-weight: var(--tp-w-700);
+  color: var(--tp-muted);
+}
+
+/*
+ * الأسئلة قد تبلغ الستّين، فالصفّ يمرّر أفقياً والرقم النشط يُساق إلى النظر.
+ * الحبّة 34px كما في التصميم، لكنّ مساحة ضغطها 44px بحشوةٍ شفّافة.
+ */
+.tp-d-pills {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: var(--tp-s-6);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tp-d-pill {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--tp-tap-min);
+  height: var(--tp-tap-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tp-d-pill__box {
+  width: var(--tp-pill);
+  height: var(--tp-pill);
+  border-radius: var(--tp-r-10);
+  border: var(--tp-hair) solid var(--tp-border);
+  color: var(--tp-muted);
+  display: grid;
+  place-items: center;
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-600);
+  font-variant-numeric: tabular-nums;
+}
+
+.tp-d-pill.is-on .tp-d-pill__box {
+  background: var(--tp-purple);
+  border-color: var(--tp-purple);
+  color: var(--tp-white);
+  font-weight: var(--tp-w-700);
+}
+
+/* السؤال المكتوب يُميَّز بنقطة: لا لونَ وحده يقول «تمّ» */
+.tp-d-pill.is-done .tp-d-pill__box {
+  border-color: var(--tp-correct);
+  color: var(--tp-status-correct);
+}
+
+.tp-d-pill:focus-visible .tp-d-pill__box {
+  outline: var(--tp-s-2) solid var(--tp-purple);
+  outline-offset: var(--tp-s-2);
+}
+
+/* --------------------------------------------------- العمودان */
+
+.tp-d-cols {
+  display: grid;
+  gap: var(--tp-s-16);
+  align-items: start;
+}
+
+@container (min-width: 900px) {
+  .tp-d-cols {
+    grid-template-columns: 1fr var(--tp-panel-w);
+  }
+}
+
+.tp-d-main,
+.tp-d-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-14);
+  min-width: 0;
+}
+
+.tp-d-panel {
+  padding: var(--tp-s-16);
+  border-radius: var(--tp-r-16);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+}
+
+.tp-d-panel__title {
+  margin: 0;
+  font-size: var(--tp-fs-13);
+  font-weight: var(--tp-w-700);
+  color: var(--tp-muted);
+}
+
+/* اللوحة الجانبية لسطح المكتب، وسطرُ النوع للجوال — واحدٌ منهما فقط */
+.tp-d-panel {
+  display: none;
+}
+
+.tp-d-typerow {
+  display: flex;
+}
+
+@container (min-width: 900px) {
+  .tp-d-panel {
+    display: flex;
+  }
+
+  .tp-d-typerow {
+    display: none;
+  }
+}
+
+/* ------------------------------------- 3.14 بلاطات أنواع الأسئلة */
+
+.tp-d-types {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tp-s-8);
+}
+
+.tp-d-type {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--tp-s-6);
+  min-height: var(--tp-tap-min);
+  padding: var(--tp-s-10) var(--tp-s-12);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-muted);
+  font: inherit;
+  font-size: var(--tp-fs-13);
+  font-weight: var(--tp-w-500);
+  text-align: center;
+  cursor: pointer;
+}
+
+.tp-d-type.is-on {
+  border: var(--tp-s-2) solid var(--tp-purple);
+  background: var(--tp-surface);
+  color: var(--tp-text);
+  font-weight: var(--tp-w-700);
+}
+
+/* صندوق التلميح */
+.tp-d-hint {
+  margin: 0;
+  padding: var(--tp-s-12);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  font-size: var(--tp-fs-12);
+  color: var(--tp-muted);
+}
+
+/* سطر النوع على الجوال: يقول النوع الحالي، وضغطه يفتح ورقة الأنواع */
+.tp-d-typerow {
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tp-s-8);
+  width: 100%;
+  min-height: var(--tp-menu-row);
+  padding: 0 var(--tp-s-12);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-text);
+  font: inherit;
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-600);
+  cursor: pointer;
+}
+
+.tp-d-typerow__value {
+  color: var(--tp-muted);
+  font-size: var(--tp-fs-13);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------ 3.16 الحقول (والقديم منها كذلك) */
+
+.tp-d-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-6);
+}
+
+.tp-d label,
+.tp-d-label {
+  font-size: var(--tp-fs-13);
+  font-weight: var(--tp-w-600);
+  color: var(--tp-muted);
+}
+
+.tp-d input[type='text'],
+.tp-d input[type='number'],
+.tp-d input:not([type]),
+.tp-d textarea,
+.tp-d select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--tp-s-14) var(--tp-s-16);
+  border-radius: var(--tp-r-14);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-surface);
+  color: var(--tp-text);
+  font: inherit;
+  font-size: var(--tp-fs-16);
+  font-weight: var(--tp-w-500);
+  line-height: var(--tp-lh);
+}
+
+.tp-d textarea {
+  min-height: var(--tp-textarea-h);
+  resize: vertical;
+}
+
+.tp-d input:focus-visible,
+.tp-d textarea:focus-visible,
+.tp-d select:focus-visible {
+  outline: var(--tp-s-2) solid var(--tp-purple);
+  outline-offset: calc(-1 * var(--tp-hair));
+  border-color: var(--tp-purple);
+}
+
+/* ---------------------------------------- 3.15 صفّ تحرير الخيار */
+
+.tp-d-opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-10);
+}
+
+.tp-d-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-10);
+}
+
+.tp-d-opt input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--tp-s-11) var(--tp-s-16);
+  border-radius: var(--tp-r-12);
+  font-size: var(--tp-fs-15);
+}
+
+.tp-d-mark {
+  flex: 0 0 auto;
+  width: var(--tp-tap-min);
+  height: var(--tp-tap-min);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: transparent;
+  color: var(--tp-muted);
+  font: inherit;
+  font-size: var(--tp-fs-16);
+  cursor: pointer;
+}
+
+/* الصحيح: مفتاحٌ أخضر وإطارُ حقلٍ أخضر — يُقرأ من طرف الشاشة */
+.tp-d-mark.is-on {
+  background: var(--tp-correct);
+  border-color: var(--tp-correct);
+  color: var(--tp-white);
+}
+
+.tp-d-opt.is-correct input {
+  border-color: var(--tp-correct);
+}
+
+.tp-d-mark--remove.is-on,
+.tp-d-mark--remove {
+  color: var(--tp-status-wrong);
+}
+
+/* --------------------------------- إعدادات السؤال القابلة للطيّ */
+
+.tp-d-adv {
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  padding: 0 var(--tp-s-12);
+}
+
+.tp-d-adv > summary {
+  min-height: var(--tp-menu-row);
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-8);
+  font-size: var(--tp-fs-14);
+  font-weight: var(--tp-w-600);
+  color: var(--tp-text);
+  cursor: pointer;
+  list-style: none;
+}
+
+.tp-d-adv > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tp-d-adv > summary::after {
+  content: '▾';
+  color: var(--tp-muted);
+  margin-inline-start: auto;
+}
+
+.tp-d-adv[open] > summary::after {
+  content: '▴';
+}
+
+.tp-d-adv__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-14);
+  padding-bottom: var(--tp-s-14);
+}
+
+/* ------------------------------------ زرّ «سؤال جديد» في متناول اليد */
+
+/*
+ * على الجوال يطول السؤال حتى يخرج زرّ الإضافة عن الشاشة، والمعلّم يكتب عشرة
+ * أسئلة تباعاً — فيثبت الزرّ في زاوية الإبهام بدل أن يمرّر إلى آخر الصفحة.
+ */
+.tp-d-fab {
+  position: fixed;
+  inset-block-end: max(var(--tp-s-16), env(safe-area-inset-bottom));
+  inset-inline-end: var(--tp-s-16);
+  z-index: 25;
+}
+
+@container (min-width: 900px) {
+  .tp-d-fab {
+    display: none;
+  }
+}
+
+/* مساحةٌ تحت المحتوى بقدر الزرّ الثابت، فلا يغطّي آخر حقلٍ في الصفحة */
+.tp-d {
+  padding-bottom: calc(var(--tp-btn-h) + var(--tp-s-24) + env(safe-area-inset-bottom));
+}
+
+@container (min-width: 900px) {
+  .tp-d {
+    padding-bottom: var(--tp-s-24);
+  }
+}
+
+/* التلميح تحت المحرّر للجوال وحده — اللوحة الجانبية تحمله على سطح المكتب */
+@container (min-width: 900px) {
+  .tp-d-hint--mobile {
+    display: none;
+  }
+}
+
+.tp-d-nav__add {
+  display: none;
+}
+
+@container (min-width: 900px) {
+  .tp-d-nav__add {
+    display: inline-flex;
+  }
+}
+
+/* ------------------------------------------------ أدوات وصفوف */
+
+.tp-d-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tp-s-8);
+}
+
+.tp-d-note {
+  margin: 0;
+  font-size: var(--tp-fs-12);
+  color: var(--tp-muted);
+}
+
+/* ورقة الأنواع على الجوال تأخذ عرض الورقة المشتركة نفسه */
+.tp-d-sheet-types {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tp-s-8);
+  width: 100%;
+}
+
+/* ------------------------------------ إطار صفحة المعاينة فقط */
+
+.tp-d-frame {
+  padding: var(--tp-s-20);
+  border-radius: var(--tp-r-20);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-bg);
+  overflow: hidden;
+}

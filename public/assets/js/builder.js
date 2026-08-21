@@ -430,34 +430,79 @@
      */
     function draw() {
       root.innerHTML = '';
+      root.append(designerBar());
+      // تبويب الأسئلة يرسم خطواته داخل إطاره (DESIGN.md §2.6)
+      if (stage === 'questions') return drawQuestions();
       root.append(stageBar());
       if (stage === 'settings') return drawSettings();
-      if (stage === 'review') return drawReview();
-      return drawQuestions();
+      return drawReview();
+    }
+
+    /**
+     * شريط المصمّم (DESIGN.md §2.6): رجوع، ثم عنوان النشاط وملاحظة الحفظ،
+     * ثم الدليل. الرجوع يعرف أين هو: من الأسئلة إلى الإعدادات، ومن الإعدادات
+     * إلى خارج المصمّم. والعنوان يُقرأ هنا ويُحرَّر في الإعدادات.
+     */
+    function designerBar() {
+      const backLabel = stage === 'settings' ? t('hback') : t('bStageBackSettings');
+      const back = el('button', { class: 'tp-d-bar__btn', type: 'button', title: backLabel, 'aria-label': backLabel }, '⟨');
+      back.addEventListener('click', () => {
+        if (stage === 'questions') stage = 'settings';
+        else if (stage === 'review') stage = 'questions';
+        else return (opts && typeof opts.onBack === 'function' ? opts.onBack() : undefined);
+        draw();
+      });
+      const label = draft.title || t('startDraftUntitled');
+      const title =
+        stage === 'settings'
+          ? el('span', { class: 'tp-d-title', text: label })
+          : el('button', { class: 'tp-d-title', type: 'button', title: t('bactivityTitle'), text: label });
+      if (title.tagName === 'BUTTON') {
+        title.addEventListener('click', () => {
+          stage = 'settings';
+          draw();
+        });
+      }
+      return el('div', { class: 'tp-d-bar' }, [
+        back,
+        el('div', { class: 'tp-d-bar__mid' }, [title, el('span', { class: 'tp-d-save', text: t('bAutoSaved') })]),
+        el('a', { class: 'tp-d-bar__btn', href: '/help.html', title: t('hteacherGuide'), 'aria-label': t('hteacherGuide') }, '؟'),
+      ]);
     }
 
     /** شريط المراحل الثلاث — يبيّن أين هو، ويسمح بالرجوع لما أنجزه */
     function stageBar() {
-      const bar2 = el('div', { class: 'wizbar' });
+      const DUI = global.DesignerUI;
       const stages = [
         { id: 'settings', label: t('bStageSettings') },
         { id: 'questions', label: t('bStageQuestions') },
         { id: 'review', label: t('bStageReview') },
       ];
-      stages.forEach((sg, i) => {
-        const btn = el('button', { class: 'wizstep' + (sg.id === stage ? ' on' : ''), type: 'button' }, [
-          el('span', { class: 'num', text: String(i + 1) }),
-          el('span', { text: sg.label }),
-        ]);
-        btn.addEventListener('click', () => {
-          // لا مراجعةَ ولا أسئلةَ بلا سؤال واحد على الأقل
-          if (sg.id !== 'settings' && !draft.questions.length) return toast(t('bStageNeedQuestion'), 'bad');
-          stage = sg.id;
-          draw();
+      const go = (id) => {
+        // لا مراجعةَ ولا أسئلةَ بلا سؤال واحد على الأقل
+        if (id !== 'settings' && !draft.questions.length && id === 'review') return toast(t('bStageNeedQuestion'), 'bad');
+        stage = id;
+        draw();
+      };
+      if (!DUI) {
+        const bar2 = el('div', { class: 'wizbar' });
+        stages.forEach((sg, i) => {
+          const btn = el('button', { class: 'wizstep' + (sg.id === stage ? ' on' : ''), type: 'button' }, [
+            el('span', { class: 'num', text: String(i + 1) }),
+            el('span', { text: sg.label }),
+          ]);
+          btn.addEventListener('click', () => go(sg.id));
+          bar2.append(btn);
         });
-        bar2.append(btn);
-      });
-      return bar2;
+        return bar2;
+      }
+      return el(
+        'div',
+        { class: 'tp-d-tabs' },
+        stages.map((sg, i) =>
+          DUI.TabStep({ number: i + 1, label: sg.label, active: sg.id === stage, onClick: () => go(sg.id) })
+        )
+      );
     }
 
     function drawSettings() {
@@ -628,131 +673,194 @@
       );
     }
 
+    /** ذاكرة الأنواع داخل الجلسة: ما كُتب في نوعٍ يعود إن رجع المعلّم إليه */
+    const typeMemory = new Map();
+
+    /** هل في السؤال عملٌ يضيع بتغيير نوعه؟ (النصّ يبقى دائماً) */
+    function questionHasContent(q) {
+      if ((q.options || []).some((o) => String(o?.text || '').trim())) return true;
+      if ((q.items || []).some((i) => String(i?.text || '').trim())) return true;
+      if ((q.pairs || []).some((pair) => String(pair?.left || '').trim() || String(pair?.right || '').trim())) return true;
+      if ((q.blanks || []).some((b) => String(b || '').trim())) return true;
+      if (String(q.explanation || '').trim()) return true;
+      if (String(q.body || '').trim()) return true;
+      return false;
+    }
+
+    /**
+     * تغيير نوع السؤال.
+     *
+     * النوع يعيد بناء السؤال، فما كُتب في النوع السابق يُحفظ في ذاكرة الجلسة
+     * ويعود كما هو إن رجع المعلّم إليه — والتنبيه يقول بالضبط ما الذي يضيع.
+     */
+    function changeType(index, type) {
+      const question = draft.questions[index];
+      if (!question || type === question.type) return;
+      const key = (t2) => question.id + '|' + t2;
+      const remembered = typeMemory.get(key(type));
+      if (questionHasContent(question)) {
+        const message = remembered
+          ? t('bTypeSwitchBack', { from: TYPE_LABELS[question.type], to: TYPE_LABELS[type] })
+          : t('bTypeSwitchConfirm', { from: TYPE_LABELS[question.type], to: TYPE_LABELS[type] });
+        if (!confirm(message)) return;
+      }
+      typeMemory.set(key(question.type), JSON.parse(JSON.stringify(question)));
+      const fresh = remembered ? JSON.parse(JSON.stringify(remembered)) : blankQuestion(type);
+      fresh.id = question.id;
+      fresh.type = type;
+      // النصّ يتبع المعلّم لا النوع
+      if (type !== 'blank' || !remembered) fresh.text = question.text || fresh.text;
+      draft.questions[index] = fresh;
+      update();
+    }
+
+    /** سؤالٌ جديد بنوع السؤال الحالي: المعلّم يكتب عشرةً من نوعٍ واحد تباعاً */
+    function addQuestion() {
+      const current = draft.questions[openIndex];
+      draft.questions.push(blankQuestion(current ? current.type : 'mc'));
+      openIndex = draft.questions.length - 1;
+      adding = false;
+      update();
+    }
+
+    /**
+     * تبويب الأسئلة (DESIGN.md §2.6): شريطٌ علويّ، فخطوات، فصفّ أرقام
+     * الأسئلة، ثم عمودان — المحرّر، ولوحة الأنواع والتلميح.
+     *
+     * على الجوال تنطوي اللوحة في سطرٍ يفتح ورقةً سفلية، ويثبت زرّ «سؤال
+     * جديد» في زاوية الإبهام فلا يُمرَّر إلى آخر سؤالٍ طويل ليُضاف غيره.
+     */
     function drawQuestions() {
-      /**
-       * الأسئلة كمعالج: سؤالٌ واحد على الشاشة، وتنقّلٌ بين الأسئلة.
-       *
-       * كانت كل الأسئلة تُعرض معاً (مطويّةً إلا واحدة)، فصفحةٌ فيها عشرون
-       * سؤالاً تصير جداراً من البطاقات يضيع فيه المعلّم. صار كل سؤال بمنزلة
-       * صفحة: يكتبه، ثم «التالي»، ثم الذي بعده.
-       */
+      const DUI = global.DesignerUI;
+      if (!draft.questions.length) {
+        // لا شاشةَ فارغة: أول سؤالٍ يُفتح جاهزاً باختيارٍ من متعدد
+        draft.questions.push(blankQuestion('mc'));
+        openIndex = 0;
+        saveDraft(draft);
+      }
       const total = draft.questions.length;
       if (openIndex < 0 || openIndex >= total) openIndex = Math.max(0, Math.min(openIndex, total - 1));
+      const question = draft.questions[openIndex];
 
-      const page = el('div', { class: 'stack' });
+      const wrap = el('div', { class: 'tp-d' });
+      root.append(wrap);
 
-      // شريط التقدّم: أرقام تُنقر للقفز مباشرةً إلى سؤال بعينه
-      const steps = el('div', { class: 'qsteps' });
-      draft.questions.forEach((q, i) => {
-        const dot = el('button', {
-          class: 'qstep' + (i === openIndex ? ' on' : '') + (q.text && q.text.trim() ? ' done' : ''),
-          type: 'button',
-          title: q.text || TYPE_LABELS[q.type],
-        }, String(i + 1));
-        dot.addEventListener('click', () => {
-          openIndex = i;
-          draw();
-        });
-        steps.append(dot);
-      });
+      wrap.append(stageBar());
 
-      if (total) {
-        page.append(
-          el('div', { class: 'row between' }, [
-            el('strong', { text: t('bStepOf', { i: openIndex + 1, n: total }) }),
-            el('span', { class: 'muted small', text: TYPE_EMOJI[draft.questions[openIndex].type] + ' ' + TYPE_LABELS[draft.questions[openIndex].type] }),
+      /*
+       * المسودة في المتصفّح وحده حتى تُحفظ في «نشاطاتي» — ومن مسح بيانات
+       * متصفّحه قبل ذلك فقد ساعةً من عمله. التحذير نصٌّ ظاهر لا نافذة.
+       */
+      if (!(opts && opts.savedOnServer)) {
+        wrap.append(
+          el('div', { class: 'tp-warn', role: 'status' }, [
+            el('strong', { text: t('bLocalOnlyTitle') }),
+            el('span', { text: t('bLocalOnlyBody') }),
           ])
         );
-        page.append(steps);
-        page.append(questionCard(draft.questions[openIndex], openIndex));
-
-        // التنقّل: السابق والتالي، وعلى آخر سؤال يصير «التالي» إضافةَ سؤال
-        // «السابق» من أول سؤال يرجع إلى الإعدادات لا إلى فراغ
-        const prev = el('button', { class: 'btn ghost', type: 'button' }, openIndex === 0 ? t('bStageBackSettings') : t('bStepPrev'));
-        prev.addEventListener('click', () => {
-          if (openIndex === 0) {
-            stage = 'settings';
-            draw();
-            return;
-          }
-          openIndex -= 1;
-          draw();
-        });
-
-        const addBtn = el('button', { class: 'btn ghost', type: 'button' }, t('bStepAdd'));
-        addBtn.addEventListener('click', () => {
-          adding = true;
-          draw();
-        });
-
-        // على آخر سؤال: إمّا سؤالٌ جديد وإمّا المراجعة والإطلاق
-        const next = el('button', { class: 'btn primary', type: 'button' }, openIndex + 1 < total ? t('bStepNext') : t('bStageToReview'));
-        next.addEventListener('click', () => {
-          if (openIndex + 1 < total) {
-            openIndex += 1;
-            draw();
-            return;
-          }
-          stage = 'review';
-          draw();
-        });
-        page.append(
-          el('div', { class: 'row', style: { gap: '8px', marginTop: '4px' } }, [
-            prev,
-            el('span', { class: 'grow' }),
-            openIndex + 1 === total ? addBtn : null,
-            next,
-          ].filter(Boolean))
-        );
       }
 
-      // لوحة الأنواع: تظهر عند طلب سؤال جديد أو حين لا سؤال بعد
-      if (adding || !total) {
-        page.append(el('label', { text: t('baddANewQuestion'), style: { marginTop: '4px' } }));
-        page.append(
-          el('div', { class: 'types' }, TYPES.map((type) =>
-            el(
-              'button',
-              {
-                class: 'type-btn',
-                type: 'button',
-                onclick: () => {
-                  draft.questions.push(blankQuestion(type));
-                  openIndex = draft.questions.length - 1;
-                  adding = false;
-                  update();
-                },
-              },
-              [el('span', { class: 'em', text: TYPE_EMOJI[type] }), el('span', { text: '+ ' + TYPE_LABELS[type] })]
-            )
-          ))
+      // ---- صفّ الأرقام: يمرّر أفقياً، والنشط يُساق إلى النظر
+      const pills = el('div', { class: 'tp-d-pills' });
+      draft.questions.forEach((q, i) => {
+        pills.append(
+          DUI.QuestionPill({
+            number: i + 1,
+            active: i === openIndex,
+            done: !!(q.text && q.text.trim()),
+            title: q.text || TYPE_LABELS[q.type],
+            onClick: () => {
+              openIndex = i;
+              draw();
+            },
+          })
         );
-        if (total) {
-          page.append(
-            el('button', {
-              class: 'btn ghost sm', type: 'button',
-              onclick: () => {
-                adding = false;
-                draw();
-              },
-            }, t('bStepCancelAdd'))
-          );
-        }
-        page.append(el('label', { text: t('bReuseTitle'), style: { marginTop: '10px' } }));
-        page.append(el('div', { id: 'reuseRow' }));
-      }
-
-      root.append(
-        el('div', { class: 'card stack' }, [
-          el('div', { class: 'row between' }, [
-            el('h2', { text: t('bQuestionsSection'), style: { margin: 0 } }),
-            total ? el('button', { class: 'btn ghost sm', type: 'button', onclick: () => { adding = true; draw(); } }, t('bStepAdd')) : null,
-          ]),
-          page,
+      });
+      const addLabel = t('bStepAdd');
+      const navAdd = el('button', { class: 'tp-btn tp-btn--cyan tp-btn--sm tp-d-nav__add', type: 'button' }, addLabel);
+      navAdd.addEventListener('click', addQuestion);
+      wrap.append(
+        el('div', { class: 'tp-d-nav' }, [
+          el('span', { class: 'tp-d-nav__label', text: t('bStepOf', { i: openIndex + 1, n: total }) }),
+          pills,
+          navAdd,
         ])
       );
-      if (root.querySelector('#reuseRow')) reuseRow(root.querySelector('#reuseRow'));
 
+      // ---- العمودان
+      const main = el('div', { class: 'tp-d-main' });
+      const panel = el('div', { class: 'tp-d-panel' });
+      wrap.append(el('div', { class: 'tp-d-cols' }, [main, panel]));
+
+      const typeItems = () =>
+        TYPES.map((type) => ({
+          label: TYPE_LABELS[type],
+          icon: TYPE_EMOJI[type],
+          active: type === question.type,
+          onClick: () => changeType(openIndex, type),
+        }));
+
+      panel.append(el('h2', { class: 'tp-d-panel__title', text: t('bquestionType') }));
+      panel.append(DUI.TypeGrid(typeItems()));
+      panel.append(DUI.HintBox(t('bTypeHint')));
+
+      // سطر النوع للجوال: يقول النوع الحالي، وضغطه يفتح ورقة الأنواع
+      const typeRow = el('button', { class: 'tp-d-typerow', type: 'button' }, [
+        el('span', { text: t('bquestionType') }),
+        el('span', { class: 'tp-d-typerow__value', text: TYPE_EMOJI[question.type] + ' ' + TYPE_LABELS[question.type] }),
+      ]);
+      const sheet = DUI.Sheet({
+        title: t('bquestionType'),
+        closeLabel: t('pSheetClose'),
+        content: DUI.TypeGrid(typeItems(), { sheet: true }),
+      });
+      typeRow.addEventListener('click', () => sheet.open());
+      main.append(typeRow);
+      wrap.append(sheet.node);
+
+      main.append(questionCard(question, openIndex));
+      const mobileHint = DUI.HintBox(t('bTypeHint'));
+      mobileHint.classList.add('tp-d-hint--mobile');
+      main.append(mobileHint);
+
+      // ---- زرّ الإضافة الثابت على الجوال
+      const fab = el('button', { class: 'tp-btn tp-btn--cyan tp-d-fab', type: 'button' }, addLabel);
+      fab.addEventListener('click', addQuestion);
+      wrap.append(fab);
+
+      // ---- الانتقال بين الأسئلة والمراجعة
+      const prev = el('button', { class: 'tp-btn tp-btn--outline tp-btn--sm', type: 'button' }, openIndex === 0 ? t('bStageBackSettings') : t('bStepPrev'));
+      prev.addEventListener('click', () => {
+        if (openIndex === 0) {
+          stage = 'settings';
+          draw();
+          return;
+        }
+        openIndex -= 1;
+        draw();
+      });
+      const next = el('button', { class: 'tp-btn tp-btn--purple tp-btn--sm', type: 'button' }, openIndex + 1 < total ? t('bStepNext') : t('bStageToReview'));
+      next.addEventListener('click', () => {
+        if (openIndex + 1 < total) {
+          openIndex += 1;
+          draw();
+          return;
+        }
+        stage = 'review';
+        draw();
+      });
+      wrap.append(el('div', { class: 'tp-d-row' }, [prev, el('span', { class: 'grow' }), next]));
+
+      // بنك الأسئلة السابقة يبقى متاحاً تحت المحرّر
+      const reuse = el('div', { id: 'reuseRow' });
+      wrap.append(el('div', { class: 'tp-d-field' }, [el('label', { text: t('bReuseTitle') }), reuse]));
+      reuseRow(reuse);
+
+      // الرقم النشط إلى النظر بعد الرسم — على الجوال قد يكون خارج الصفّ
+      const activePill = pills.querySelector('.is-on');
+      if (activePill && activePill.scrollIntoView) {
+        activePill.scrollIntoView({ block: 'nearest', inline: 'center' });
+      }
     }
 
     /**
@@ -806,9 +914,8 @@
             class: 'btn ghost block', type: 'button',
             onclick: () => {
               openIndex = Math.max(0, draft.questions.length - 1);
-              adding = true;
               stage = 'questions';
-              draw();
+              addQuestion();
             },
           }, t('bStepAdd')),
           /**
@@ -1403,53 +1510,24 @@
       ]);
     }
 
+    /**
+     * محرّر السؤال — العمود الرئيسي في تبويب الأسئلة.
+     *
+     * لا رأسَ للبطاقة: صفّ الأرقام فوقها يقول أيّ سؤالٍ هذا، ولوحة الأنواع
+     * تقول نوعه. وما يقلّ استعماله (الشرح، والفيديو، وأدوات النقل والحذف)
+     * ينزوي في «إعدادات السؤال»، وتبقى العلامة والوقت ظاهرين دائماً.
+     */
     function questionCard(question, index) {
-      const open = index === openIndex;
-      const card = el('div', { class: 'qitem' });
-
-      const head = el('div', { class: 'qhead' }, [
-        el('span', { class: 'n', text: String(index + 1) }),
-        el('span', { class: 't', text: question.text || TYPE_LABELS[question.type] }),
-        el('span', { class: 'badge', text: TYPE_EMOJI[question.type] }),
-      ]);
-      // في وضع المعالج السؤال المعروض مفتوح دائماً — لا طيّ ولا فراغ
-      head.style.cursor = 'default';
-      card.append(head);
-      if (!open) return card;
-
-      const body = el('div', { class: 'qbody' });
-
-      // نوع السؤال
-      body.append(
-        el('div', {}, [
-          el('label', { text: t('bquestionType') }),
-          el('div', { class: 'types' }, TYPES.map((type) =>
-            el(
-              'button',
-              {
-                class: 'type-btn' + (type === question.type ? ' on' : ''),
-                type: 'button',
-                onclick: () => {
-                  if (type === question.type) return;
-                  const fresh = blankQuestion(type);
-                  fresh.id = question.id;
-                  fresh.text = question.text;
-                  draft.questions[index] = fresh;
-                  update();
-                },
-              },
-              [el('span', { class: 'em', text: TYPE_EMOJI[type] }), el('span', { text: TYPE_LABELS[type] })]
-            )
-          )),
-        ])
-      );
+      const card = el('div', { class: 'tp-d-card' });
+      const body = el('div', { class: 'tp-d-main' });
+      // ما يُطوى: يُملأ أثناء البناء ويُلحق في آخره
+      const advanced = el('div', { class: 'tp-d-adv__body' });
 
       // نص السؤال
       const text = el('textarea', { maxlength: 300, placeholder: t('bwriteTheQuestionText') });
       text.value = question.text;
       text.addEventListener('input', () => {
         question.text = text.value;
-        head.querySelector('.t').textContent = text.value || TYPE_LABELS[question.type];
         saveDraft(draft);
       });
       body.append(
@@ -1610,7 +1688,7 @@
         videoBox.append(el('label', { text: t('bVideo') }), input, preview);
       };
       drawVideo();
-      body.append(videoBox);
+      advanced.append(videoBox);
 
       // ---- صورة السؤال: ميزة بريميوم، وزر واحد صغير لا يزحم كل سؤال
       const imageBox = el('div', { class: 'stack tight' });
@@ -1684,44 +1762,40 @@
 
       // الخيارات
       if (question.type === 'mc' || question.type === 'poll') {
-        const optionsBox = el('div', { class: 'stack' });
+        const optionsBox = el('div', { class: 'tp-d-opts' });
         question.options.forEach((option, oIndex) => {
           const input = el('input', { maxlength: 120, placeholder: t('bOptionN', { n: oIndex + 1 }), value: option.text });
           input.addEventListener('input', () => {
             option.text = input.value;
             saveDraft(draft);
           });
-          const row = el('div', { class: 'opt-edit' }, [input]);
-
-          if (question.type === 'mc') {
-            const mark = el(
-              'button',
-              {
-                class: 'mark' + (question.correct.includes(option.id) ? ' on' : ''),
-                type: 'button',
-                title: t('bmarkAsTheCorrect'),
-              },
-              '✓'
-            );
-            mark.addEventListener('click', () => {
-              const at = question.correct.indexOf(option.id);
-              if (at >= 0) question.correct.splice(at, 1);
-              else question.correct.push(option.id);
-              mark.classList.toggle('on');
-              saveDraft(draft);
-            });
-            row.append(mark);
-          }
-
-          if (question.options.length > 2) {
-            const remove = el('button', { class: 'mark', type: 'button', title: t('bdeleteOption') }, '✕');
-            remove.addEventListener('click', () => {
-              question.options.splice(oIndex, 1);
-              question.correct = question.correct.filter((c) => c !== option.id);
-              update();
-            });
-            row.append(remove);
-          }
+          const row = global.DesignerUI.OptionRow({
+            field: input,
+            correct: question.type === 'mc' && question.correct.includes(option.id),
+            correctLabel: t('bmarkAsTheCorrect'),
+            removeLabel: t('bdeleteOption'),
+            onToggle:
+              question.type === 'mc'
+                ? (mark, node) => {
+                    const at = question.correct.indexOf(option.id);
+                    if (at >= 0) question.correct.splice(at, 1);
+                    else question.correct.push(option.id);
+                    const on = question.correct.includes(option.id);
+                    mark.classList.toggle('is-on', on);
+                    mark.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    node.classList.toggle('is-correct', on);
+                    saveDraft(draft);
+                  }
+                : null,
+            onRemove:
+              question.options.length > 2
+                ? () => {
+                    question.options.splice(oIndex, 1);
+                    question.correct = question.correct.filter((c) => c !== option.id);
+                    update();
+                  }
+                : null,
+          });
           optionsBox.append(row);
         });
 
@@ -1938,7 +2012,7 @@
           question.explanation = explanation.value;
           saveDraft(draft);
         });
-        body.append(
+        advanced.append(
           el('div', {}, [
             el('label', { text: t('bexplanationOfTheCorrect') }),
             explanation,
@@ -1952,8 +2026,8 @@
       }
 
       // أدوات السؤال
-      body.append(
-        el('div', { class: 'row' }, [
+      advanced.append(
+        el('div', { class: 'tp-d-row' }, [
           el(
             'button',
             {
@@ -2017,6 +2091,14 @@
             },
             t('bdeleteQuestion')
           ),
+        ])
+      );
+
+      // «إعدادات السؤال»: ما لا يُلمس في كل سؤال — مطويٌّ ولا يزاحم الكتابة
+      body.append(
+        el('details', { class: 'tp-d-adv' }, [
+          el('summary', { text: t('bAdvancedTitle') }),
+          advanced,
         ])
       );
 

@@ -1566,18 +1566,7 @@
     bar.innerHTML = '';
     app.innerHTML = '';
     const root = el('div', { class: 'stack' });
-    // زر رجوع صريح — لا يكفي الأيقونة الصغيرة في الشريط العلوي
-    // شريطٌ نحيف: المعلّم هنا جاء ليكتب أسئلته، فلا نزاحمه بمداخل الأقسام.
-    // الاختيار بين اليدوي والذكي صار في شاشةٍ قبل هذه، فلا نكرّره فوق النموذج.
-    app.append(
-      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '#/' }, t('hback')),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('span', { class: 'muted small', text: t('hyourDraftIsSaved') }),
-          el('a', { class: 'btn ghost sm', href: '/help.html' }, t('hteacherGuide')),
-        ]),
-      ])
-    );
+    // الرجوع وملاحظة الحفظ والدليل صارت في شريط المصمّم نفسه (DESIGN.md §2.6)
     app.append(root);
 
     // تحذير مبكر إن كان الخادم غير متاح، بدل مفاجأة المدرب عند الإطلاق
@@ -2125,7 +2114,15 @@
     try {
       const startStage = state.builderStage;
       state.builderStage = null;
-      window.Builder.mount(root, onLaunch, saveAction, { startStage, teacherName: state.user?.name || '' });
+      window.Builder.mount(root, onLaunch, saveAction, {
+        startStage,
+        teacherName: state.user?.name || '',
+        // محفوظٌ في «نشاطاتي» أم في المتصفّح وحده — يقرّر تحذير المصمّم
+        savedOnServer: !!state.editingActivityId,
+        onBack: () => {
+          location.hash = '#/';
+        },
+      });
       return;
     } catch (err) {
       // السبب الأشيع: مسودة محفوظة من نسخة قديمة — نمسحها ونعيد المحاولة

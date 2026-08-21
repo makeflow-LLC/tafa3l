@@ -28,7 +28,7 @@ const KEEP = [OFFLINE_CACHE, GAMES_CACHE, SHELL_CACHE];
 const OFFLINE_URL = '/offline.html';
 
 /** ما يلزم لفتح صفحة لعبة محفوظة بلا شبكة — ولا شيء غيره */
-const SHELL = ['/games.html', '/assets/css/app.css', '/assets/css/tapio-base.css', '/assets/css/participant.css', '/assets/css/teacher.css', '/assets/js/i18n.js', '/assets/js/theme.js', '/assets/js/common.js', '/assets/js/participant-ui.js', '/assets/js/teacher-ui.js', '/assets/js/footer.js', '/assets/js/games.js'];
+const SHELL = ['/games.html', '/assets/css/app.css', '/assets/css/tapio-base.css', '/assets/css/participant.css', '/assets/css/teacher.css', '/assets/css/designer.css', '/assets/js/i18n.js', '/assets/js/theme.js', '/assets/js/common.js', '/assets/js/participant-ui.js', '/assets/js/teacher-ui.js', '/assets/js/designer-ui.js', '/assets/js/footer.js', '/assets/js/games.js'];
 
 /**
  * ثلاثة عناوين لكل لعبة محفوظة: بطاقتها (JSON) ومستندها وصورتها. نسيانُ
