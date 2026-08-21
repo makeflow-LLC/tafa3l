@@ -106,6 +106,9 @@
   --tp-btn-h: 48px; /* زرّ البطاقة الأساسي */
   --tp-avatar: 36px;
   --tp-skel-h: 132px; /* هيكل انتظارٍ بمقاس بطاقة النشاط */
+  --tp-menu-row: 48px;
+  --tp-menu-min: 220px;
+  --tp-menu-max: 280px;
   /* مقاس إطار المخطوطة — لصفحة المعاينة وحدها، لا للشاشة الحقيقية */
   --tp-frame-w: 390px;
   --tp-frame-h: 780px;
@@ -177,6 +180,12 @@
 
 /* ------------------- قائمة الشريط العلوي — مشتركة بين الشاشتين */
 
+/*
+ * قائمةٌ من سطورٍ كاملة العرض، سطرٌ فوق سطر. لا شبكة ولا أعمدة أبداً:
+ * جرّبنا صفّاً من الأزرار داخلها فانضغط كل زرٍّ إلى بضعة أحرف وانكسرت
+ * كلماته حرفاً في كل سطر على شاشة الجوال.
+ */
+
 .tp-menu {
   position: relative;
 }
@@ -186,66 +195,120 @@
   inset-inline-end: 0;
   top: calc(100% + var(--tp-s-6));
   z-index: 30;
-  min-width: min(220px, 70vw);
+  /* مربوطةٌ بالزرّ، ولا تتجاوز الشاشة مهما ضاقت */
+  width: max-content;
+  min-width: var(--tp-menu-min);
+  max-width: min(var(--tp-menu-max), calc(100vw - var(--tp-s-24)));
   padding: var(--tp-s-8);
   border-radius: var(--tp-r-12);
   border: var(--tp-hair) solid var(--tp-border);
   background: var(--tp-bg);
   display: flex;
   flex-direction: column;
-  gap: var(--tp-s-6);
+  gap: var(--tp-s-2);
 }
 
 .tp-menu__panel[hidden] {
   display: none;
 }
 
+/* هوية الحساب: اسمٌ وبريد — بطاقة تعريفٍ لا سطرٌ يُضغط */
+.tp-menu__account {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-s-2);
+  padding: var(--tp-s-8) var(--tp-s-12);
+  min-width: 0;
+}
+
+.tp-menu__name {
+  font-size: var(--tp-fs-13);
+  font-weight: var(--tp-w-700);
+  color: var(--tp-text);
+}
+
+.tp-menu__mail {
+  font-size: var(--tp-fs-12);
+  color: var(--tp-muted);
+  direction: ltr;
+  text-align: start;
+}
+
+.tp-menu__name,
+.tp-menu__mail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* فاصلٌ بين المجموعات: شعرةٌ واحدة، بلا عنوانٍ يزيد الضجيج */
+.tp-menu__sep {
+  height: var(--tp-hair);
+  margin: var(--tp-s-6) var(--tp-s-8);
+  background: var(--tp-border);
+}
+
+/* السطر: نصٌّ أولاً، وحالةٌ أو رمزٌ ثانويّ في آخره — في سطرٍ واحد لا يلتفّ */
 .tp-menu__item {
-  min-height: var(--tp-tap-min);
-  padding: var(--tp-s-6) var(--tp-s-12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tp-s-8);
+  width: 100%;
+  min-height: var(--tp-menu-row);
+  padding: 0 var(--tp-s-12);
   border-radius: var(--tp-r-10);
-  border: var(--tp-hair) solid var(--tp-border);
+  border: 0;
   background: transparent;
   color: var(--tp-text);
   font: inherit;
   font-size: var(--tp-fs-14);
   font-weight: var(--tp-w-600);
   text-align: start;
+  text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-/* سطر معلومةٍ داخل القائمة (البريد مثلاً) — لا يُضغط */
-.tp-menu__note {
-  padding: var(--tp-s-2) var(--tp-s-12);
-  font-size: var(--tp-fs-12);
-  color: var(--tp-muted);
+.tp-menu__label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* الحالة («داكنة»، «مكتوم») والرمز: ثانويّان، فلا يزاحمان النصّ */
+.tp-menu__state {
+  flex: 0 0 auto;
+  font-size: var(--tp-fs-12);
+  font-weight: var(--tp-w-600);
+  color: var(--tp-muted);
+}
+
+.tp-menu__icon {
+  flex: 0 0 auto;
+  font-size: var(--tp-fs-14);
+  opacity: 0.75;
+}
+
+@media (hover: hover) {
+  .tp-menu__item:hover {
+    background: var(--tp-neutral-fill);
+  }
+}
+
+.tp-menu__item:focus-visible {
+  outline: var(--tp-s-2) solid var(--tp-purple);
+  outline-offset: calc(-1 * var(--tp-s-2));
 }
 
 .tp-menu__item--danger {
   color: var(--tp-status-wrong);
-  border-color: var(--tp-status-wrong);
 }
 
 /* زرّ القائمة نفسه: كل ضاغطٍ خارج الخيارات لا يقلّ عن 44px */
 .tp-menu > .icon-btn {
   min-height: var(--tp-tap-min);
   min-width: var(--tp-tap-min);
-}
-
-/* مبدّلا اللغة والسِمَة يُركَّبان داخل القائمة بأزرارهما الخاصة */
-.tp-menu__panel > span {
-  display: flex;
-  gap: var(--tp-s-6);
-}
-
-.tp-menu__panel > span > * {
-  flex: 1 1 auto;
-}
-
-.tp-menu__panel button,
-/* أزرار الشريط العلوي في app.css تفرض 36px، وهي هنا داخل قائمة لا شريط */
-.tp-menu__panel .icon-btn {
-  min-height: var(--tp-tap-min);
 }

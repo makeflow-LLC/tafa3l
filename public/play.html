@@ -24,11 +24,8 @@
         <!-- الصوت واللغة والسِمَة خلف زرٍّ واحد: شاشة السؤال لا تحتمل صفّاً من الأزرار -->
         <div class="tp-menu">
           <button id="exitBtn" class="icon-btn" type="button" aria-haspopup="menu" aria-expanded="false">⋯</button>
-          <div id="exitMenu" class="tp-menu__panel" role="menu" hidden>
-            <button id="soundBtn" class="tp-menu__item" type="button" role="menuitem">🔊</button>
-            <span id="langRow"></span>
-            <button id="leaveBtn" class="tp-menu__item tp-menu__item--danger" type="button" role="menuitem">🚪</button>
-          </div>
+          <!-- سطورها تُبنى في play.js: الصوت واللغة والسِمَة ثم المغادرة -->
+          <div id="exitMenu" class="tp-menu__panel" role="menu" hidden></div>
         </div>
       </div>
     </div>

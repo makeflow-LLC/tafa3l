@@ -10,18 +10,12 @@
   const Fx = window.Fx;
   const UI = window.TapioUI;
 
-  // نصوص الشريط العلوي ومبدّل اللغة (الصفحة نفسها بلا نصوص ثابتة)
-  for (const [id, title, aria] of [
-    ['#exitBtn', 'pMenuAria', 'pMenuAria'],
-    ['#soundBtn', 'pSoundTitle', 'pSoundAria'],
-  ]) {
-    const node = $(id);
-    if (!node) continue;
-    node.title = t(title);
-    node.setAttribute('aria-label', t(aria));
+  // زرّ القائمة وحده نصٌّ في الصفحة؛ وسطورها تُبنى أدناه بنصوصها وحالاتها
+  const exitBtn = $('#exitBtn');
+  if (exitBtn) {
+    exitBtn.title = t('pMenuAria');
+    exitBtn.setAttribute('aria-label', t('pMenuAria'));
   }
-  if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
-  window.Theme?.mountToggle($('#langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
 
   const app = $('#app');
   const connBadge = $('#conn');
@@ -171,18 +165,12 @@
     if (!window.I18n || (lang !== 'ar' && lang !== 'en')) return;
     if (window.I18n.getLang() === lang) return;
     window.I18n.setLang(lang, { remember: false });
-    // الشريط العلوي رُسم قبل معرفة اللغة، فنعيد نصوصه ومبدّله
-    const row = $('#langRow');
-    if (row) {
-      row.innerHTML = '';
-      window.I18n.mountToggle(row);
-    }
-    for (const [id, key] of [
-      ['#exitBtn', 'pLeaveTitle'],
-      ['#soundBtn', 'pSoundTitle'],
-    ]) {
-      const node = $(id);
-      if (node) node.title = t(key);
+    // الشريط العلوي رُسم قبل معرفة اللغة، فنعيد بناء سطوره بها
+    buildExitMenu();
+    const btn = $('#exitBtn');
+    if (btn) {
+      btn.title = t('pMenuAria');
+      btn.setAttribute('aria-label', t('pMenuAria'));
     }
   }
 
@@ -2076,12 +2064,63 @@
   /*
    * قائمة النشاط: الصوت واللغة والسِمَة والمغادرة خلف زرٍّ واحد. شاشة السؤال
    * تُقاس بالارتفاع، وصفٌّ من الأزرار في أعلاها يزاحم السؤال نفسه.
+   *
+   * سطورها كاملة العرض بنصوصها وحالاتها — لا رموز عارية تُخمَّن.
    */
-  const exitBtn = $('#exitBtn');
   const exitMenu = $('#exitMenu');
+
+  /** يعيد بناء سطور القائمة بلغة الواجهة الحالية */
+  function buildExitMenu() {
+    if (!exitMenu || !UI) return;
+    exitMenu.replaceChildren();
+    exitMenu.append(
+      UI.MenuToggle(
+        t('pSoundTitle'),
+        () => (Fx.soundOn() ? t('pSoundStateOn') : t('pSoundStateOff')),
+        () => Fx.setSound(!Fx.soundOn())
+      )
+    );
+    exitMenu.append(
+      UI.MenuRow({
+        label: t('pMenuLang'),
+        state: window.I18n?.getLang() === 'en' ? 'English' : 'العربية',
+        onClick: () => {
+          window.I18n?.setLang(window.I18n.getLang() === 'en' ? 'ar' : 'en');
+          location.reload();
+        },
+      })
+    );
+    exitMenu.append(
+      UI.MenuToggle(
+        t('pMenuTheme'),
+        () => (window.Theme?.effective() === 'dark' ? t('pThemeDark') : t('pThemeLight')),
+        () => window.Theme?.set(window.Theme.effective() === 'dark' ? 'light' : 'dark')
+      )
+    );
+    exitMenu.append(UI.MenuSep());
+    exitMenu.append(
+      UI.MenuRow({
+        label: t('pLeaveAction'),
+        danger: true,
+        onClick: () => {
+          const live = state.last && state.last.status !== 'ended';
+          if (live && !confirm(t('pLeaveConfirm'))) return;
+          // لا نرسل «مغادرة» قبل الانضمام أصلاً حتى لا تظهر رسالة خطأ
+          if (state.joined) socket.send({ t: 'leave' });
+          store.del(SESSION_KEY);
+          store.del(PENDING_KEY);
+          socket.close();
+          location.href = '/';
+        },
+      })
+    );
+  }
+  buildExitMenu();
+
   if (exitBtn && exitMenu) {
     const setOpen = (open) => {
       exitMenu.hidden = !open;
+      if (open) window.TapioUI?.clampMenu(exitMenu);
       exitBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
     exitBtn.addEventListener('click', (event) => {
@@ -2093,33 +2132,6 @@
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') setOpen(false);
-    });
-  }
-
-  // المغادرة: الفعل الوحيد الذي لا رجعة فيه، فيبقى بتأكيد
-  const leaveBtn = $('#leaveBtn');
-  if (leaveBtn) {
-    leaveBtn.textContent = t('pLeaveAction');
-    leaveBtn.addEventListener('click', () => {
-      const live = state.last && state.last.status !== 'ended';
-      if (live && !confirm(t('pLeaveConfirm'))) return;
-      // لا نرسل «مغادرة» قبل الانضمام أصلاً حتى لا تظهر رسالة خطأ
-      if (state.joined) socket.send({ t: 'leave' });
-      store.del(SESSION_KEY);
-      store.del(PENDING_KEY);
-      socket.close();
-      location.href = '/';
-    });
-  }
-
-  // زر كتم الصوت
-  const soundBtn = $('#soundBtn');
-  if (soundBtn) {
-    const paint = () => (soundBtn.textContent = Fx.soundOn() ? t('pSoundOn') : t('pSoundOff'));
-    paint();
-    soundBtn.addEventListener('click', () => {
-      Fx.setSound(!Fx.soundOn());
-      paint();
     });
   }
 

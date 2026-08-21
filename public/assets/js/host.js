@@ -13,26 +13,8 @@
   /** لغة التنسيق للتواريخ والأرقام */
   const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
 
-  // نصوص الشريط العلوي ومبدّل اللغة
-  const guide = $('#guideLink');
-  if (guide) {
-    guide.textContent = '📖';
-    guide.title = t('hteacherGuideTip');
-    guide.setAttribute('aria-label', t('hteacherGuideTip'));
-  }
-  for (const [id, key] of [['#homeBtn', 'hhomePage'], ['#soundBtn', 'hsound']]) {
-    const node = $(id);
-    if (!node) continue;
-    node.title = t(key);
-    node.setAttribute('aria-label', t(key));
-  }
-  // أزرار القائمة تحمل نصّاً لا رمزاً وحده: القائمة سطورٌ تُقرأ لا شريط أيقونات
-  if ($('#homeBtn')) $('#homeBtn').textContent = t('hhomePage');
-  if ($('#menuMine')) $('#menuMine').textContent = t('hmyActivities');
-  if (guide) guide.textContent = t('hteacherGuide');
+  // اللغة وحدها تبقى في الشريط (رمز EN)، وكل ما عداها داخل القائمة
   if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
-  // اللغة تبقى في الشريط (رمز EN)، والسِمَة تنزل إلى القائمة
-  window.Theme?.mountToggle($('#themeRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
 
   const app = $('#app');
   const bar = $('#bar');
@@ -120,11 +102,10 @@
   }
 
   /**
-   * الشريط العلوي: صورة المعلّم واسمه في طرف، وما عداهما داخل القائمة.
+   * الشريط العلوي: صورة المعلّم واسمه في طرف، والشعار ورمز اللغة في الطرف
+   * الآخر، وكل ما عداهما في قائمةٍ من سطورٍ كاملة العرض.
    *
-   * الصورة أقوى دلالةٍ على «هذا حسابك» من أي نصّ، والاسم بجانبها يكفي —
-   * وما كان يزاحمها من أزرار (الدليل، الرئيسية، الصوت، السِمَة، الترقية،
-   * لوحة المالك، البريد، الخروج) صار خلف زرٍّ واحد.
+   * البريد ليس سطراً يُضغط بل تعريفٌ بالحساب، فيُعرض مرّة في رأس القائمة.
    */
   function paintAccount() {
     const who = $('#whoLink');
@@ -144,27 +125,49 @@
       }
     }
 
-    const slot = $('#account');
-    if (!slot) return;
-    slot.innerHTML = '';
-    if (!state.user) {
-      slot.append(el('a', { class: 'tp-menu__item', href: '/login.html', role: 'menuitem' }, t('homeLoginShort')));
-      return;
+    const UI = window.TapioUI;
+    const menu = $('#hostMenu');
+    if (!menu || !UI) return;
+    menu.replaceChildren();
+    const sep = UI.MenuSep;
+
+    if (state.user) {
+      menu.append(UI.MenuAccount({ name: state.user.name, mail: state.user.email }));
+      menu.append(sep());
     }
-    slot.append(el('a', { class: 'tp-menu__item', href: '#/profile', role: 'menuitem' }, t('profNav')));
-    slot.append(el('a', { class: 'tp-menu__item', href: '#/upgrade', role: 'menuitem' }, t('upNav')));
-    if (state.premium?.isAdmin) {
-      slot.append(el('a', { class: 'tp-menu__item', href: '#/admin', role: 'menuitem' }, '👑 ' + t('hownerPanel')));
-    }
-    // البريد يقول بأي حسابٍ أنت داخل — سطرُ معلومةٍ لا زرّ
-    slot.append(el('span', { class: 'tp-menu__note', text: state.user.email }));
-    slot.append(
-      el(
-        'button',
-        { class: 'tp-menu__item tp-menu__item--danger', type: 'button', role: 'menuitem', onclick: logout },
-        '🚪 ' + t('hsignOut')
+
+    // تنقّل
+    menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
+    menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
+    menu.append(UI.MenuRow({ label: t('hteacherGuide'), href: '/help.html', title: t('hteacherGuideTip') }));
+
+    // إعدادات
+    menu.append(sep());
+    menu.append(
+      UI.MenuToggle(
+        t('hMenuTheme'),
+        () => (window.Theme?.effective() === 'dark' ? t('hThemeDark') : t('hThemeLight')),
+        () => window.Theme?.set(window.Theme.effective() === 'dark' ? 'light' : 'dark')
       )
     );
+    menu.append(
+      UI.MenuToggle(
+        t('hsound'),
+        () => (Fx.soundOn() ? t('hSoundOn') : t('hSoundOff')),
+        () => Fx.setSound(!Fx.soundOn())
+      )
+    );
+
+    // الحساب
+    menu.append(sep());
+    if (!state.user) {
+      menu.append(UI.MenuRow({ label: t('homeLoginShort'), href: '/login.html' }));
+      return;
+    }
+    menu.append(UI.MenuRow({ label: t('profNav'), href: '#/profile' }));
+    menu.append(UI.MenuRow({ label: t('upNav'), href: '#/upgrade' }));
+    if (state.premium?.isAdmin) menu.append(UI.MenuRow({ label: t('hownerPanel'), href: '#/admin' }));
+    menu.append(UI.MenuRow({ label: t('hsignOut'), danger: true, onClick: logout }));
   }
 
   /** الاسم الأول فقط — الترحيب بالاسم الكامل يبدو رسمياً وطويلاً */
@@ -3573,6 +3576,7 @@
   if (menuBtn && hostMenu) {
     const setOpen = (open) => {
       hostMenu.hidden = !open;
+      if (open) window.TapioUI?.clampMenu(hostMenu);
       menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
     menuBtn.title = t('hMenuAria');
@@ -3587,35 +3591,10 @@
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') setOpen(false);
     });
-    // اختيار سطرٍ من القائمة يغلقها: التنقّل بالمرساة لا يعيد رسم الصفحة
+    // المبدّلات تبقي القائمة مفتوحة (الحالة تتغيّر أمام عين المعلّم)،
+    // وما ينقل إلى صفحةٍ أخرى يغلقها
     hostMenu.addEventListener('click', (event) => {
-      if (event.target.closest('a, button')) setOpen(false);
-    });
-  }
-
-  /**
-   * زر الصفحة الرئيسية: مغادرة الجلسة المباشرة لا تُنهيها — تبقى قائمة
-   * ويستطيع المدرب استئنافها، لذلك نوضّح ذلك بدل تحذير مبهم.
-   */
-  const homeBtn = $('#homeBtn');
-  if (homeBtn) {
-    homeBtn.addEventListener('click', () => {
-      const live = state.live && state.live.status === 'live';
-      if (live && !confirm(t('htheSessionKeepsRunning'))) return;
-      state.leavingIntentionally = true;
-      teardown();
-      location.href = '/';
-    });
-  }
-
-  // زر كتم الصوت
-  const soundBtn = $('#soundBtn');
-  if (soundBtn) {
-    const paint = () => (soundBtn.textContent = (Fx.soundOn() ? '🔊 ' : '🔇 ') + t('hsound'));
-    paint();
-    soundBtn.addEventListener('click', () => {
-      Fx.setSound(!Fx.soundOn());
-      paint();
+      if (event.target.closest('a')) setOpen(false);
     });
   }
 

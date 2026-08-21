@@ -289,6 +289,76 @@
     return { button, sheet, open, close: shut };
   }
 
+  // ------------------------------- قائمة الشريط العلوي (مشتركة)
+
+  /**
+   * رمزٌ تعبيريّ في أول النصّ يُفصل عنه: سطر القائمة كلمةٌ تُقرأ أولاً،
+   * والرمز ثانويٌّ في آخره — ولا سطرَ برمزٍ عارٍ بلا كلمة.
+   */
+  function splitIcon(label) {
+    const match = String(label || '').match(/^([\p{Extended_Pictographic}\u200d\ufe0f]+)\s*(.*)$/u);
+    return match && match[2] ? { icon: match[1], text: match[2] } : { icon: '', text: String(label || '') };
+  }
+
+  /** سطرٌ كامل العرض: نصّ، ثم حالةٌ أو رمزٌ ثانويّ. لا يلتفّ ولا ينضغط */
+  function MenuRow(opts) {
+    const o = opts || {};
+    const { icon, text } = splitIcon(o.label);
+    const node = el(o.href ? 'a' : 'button', {
+      class: 'tp-menu__item' + (o.danger ? ' tp-menu__item--danger' : ''),
+      href: o.href,
+      type: o.href ? null : 'button',
+      role: 'menuitem',
+      title: o.title || text,
+    });
+    node.append(el('span', { class: 'tp-menu__label', text }));
+    if (o.state) node.append(el('span', { class: 'tp-menu__state', text: o.state }));
+    else if (icon) node.append(el('span', { class: 'tp-menu__icon', 'aria-hidden': 'true', text: icon }));
+    if (o.onClick) node.addEventListener('click', o.onClick);
+    return node;
+  }
+
+  /** مبدّلٌ نصّيّ: اسم الإعداد وحالته الظاهرة، لا رمزٌ يُخمَّن معناه */
+  function MenuToggle(label, read, write) {
+    const node = MenuRow({ label, state: read() });
+    node.addEventListener('click', () => {
+      write();
+      node.querySelector('.tp-menu__state').textContent = read();
+    });
+    return node;
+  }
+
+  /**
+   * تثبيت القائمة داخل الشاشة.
+   *
+   * مربوطةٌ بزرّها، فإن كان الزرّ قريباً من الحافة خرج طرفها عنها — نقيسها
+   * بعد فتحها ونزيحها بالبكسل، فلا تُقصّ ولا تُخرج الصفحة عن عرضها.
+   */
+  function clampMenu(panel) {
+    if (!panel) return;
+    panel.style.transform = '';
+    const pad = 8;
+    const box = panel.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    let dx = 0;
+    if (box.right > vw - pad) dx = vw - pad - box.right;
+    if (box.left + dx < pad) dx = pad - box.left;
+    if (dx) panel.style.transform = `translateX(${Math.round(dx)}px)`;
+  }
+
+  function MenuSep() {
+    return el('div', { class: 'tp-menu__sep', 'aria-hidden': 'true' });
+  }
+
+  /** تعريف الحساب في رأس القائمة: اسمٌ وبريد، مقصوصان، لا يُضغطان */
+  function MenuAccount(opts) {
+    const o = opts || {};
+    return el('div', { class: 'tp-menu__account' }, [
+      el('span', { class: 'tp-menu__name', text: o.name || '', title: o.name || '' }),
+      o.mail ? el('span', { class: 'tp-menu__mail', text: o.mail, title: o.mail }) : null,
+    ]);
+  }
+
   global.TapioUI = {
     el,
     ltr,
@@ -301,5 +371,11 @@
     StatusLine,
     ConnectionBanner,
     ReactionSheet,
+    splitIcon,
+    clampMenu,
+    MenuRow,
+    MenuToggle,
+    MenuSep,
+    MenuAccount,
   };
 })(window);
