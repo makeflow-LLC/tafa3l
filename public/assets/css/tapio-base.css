@@ -12,30 +12,42 @@
 /* ------------------------------------------------------------ الرموز */
 
 .tp {
-  /* العلامة */
-  --tp-navy: #10173a;
-  --tp-purple: #6c3df4;
-  --tp-purple-light: #8b66f7;
-  --tp-purple-tint: #b9a4ff;
-  --tp-cyan: #3bd6ee;
+  /*
+   * العلامة — الألوان الأربعة من الشعار نفسه.
+   * القاعدة التي تحكمها: التركوازي مسار الطالب، والبنفسجي مسار المعلّم،
+   * ولا يختلطان. الكحلي للنصّ وللخلفية الداكنة.
+   */
+  --tp-navy: #221b5b;
+  --tp-purple: #7a5fe0;
+  /* بنفسجيٌّ مرفوع السطوع للسِمَة الداكنة — كما يرفع الثيم سطوع التركوازي
+     هناك. يبلغ 5.03:1 على خلفية الداكن مقابل 4.43 قبله. */
+  --tp-purple-light: #8f78e8;
+  --tp-purple-tint: #b7a6f5;
+  --tp-cyan: #00a3a3;
 
   /* الأسطح والنصوص — السِمَة الفاتحة */
-  --tp-bg: #faf9f7;
-  --tp-surface: #faf9f7;
-  --tp-border: #d8dae6;
-  --tp-track: #e3e2ec;
-  --tp-slot: #efeef4;
-  --tp-neutral-fill: #ecebf2;
-  --tp-text: #10173a;
-  --tp-muted: #6e7290;
-  --tp-faded: #8a8fad;
+  --tp-bg: #faf9f6;
+  /* البطاقة أبيض نقيّ فوق خلفيةٍ عاجية: الثيم يفرّق بينهما */
+  --tp-surface: #ffffff;
+  --tp-border: #e2e0dc;
+  --tp-track: #e2e0dc;
+  --tp-slot: #f2f0ec;
+  --tp-neutral-fill: #ecebe7;
+  --tp-text: #221b5b;
+  --tp-muted: #6e6a8f;
+  /*
+   * الخافت يحمل رقم المؤقّت المنتهي ونصّ الإجابة الباهت — معلومةً لا زخرفة.
+   * لذا لا يأخذ لون الشرطات البديلة في المخطوطة (‎#b9b6cb‎، وتباينه 1.88:1)
+   * بل صبغته نفسها عند 4.51:1.
+   */
+  --tp-faded: #746e98;
   --tp-white: #ffffff;
 
   /* درجات الإجابات — واحدة في السِمَتين */
   --tp-a: #d6403f;
   --tp-b: #0e8fa0;
   --tp-c: #c8811a;
-  --tp-d: #6c3df4;
+  --tp-d: #7a5fe0;
   --tp-correct: #1f9d55;
 
   /* ما يختلف بين السِمَتين من أدوارٍ لا ألوان */
@@ -44,14 +56,18 @@
   --tp-select-ring: var(--tp-navy);
   --tp-chip-bg: var(--tp-navy);
   --tp-chip-text: var(--tp-white);
-  --tp-neutral-text: var(--tp-faded);
+  /* أغمق من ‎--tp-faded‎ عمداً: هذا النصّ يقع على ‎--tp-neutral-fill‎ لا على
+     الخلفية، وهو سطحٌ أغمق يبتلع الدرجة الأفتح (3.98:1 مقابل 4.91:1). */
+  --tp-neutral-text: #666086;
   --tp-neutral-badge-bg: var(--tp-white);
-  --tp-neutral-badge-text: var(--tp-faded);
+  --tp-neutral-badge-text: #666086;
   --tp-status-correct: var(--tp-correct);
   --tp-status-wrong: var(--tp-a);
-  --tp-ghost-text: var(--tp-purple);
-  --tp-menu-btn-bg: rgba(108, 61, 244, 0.08);
-  --tp-scrim: rgba(16, 23, 58, 0.45);
+  /* بنفسجيٌّ أغمق درجةً من لون العلامة: النصّ الشبَحي 13px، ولون العلامة
+     نفسه يقف عند 4.39:1 على الفاتح — أي تحت العتبة بقليل. */
+  --tp-ghost-text: #785ce0;
+  --tp-menu-btn-bg: rgba(122, 95, 224, 0.08);
+  --tp-scrim: rgba(34, 27, 91, 0.45);
   --tp-canvas: #edecea;
   --tp-dim: 0.35;
 
@@ -139,54 +155,56 @@
    `:where` تُصفّر الأولوية فيبقى الفرضُ الصريح `.tp-dark` / `.tp-light` أعلى. */
 :where(html.dark, html.stage) .tp,
 .tp.tp-dark {
-  --tp-bg: #10173a;
-  --tp-surface: #1a2250;
-  --tp-border: #2a3158;
-  --tp-track: #2a3158;
-  --tp-slot: #1a2250;
-  --tp-neutral-fill: #1a2250;
+  --tp-bg: #171240;
+  --tp-surface: #1f1852;
+  --tp-border: #322a6e;
+  --tp-track: #322a6e;
+  --tp-slot: #1f1852;
+  --tp-neutral-fill: #1f1852;
   --tp-text: #ffffff;
-  --tp-muted: #9ba0c0;
-  --tp-faded: #9ba0c0;
+  --tp-muted: #a29dc6;
+  --tp-faded: #a29dc6;
   --tp-accent: var(--tp-purple-light);
   --tp-waiting: var(--tp-purple-tint);
   --tp-select-ring: var(--tp-white);
   --tp-chip-bg: var(--tp-white);
   --tp-chip-text: var(--tp-navy);
-  --tp-neutral-text: #9ba0c0;
-  --tp-neutral-badge-bg: #2a3158;
-  --tp-neutral-badge-text: #9ba0c0;
+  --tp-neutral-text: #a29dc6;
+  --tp-neutral-badge-bg: #322a6e;
+  --tp-neutral-badge-text: #a29dc6;
   --tp-status-correct: #4fce85;
   --tp-status-wrong: #ff7a72;
   --tp-ghost-text: var(--tp-purple-tint);
-  --tp-menu-btn-bg: rgba(139, 102, 247, 0.18);
-  --tp-canvas: #10173a;
+  --tp-menu-btn-bg: rgba(143, 120, 232, 0.18);
+  --tp-canvas: #171240;
   --tp-dim: 0.3;
 }
 
 /* الفرض الصريح للسِمَة الفاتحة داخل صفحةٍ داكنة (صفحة المعاينة تعرض السِمَتين معاً) */
 .tp.tp-light {
-  --tp-bg: #faf9f7;
-  --tp-surface: #faf9f7;
-  --tp-border: #d8dae6;
-  --tp-track: #e3e2ec;
-  --tp-slot: #efeef4;
-  --tp-neutral-fill: #ecebf2;
-  --tp-text: #10173a;
-  --tp-muted: #6e7290;
-  --tp-faded: #8a8fad;
+  --tp-bg: #faf9f6;
+  --tp-surface: #ffffff;
+  --tp-border: #e2e0dc;
+  --tp-track: #e2e0dc;
+  --tp-slot: #f2f0ec;
+  --tp-neutral-fill: #ecebe7;
+  --tp-text: #221b5b;
+  --tp-muted: #6e6a8f;
+  --tp-faded: #746e98;
   --tp-accent: var(--tp-purple);
   --tp-waiting: var(--tp-purple);
   --tp-select-ring: var(--tp-navy);
   --tp-chip-bg: var(--tp-navy);
   --tp-chip-text: var(--tp-white);
-  --tp-neutral-text: #8a8fad;
+  /* نصّ الخيار المحايد بعد الكشف يقع على ‎--tp-neutral-fill‎ لا على الخلفية،
+     وهو سطحٌ أغمق — فيحتاج درجةً أغمق ليبلغ العتبة فوقه (4.91:1). */
+  --tp-neutral-text: #666086;
   --tp-neutral-badge-bg: #ffffff;
-  --tp-neutral-badge-text: #8a8fad;
+  --tp-neutral-badge-text: #666086;
   --tp-status-correct: #1f9d55;
   --tp-status-wrong: #d6403f;
-  --tp-ghost-text: var(--tp-purple);
-  --tp-menu-btn-bg: rgba(108, 61, 244, 0.08);
+  --tp-ghost-text: #785ce0;
+  --tp-menu-btn-bg: rgba(122, 95, 224, 0.08);
   --tp-canvas: #edecea;
   --tp-dim: 0.35;
 }

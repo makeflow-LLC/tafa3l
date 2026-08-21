@@ -87,10 +87,11 @@
   cursor: pointer;
 }
 
+/* «+ نشاط جديد» فعلُ معلّمٍ لا طالب — فبنفسجيّ لا تركوازي */
 .tp-chip--primary {
-  background: var(--tp-cyan);
-  border-color: var(--tp-cyan);
-  color: var(--tp-navy);
+  background: var(--tp-purple);
+  border-color: var(--tp-purple);
+  color: var(--tp-white);
   font-weight: var(--tp-w-700);
 }
 
@@ -143,6 +144,7 @@
   transition: filter var(--tp-t-press) ease-out;
 }
 
+/* التركوازي مسار الطالب: رمز الدخول الذي يكتبه الصفّ، لا زرّ المعلّم */
 .tp-btn--cyan {
   background: var(--tp-cyan);
   color: var(--tp-navy);

@@ -38,12 +38,14 @@
   /**
    * زرّ أو رابطٌ بهيئة زرّ.
    *
-   * `kind`: cyan (فعل المعلّم الرئيسي) · purple · outline · ghost.
+   * `kind`: purple (فعل المعلّم الرئيسي) · cyan (مسار الطالب) · outline · ghost.
+   * البنفسجي هو الافتراضي لأن هذه شاشات المعلّم — والتركوازي لون الطالب
+   * وحده، فلا يظهر على زرٍّ يضغطه المعلّم.
    * ما يحدّد العنصر هو `href`: رابطٌ إن وُجد، وزرٌّ إن لم يوجد.
    */
   function Button(opts) {
     const o = opts || {};
-    const kind = o.kind || 'cyan';
+    const kind = o.kind || 'purple';
     const classes = ['tp-btn', 'tp-btn--' + kind];
     if (o.block) classes.push('tp-btn--block');
     if (o.small) classes.push('tp-btn--sm');
@@ -113,7 +115,9 @@
     return el('div', { class: 'tp-card' + (o.ai ? ' tp-card--ai' : '') }, [
       el('h2', { class: 'tp-card__title', text: o.title || '' }),
       el('p', { class: 'tp-card__body', text: o.body || '' }),
-      Button({ label: o.cta, href: o.href, kind: o.ai ? 'cyan' : 'purple', block: true }),
+      /* البطاقتان فعلان للمعلّم، فكلتاهما بنفسجية — والتمييز بالرتبة لا
+         باللون: الذكيّة ممتلئة والاختيار اليدوي محدَّد، كما في المخطوطة. */
+      Button({ label: o.cta, href: o.href, kind: o.ai ? 'purple' : 'outline', block: true }),
     ]);
   }
 
@@ -163,7 +167,7 @@
       el('div', { class: 'tp-empty__emoji', 'aria-hidden': 'true', text: o.emoji || '📭' }),
       el('h3', { class: 'tp-card__title', text: o.title || '' }),
       el('p', { class: 'tp-card__body', text: o.body || '' }),
-      o.cta ? Button({ label: o.cta, href: o.href, kind: 'cyan', onClick: o.onClick }) : null,
+      o.cta ? Button({ label: o.cta, href: o.href, kind: 'purple', onClick: o.onClick }) : null,
     ]);
   }
 

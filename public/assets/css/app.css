@@ -9,19 +9,24 @@
  */
 :root {
   color-scheme: light;
-  --bg: #ffffff;
-  --bg-2: #f6f7fb;
+  --bg: #faf9f6;
+  --bg-2: #f2f0ec;
   --surface: #ffffff;
-  --surface-2: #f1f3f9;
+  --surface-2: #f2f0ec;
   /* سطح الزرّ الثانويّ: درجةٌ أقوى من الأسطح الخافتة عمداً — لأن
      `--brand-soft` قريبٌ منها، فزرٌّ بلونها داخل لوحةٍ ملوّنة يختفي */
-  --btn-soft: #e4e7f2;
-  --border: #e3e6ef;
-  --text: #16162a;
-  --muted: #61657d;
-  /* اللونان مختاران ليمرّا معيار التباين AA مع نص أبيض عريض (٦.٢:١ و ٤.٧:١) */
-  --brand: #5b45e0;
-  --brand-2: #0b7f96;
+  --btn-soft: #e8e5e0;
+  --border: #e2e0dc;
+  --text: #221b5b;
+  --muted: #6e6a8f;
+  /*
+   * بنفسجيّ المعلّم وتركوازيّ الطالب من ألوان الشعار. التركوازي هنا أغمق
+   * درجةً من لون العلامة (‎#00a3a3‎): في هذه الصفحات يحمل نصّاً أبيض ويُستعمل
+   * نصّاً بذاته، وكلاهما يسقط تحت العتبة بلون العلامة الصريح (3.10:1).
+   * القيمتان الآن 4.62:1 و 5.16:1 مع الأبيض.
+   */
+  --brand: #785ce0;
+  --brand-2: #017a7a;
   --on-brand: #ffffff;
   --ok: #128a4d;
   --warn: #a45c00;
@@ -29,11 +34,11 @@
   --ok-soft: rgba(18, 138, 77, 0.1);
   --bad-soft: rgba(204, 47, 47, 0.09);
   --warn-soft: rgba(164, 92, 0, 0.1);
-  --brand-soft: rgba(91, 69, 224, 0.09);
+  --brand-soft: rgba(122, 95, 224, 0.09);
   --scrim: rgba(255, 255, 255, 0.86);
   /* مقبض المفاتيح والمقاييس + مسار المفتاح المطفأ — يحتاجان تبايناً في السِمَتين */
   --knob: #ffffff;
-  --track: #c6cbdc;
+  --track: #d6d3ce;
   --radius: 14px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(20, 22, 45, 0.06), 0 6px 18px rgba(20, 22, 45, 0.06);
@@ -43,25 +48,25 @@
 html.stage,
 html.dark {
   color-scheme: dark;
-  --bg: #12102e;
-  --bg-2: #1b1840;
-  --surface: #1a1740;
-  --surface-2: #241f52;
-  --btn-soft: #332c6b;
+  --bg: #171240;
+  --bg-2: #1f1852;
+  --surface: #1f1852;
+  --surface-2: #322a6e;
+  --btn-soft: #322a6e;
   --border: rgba(255, 255, 255, 0.14);
-  --text: #f5f4ff;
-  --muted: #a9a5cc;
-  --brand: #8b73ff;
-  --brand-2: #35d6ef;
-  --on-brand: #12102e;
+  --text: #ffffff;
+  --muted: #a29dc6;
+  --brand: #8f78e8;
+  --brand-2: #00c2c2;
+  --on-brand: #171240;
   --ok: #34d399;
   --warn: #fbbf24;
   --bad: #fb7185;
   --ok-soft: rgba(52, 211, 153, 0.16);
   --bad-soft: rgba(251, 113, 133, 0.16);
   --warn-soft: rgba(251, 191, 36, 0.16);
-  --brand-soft: rgba(139, 115, 255, 0.18);
-  --scrim: rgba(18, 16, 46, 0.86);
+  --brand-soft: rgba(143, 120, 232, 0.18);
+  --scrim: rgba(23, 18, 64, 0.86);
   --knob: #ffffff;
   --track: rgba(255, 255, 255, 0.2);
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
@@ -2325,9 +2330,9 @@ input[type='range'].slider::-moz-range-thumb {
   margin-inline: auto;
   width: fit-content;
   max-width: calc(100% - 24px);
-  background: #1c2545;
+  background: #1f1852;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #f5f4ff;
+  color: #ffffff;
   padding: 12px 18px;
   border-radius: 999px;
   box-shadow: var(--shadow);

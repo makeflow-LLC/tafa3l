@@ -797,7 +797,7 @@
         );
       });
       const addLabel = t('bStepAdd');
-      const navAdd = el('button', { class: 'tp-btn tp-btn--cyan tp-btn--sm tp-d-nav__add', type: 'button' }, addLabel);
+      const navAdd = el('button', { class: 'tp-btn tp-btn--purple tp-btn--sm tp-d-nav__add', type: 'button' }, addLabel);
       navAdd.addEventListener('click', addQuestion);
       wrap.append(
         el('div', { class: 'tp-d-nav' }, [
@@ -844,7 +844,7 @@
       main.append(mobileHint);
 
       // ---- زرّ الإضافة الثابت على الجوال
-      const fab = el('button', { class: 'tp-btn tp-btn--cyan tp-d-fab', type: 'button' }, addLabel);
+      const fab = el('button', { class: 'tp-btn tp-btn--purple tp-d-fab', type: 'button' }, addLabel);
       fab.addEventListener('click', addQuestion);
       wrap.append(fab);
 
@@ -948,7 +948,7 @@
       );
 
       // ---- الإطلاق: الفعل الأخير، وحده بلون الفعل
-      const launch = el('button', { class: 'tp-btn tp-btn--cyan tp-btn--block', type: 'button' }, t('bstartTheSessionAnd'));
+      const launch = el('button', { class: 'tp-btn tp-btn--purple tp-btn--block', type: 'button' }, t('bstartTheSessionAnd'));
       launch.addEventListener('click', () => {
         const problem = validate(draft);
         if (problem) return toast(problem, 'bad');

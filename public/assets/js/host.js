@@ -203,7 +203,7 @@
         title: t('gdDesign'),
         hint: t('gdDesignHint'),
         actions: [
-          el('a', { class: 'btn accent sm', href: '#/ai' }, t('gdByAi')),
+          el('a', { class: 'btn primary sm', href: '#/ai' }, t('gdByAi')),
           el('a', { class: 'btn ghost sm', href: '#/new' }, t('gdByHand')),
         ],
       },
@@ -998,7 +998,7 @@
         item.copies ? UI.Badge({ label: t('lCopies', { n: item.copies }) }) : null,
         item.author ? el('span', { text: t('lBy', { name: item.author }) }) : null,
       ].filter(Boolean),
-      actions: [UI.Button({ label: t('lPreview'), href: '#/library/' + item.id, kind: 'cyan' })],
+      actions: [UI.Button({ label: t('lPreview'), href: '#/library/' + item.id, kind: 'purple' })],
     });
   }
 
@@ -1343,10 +1343,10 @@
 
     // الفعل الأول: إطلاق جلسة — أو العودة إليها إن كانت قائمة الآن
     const primary = activity.live
-      ? UI.Button({ label: t('hbackToTheSession'), href: '#/live/' + activity.live.code, kind: 'cyan' })
+      ? UI.Button({ label: t('hbackToTheSession'), href: '#/live/' + activity.live.code, kind: 'purple' })
       : UI.Button({
           label: t('hlaunchASession'),
-          kind: 'cyan',
+          kind: 'purple',
           onClick: async () => {
             primary.disabled = true;
             primary.textContent = t('hlaunching');
@@ -1708,7 +1708,7 @@
     const days = state.premium.daysLeft || 0;
     return el('div', { class: 'trial row between' }, [
       el('span', { class: 'grow', text: t('upTrialLeft', { days }) }),
-      el('a', { class: 'btn accent sm', href: '#/ai' }, t('hdesignWithAi')),
+      el('a', { class: 'btn primary sm', href: '#/ai' }, t('hdesignWithAi')),
     ]);
   }
 
