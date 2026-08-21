@@ -7,14 +7,23 @@
     <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/assets/css/app.css?v=1.64.0" />
     <link rel="stylesheet" href="/assets/css/participant.css?v=1.64.0" />
+    <!-- يُحمَّل في الرأس ليضبط السِمَة قبل أي رسم، فلا تومض الفاتحة على الداكنة -->
+    <script src="/assets/js/theme.js?v=1.64.0"></script>
     <style>
-      /* صفحة معاينة ساكنة: لوحة تعرض الحالات الأربع في السِمَتين جنباً إلى جنب.
+      /* لوحة معاينة ساكنة: الحالات الأربع بسِمَة الصفحة، ومبدّلٌ يقلبها كلها.
          لا لون هنا خارج الرموز — اللوحة نفسها بلون رمز اللوحة. */
       .canvas {
         min-height: 100dvh;
         padding: var(--tp-s-24);
         background: var(--tp-canvas);
         color: var(--tp-text);
+      }
+      .head-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--tp-s-16);
+        flex-wrap: wrap;
       }
       .canvas h1 {
         font-size: var(--tp-fs-22);
@@ -24,6 +33,7 @@
         margin: 0 0 var(--tp-s-24);
         color: var(--tp-muted);
         font-size: var(--tp-fs-14);
+        max-width: 70ch;
       }
       .grid {
         display: flex;
@@ -34,6 +44,11 @@
         display: flex;
         flex-direction: column;
         gap: var(--tp-s-8);
+        margin: 0;
+        /* الإطار مقاسُ جهاز: لا ينضغط لأن اللوحة ضاقت */
+        flex: 0 0 auto;
+        width: var(--tp-frame-w);
+        max-width: 100%;
       }
       .cell > figcaption {
         font-size: var(--tp-fs-13);
@@ -43,11 +58,15 @@
     </style>
   </head>
   <body>
-    <div class="canvas tp tp-light">
-      <h1>شاشة إجابة المتدرب — الحالات الأربع في السِمَتين</h1>
+    <div class="canvas tp">
+      <div class="head-row">
+        <h1>شاشة إجابة المتدرب — الحالات الأربع</h1>
+        <span id="themeRow"></span>
+      </div>
       <p class="lead">
         معاينة ساكنة مبنيّة بمكوّنات <code>participant-ui.js</code> نفسها التي تعمل في صفحة اللعب،
-        فما تراه هنا هو ما يراه الطالب. المقاس 390×780 مقاس مخطوطة — الشاشة الحقيقية مرنة.
+        فما تراه هنا هو ما يراه الطالب. الإطارات تتبع سِمَة الصفحة — بدّلها بالزرّ أعلاه لترى
+        السِمَة الأخرى. المقاس 390×780 مقاس مخطوطة، والشاشة الحقيقية مرنة.
       </p>
       <div class="grid" id="grid"></div>
     </div>
@@ -58,6 +77,11 @@
         'use strict';
         const UI = window.TapioUI;
         const el = UI.el;
+
+        window.Theme?.mountToggle(document.getElementById('themeRow'), {
+          toDark: 'السِمَة الداكنة',
+          toLight: 'السِمَة الفاتحة',
+        });
 
         // نموذج سؤالٍ واحد تُعرض عليه الحالات كلها — مثال DESIGN.md نفسه
         const LETTERS = 'أبجدهوزح';
@@ -111,60 +135,48 @@
           ]);
         }
 
-        // الحالات الأربع كما في DESIGN.md §2
-        const STATES = [
+        // الحالات الأربع كما في DESIGN.md §2، ثم حالة الخمسة خيارات فأكثر
+        const CELLS = [
           {
-            name: 'نشِط',
+            id: 'state-1-active',
+            name: '١ — نشِط',
             stateFor: () => 'idle',
           },
           {
-            name: 'مختار / بانتظار',
+            id: 'state-2-waiting',
+            name: '٢ — مختار / بانتظار',
             waiting: true,
             stateFor: (index) => (index === 1 ? 'selected' : 'faded'),
           },
           {
-            name: 'كُشِف — صحيحة',
+            id: 'state-3-correct',
+            name: '٣ — كُشِف: إجابة صحيحة',
             msLeft: 0,
             score: 360,
             status: { tone: 'correct', text: 'إجابة صحيحة', delta: '+120' },
             stateFor: (index) => (index === 1 ? 'correct' : 'neutral'),
           },
           {
-            name: 'كُشِف — خاطئة',
+            id: 'state-4-wrong',
+            name: '٤ — كُشِف: إجابة خاطئة',
             msLeft: 0,
             status: { tone: 'wrong', text: 'إجابة خاطئة', delta: '+0', right: 'الصحيح: ب الجزائر' },
             stateFor: (index) => (index === 1 ? 'correct' : index === 2 ? 'wrong' : 'neutral'),
           },
+          {
+            id: 'many-options',
+            name: 'ستة خيارات — سطح محايد بلا درجاتٍ مخترعة',
+            options: MANY.map((text) => ({ text })),
+            stateFor: () => 'idle',
+          },
         ];
 
         const grid = document.getElementById('grid');
-        [
-          { theme: 'tp-light', label: 'فاتحة' },
-          { theme: 'tp-dark', label: 'داكنة' },
-        ].forEach((mode) => {
-          STATES.forEach((state) => {
-            grid.append(
-              el('figure', { class: 'cell', style: { margin: '0' } }, [
-                el('figcaption', { text: `${state.name} — ${mode.label}` }),
-                el('div', { class: 'tp ' + mode.theme + ' tp-frame' }, screen(state)),
-              ])
-            );
-          });
-        });
-
-        // حالة الخمسة خيارات فأكثر: سطح محايد وحرفٌ بلون العلامة، بلا درجاتٍ مخترعة
-        [
-          { theme: 'tp-light', label: 'فاتحة' },
-          { theme: 'tp-dark', label: 'داكنة' },
-        ].forEach((mode) => {
+        CELLS.forEach((cell) => {
           grid.append(
-            el('figure', { class: 'cell', style: { margin: '0' } }, [
-              el('figcaption', { text: `ستة خيارات — ${mode.label}` }),
-              el(
-                'div',
-                { class: 'tp ' + mode.theme + ' tp-frame' },
-                screen({ options: MANY.map((text) => ({ text })), stateFor: () => 'idle' })
-              ),
+            el('figure', { class: 'cell' }, [
+              el('figcaption', { text: cell.name }),
+              el('div', { class: 'tp tp-frame', 'data-shot': cell.id }, screen(cell)),
             ])
           );
         });
