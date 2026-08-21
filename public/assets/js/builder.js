@@ -764,19 +764,6 @@
       const wrap = shell;
       wrap.append(stageBar());
 
-      /*
-       * المسودة في المتصفّح وحده حتى تُحفظ في «نشاطاتي» — ومن مسح بيانات
-       * متصفّحه قبل ذلك فقد ساعةً من عمله. التحذير نصٌّ ظاهر لا نافذة.
-       */
-      if (!(opts && opts.savedOnServer)) {
-        wrap.append(
-          el('div', { class: 'tp-warn', role: 'status' }, [
-            el('strong', { text: t('bLocalOnlyTitle') }),
-            el('span', { text: t('bLocalOnlyBody') }),
-          ])
-        );
-      }
-
       // ---- صفّ الأرقام: يمرّر أفقياً، والنشط يُساق إلى النظر
       const pills = el('div', { class: 'tp-d-pills' });
       draft.questions.forEach((q, i) => {

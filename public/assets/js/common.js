@@ -576,12 +576,21 @@
     const pop = el('span', { class: 'hintdot__pop', role: 'note', text });
     pop.hidden = true;
 
+    let openedAt = 0;
     function close() {
       if (pop.hidden) return;
       pop.hidden = true;
       btn.setAttribute('aria-expanded', 'false');
       document.removeEventListener('pointerdown', onOutside, true);
       document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', close);
+    }
+    function onScroll() {
+      // تمريرُ ما قبل الفتح يصل حدثُه متأخراً بعد تركيب المستمع — ليس تمريرَ
+      // القارئ فلا يُغلق؛ وما بعد المهلة تمريرٌ حقيقي يُبعد الفقاعة عن نقطتها
+      if (Date.now() - openedAt < 300) return;
+      close();
     }
     function onOutside(event) {
       if (!wrap.contains(event.target)) close();
@@ -591,18 +600,34 @@
     }
     btn.addEventListener('click', () => {
       if (!pop.hidden) return close();
+      /*
+       * الفقاعة `fixed` بإحداثياتٍ تُحسب هنا — لا `absolute` أبداً: المطلقة
+       * توسّع المستند حين تتجاوز حافته، فينزاح المحتوى كلّه أفقياً على
+       * الجوال لحظة الفتح. الثابتة خارج تدفّق المستند فلا توسّع شيئاً،
+       * والقصّ داخل الشاشة يصير حساباً صريحاً لا رجاءً.
+       */
       pop.hidden = false;
-      btn.setAttribute('aria-expanded', 'true');
-      // الفقاعة مربوطة بالنقطة، والشاشة قد تقصّها من أي الجهتين — قصٌّ بالبكسل
-      pop.style.transform = '';
+      pop.style.visibility = 'hidden';
+      pop.style.left = '0px';
+      pop.style.top = '0px';
+      const anchor = btn.getBoundingClientRect();
       const box = pop.getBoundingClientRect();
       const margin = 12;
-      let shift = 0;
-      if (box.right > window.innerWidth - margin) shift = window.innerWidth - margin - box.right;
-      if (box.left + shift < margin) shift = margin - box.left;
-      if (shift) pop.style.transform = 'translateX(' + Math.round(shift) + 'px)';
+      const rtl = (document.documentElement.dir || 'rtl') !== 'ltr';
+      let left = rtl ? anchor.right - box.width : anchor.left;
+      left = Math.min(Math.max(left, margin), Math.max(margin, window.innerWidth - margin - box.width));
+      let top = anchor.bottom + 6;
+      if (top + box.height > window.innerHeight - margin) top = Math.max(margin, anchor.top - box.height - 6);
+      pop.style.left = Math.round(left) + 'px';
+      pop.style.top = Math.round(top) + 'px';
+      pop.style.visibility = '';
+      btn.setAttribute('aria-expanded', 'true');
       document.addEventListener('pointerdown', onOutside, true);
       document.addEventListener('keydown', onKey, true);
+      // التمرير يُبعد النقطة عن فقاعتها الثابتة — الإغلاق أصدق من ملاحقتها
+      openedAt = Date.now();
+      window.addEventListener('scroll', onScroll, true);
+      window.addEventListener('resize', close);
     });
 
     wrap.append(btn, pop);

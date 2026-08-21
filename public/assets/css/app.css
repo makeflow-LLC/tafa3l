@@ -3508,9 +3508,9 @@ html[dir='rtl'] ol {
 }
 
 .hintdot__pop {
-  position: absolute;
-  top: calc(100% + 4px);
-  inset-inline-start: 0;
+  /* ثابتة لا مطلقة: المطلقة توسّع المستند خارج حافته فينزاح المحتوى كلّه
+     أفقياً على الجوال — الإحداثيات تُحسب في hintDot نفسه */
+  position: fixed;
   z-index: 60;
   min-width: 200px;
   max-width: min(300px, calc(100vw - 32px));
