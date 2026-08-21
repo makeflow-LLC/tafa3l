@@ -114,6 +114,7 @@ svg {
 .brand {
   display: flex;
   align-items: center;
+  min-height: 40px;
   gap: 10px;
   font-weight: 800;
   font-size: 1.25rem;
@@ -199,8 +200,8 @@ html.dark .brand .dark-only {
 .topbar-actions .btn.sm,
 .topbar-actions .icon-btn,
 .topbar-actions .badge {
-  min-height: 36px;
-  height: 36px;
+  min-height: 40px;
+  height: 40px;
   border-radius: 999px;
   font-size: 0.82rem;
   display: inline-flex;
@@ -210,8 +211,8 @@ html.dark .brand .dark-only {
 }
 
 .topbar-actions .icon-btn {
-  width: 36px;
-  min-width: 36px;
+  width: 40px;
+  min-width: 40px;
   padding: 0;
 }
 
@@ -264,14 +265,14 @@ html.dark .brand .dark-only {
   .topbar-actions .btn.sm,
   .topbar-actions .icon-btn,
   .topbar-actions .badge {
-    min-height: 34px;
-    height: 34px;
+    min-height: 40px;
+    height: 40px;
     padding: 0 10px;
     font-size: 0.78rem;
   }
   .topbar-actions .icon-btn {
-    width: 34px;
-    min-width: 34px;
+    width: 40px;
+    min-width: 40px;
     padding: 0;
   }
   /* على الجوال تكفي الأيقونة: النصّ يبقى في العنوان والقارئ الصوتي */
@@ -298,14 +299,14 @@ html.dark .brand .dark-only {
   .topbar-actions .btn.sm,
   .topbar-actions .icon-btn,
   .topbar-actions .badge {
-    min-height: 32px;
-    height: 32px;
+    min-height: 40px;
+    height: 40px;
     padding: 0 8px;
     font-size: 0.75rem;
   }
   .topbar-actions .icon-btn {
-    width: 32px;
-    min-width: 32px;
+    width: 40px;
+    min-width: 40px;
     padding: 0;
   }
   .topbar-actions .who {
@@ -341,6 +342,10 @@ html.dark .brand .dark-only {
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 3px;
+  /* هدف لمسٍ محترم لروابط صغيرة الخطّ — حشوة لا تكبير خطّ */
+  display: inline-block;
+  padding: 10px 4px;
+  margin: -6px 0;
 }
 
 .site-footer a:hover {
@@ -696,7 +701,7 @@ p {
 }
 
 .btn.sm {
-  min-height: 38px;
+  min-height: 40px;
   padding: 6px 12px;
   font-size: 0.85rem;
   border-radius: 999px;
@@ -2279,6 +2284,13 @@ input[type='range'].slider::-moz-range-thumb {
 .tabs button.on {
   background: var(--brand);
   color: var(--on-brand);
+}
+
+@media (max-width: 430px) {
+  .tabs button {
+    padding: 9px 8px;
+    font-size: 0.85rem;
+  }
 }
 
 /* ------------------------------------------------------------ شريط سفلي */

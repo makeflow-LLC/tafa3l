@@ -288,7 +288,7 @@
 
     page.append(
       el('div', { class: 'tp-chips' }, [
-        UI.NavChip({ label: t('hnewActivity'), href: '#/', primary: true }),
+        UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
@@ -914,7 +914,7 @@
     app.append(page);
     page.append(
       el('div', { class: 'tp-chips' }, [
-        UI.NavChip({ label: t('hnewActivity'), href: '#/', primary: true }),
+        UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hmyActivities'), href: '#/mine' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
       ])

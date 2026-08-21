@@ -19,10 +19,13 @@
   color: var(--tp-text);
   font-size: var(--tp-fs-14);
   font-weight: var(--tp-w-700);
+  /* ينكمش مع ضيق الشريط فيقصّ الاسمُ نفسَه بنقاطٍ بدل أن يُبتر بحدّ الحاوية */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .tp-who__name {
-  max-width: 12ch;
+  max-width: min(12ch, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

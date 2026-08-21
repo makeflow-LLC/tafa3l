@@ -559,6 +559,71 @@
     return parts[0] || fallback || '';
   }
 
+  /**
+   * حقل رمز الدخول بخاناته الستّ — للرئيسية وصفحة الدخول معاً.
+   *
+   * الحقل الحقيقي واحدٌ شفّاف فوق الخانات: اللصق والإكمال التلقائي ولوحة
+   * المفاتيح والقارئ الصوتي تعمل كلها بلا حيلة، والخانات طبقة عرضٍ تُملأ من
+   * قيمته. اكتمال الأرقام الستّة يُرسل وحده — لا زرَّ ينتظره طالبٌ متلهّف.
+   */
+  function mountCodeEntry(form, options) {
+    const opts = options || {};
+    const t = (key) => (global.I18n ? global.I18n.t(key) : key);
+    const input = el('input', {
+      class: 'code-input',
+      inputmode: 'numeric',
+      pattern: '[0-9]*',
+      maxlength: 6,
+      autocomplete: 'one-time-code',
+      enterkeyhint: 'go',
+      'aria-label': t('homeCodeAria'),
+    });
+    const field = el('div', { class: 'code-field' }, input);
+    const cells = [];
+    for (let i = 0; i < 6; i += 1) {
+      const cell = el('span', { class: 'code-cell', 'aria-hidden': 'true' });
+      field.append(cell);
+      cells.push(cell);
+    }
+    const paint = () => {
+      const digits = input.value;
+      cells.forEach((cell, i) => {
+        cell.textContent = digits[i] || '';
+        cell.classList.toggle('filled', i < digits.length);
+        cell.classList.toggle('next', i === digits.length);
+      });
+    };
+    input.addEventListener('focus', () => field.classList.add('focused'));
+    input.addEventListener('blur', () => field.classList.remove('focused'));
+    // المؤشّر دائماً في آخر الرمز: النقر في منتصفه لا يجعله يكتب بين رقمين
+    const toEnd = () => setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    input.addEventListener('click', toEnd);
+    input.addEventListener('focus', toEnd);
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '').slice(0, 6);
+      paint();
+      if (input.value.length === 6) form.requestSubmit();
+    });
+    paint();
+
+    form.append(field);
+    // زرٌّ ظاهر يطمئن من لا يعرف أن الرمز يُرسل وحده — والإرسال الفعلي واحد
+    form.append(el('button', { class: 'btn primary block', type: 'submit', text: t('homeJoinBtn') }));
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const code = input.value.trim();
+      if (code.length !== 6) return toast(t('homeCodeError'), 'bad');
+      try {
+        await api('/api/sessions/' + code);
+        location.href = '/play.html?code=' + code;
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    });
+    if (opts.autofocus) input.focus();
+    return { input, field };
+  }
+
   global.T = {
     $,
     $$,
@@ -585,6 +650,7 @@
     afterLogin,
     countrySelect,
     countryList,
+    mountCodeEntry,
     OFFLINE_HINT: offlineHint,
   };
 })(window);

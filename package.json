@@ -1,6 +1,6 @@
 {
   "name": "tafa3l",
-  "version": "1.67.0",
+  "version": "1.68.0",
   "description": "Tapio — منصة أسئلة واستطلاعات تفاعلية للمدربين والمعلمين (تخزين مؤقت في الذاكرة)",
   "main": "server/index.js",
   "type": "commonjs",
