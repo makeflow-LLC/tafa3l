@@ -13,6 +13,9 @@
   --bg-2: #f6f7fb;
   --surface: #ffffff;
   --surface-2: #f1f3f9;
+  /* سطح الزرّ الثانويّ: درجةٌ أقوى من الأسطح الخافتة عمداً — لأن
+     `--brand-soft` قريبٌ منها، فزرٌّ بلونها داخل لوحةٍ ملوّنة يختفي */
+  --btn-soft: #e4e7f2;
   --border: #e3e6ef;
   --text: #16162a;
   --muted: #61657d;
@@ -44,6 +47,7 @@ html.dark {
   --bg-2: #1b1840;
   --surface: #1a1740;
   --surface-2: #241f52;
+  --btn-soft: #332c6b;
   --border: rgba(255, 255, 255, 0.14);
   --text: #f5f4ff;
   --muted: #a9a5cc;
@@ -657,15 +661,23 @@ p {
   color: var(--on-brand);
 }
 
+/*
+ * كل زرٍّ ممتلئ، ولا زرَّ إطارٌ فارغ.
+ *
+ * كان الثانويّ والخطِر شفّافَين بإطارٍ وحده — يُقرآن على الأرضية الداكنة
+ * كحدودٍ مرسومة لا كأزرارٍ تُضغط، وعلى الجوال يفوتهما الإصبع لأنهما لا
+ * يبدوان هدفاً. والتراتب محفوظ باللون لا بالفراغ: العلامة للأهمّ، وسطحٌ
+ * أفتح للثانويّ، وأحمرٌ صريح للخطِر.
+ */
 .btn.ghost {
-  background: transparent;
+  background: var(--btn-soft);
   color: var(--text);
 }
 
 .btn.danger {
-  background: transparent;
+  background: var(--bad);
   border-color: var(--bad);
-  color: var(--bad);
+  color: var(--on-brand);
 }
 
 /*
