@@ -50,6 +50,7 @@
   --tp-status-correct: var(--tp-correct);
   --tp-status-wrong: var(--tp-a);
   --tp-ghost-text: var(--tp-purple);
+  --tp-menu-btn-bg: rgba(108, 61, 244, 0.08);
   --tp-scrim: rgba(16, 23, 58, 0.45);
   --tp-canvas: #edecea;
   --tp-dim: 0.35;
@@ -148,6 +149,7 @@
   --tp-status-correct: #4fce85;
   --tp-status-wrong: #ff7a72;
   --tp-ghost-text: var(--tp-purple-tint);
+  --tp-menu-btn-bg: rgba(139, 102, 247, 0.18);
   --tp-canvas: #10173a;
   --tp-dim: 0.3;
 }
@@ -174,11 +176,31 @@
   --tp-status-correct: #1f9d55;
   --tp-status-wrong: #d6403f;
   --tp-ghost-text: var(--tp-purple);
+  --tp-menu-btn-bg: rgba(108, 61, 244, 0.08);
   --tp-canvas: #edecea;
   --tp-dim: 0.35;
 }
 
 /* ------------------- قائمة الشريط العلوي — مشتركة بين الشاشتين */
+
+/* ------------------- طرفا الشريط العلوي — مشتركان بين الصفحتين */
+
+/* بداية الشريط: زرّ القائمة ثم الهوية — كلاهما في جهة بداية القراءة */
+.tp-bar-start {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-8);
+  min-width: 0;
+}
+
+.tp-bar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--tp-s-8);
+  /* يبقى في طرف الشريط حتى لو غابت هوية المعلّم (زائرٌ بلا حساب)، وإلا
+     انزلق إلى الوسط وانزلقت معه قائمته فخرجت عن حافة الشاشة */
+  margin-inline-start: auto;
+}
 
 /*
  * قائمةٌ من سطورٍ كاملة العرض، سطرٌ فوق سطر. لا شبكة ولا أعمدة أبداً:
@@ -190,9 +212,14 @@
   position: relative;
 }
 
+/*
+ * تنسدل من بداية القراءة: يمين الشاشة بالعربية ويسارها بالإنجليزية — من
+ * الجهة التي تبدأ منها العين، ومن الجهة التي فيها زرّها.
+ */
 .tp-menu__panel {
   position: absolute;
-  inset-inline-end: 0;
+  inset-inline-start: 0;
+  inset-inline-end: auto;
   top: calc(100% + var(--tp-s-6));
   z-index: 30;
   /* مربوطةٌ بالزرّ، ولا تتجاوز الشاشة مهما ضاقت */
@@ -307,8 +334,28 @@
   color: var(--tp-status-wrong);
 }
 
-/* زرّ القائمة نفسه: كل ضاغطٍ خارج الخيارات لا يقلّ عن 44px */
+/*
+ * زرّ القائمة: مميَّزٌ بلون العلامة لا رماديٌّ كبقية الشريط — هو المدخل
+ * الوحيد إلى الإعدادات والحساب، فلا يصحّ أن يختفي بين الشارات.
+ */
+.tp-menu__btn,
 .tp-menu > .icon-btn {
   min-height: var(--tp-tap-min);
   min-width: var(--tp-tap-min);
+  border: var(--tp-hair) solid var(--tp-purple);
+  background: var(--tp-menu-btn-bg);
+  color: var(--tp-ghost-text);
+  font-weight: var(--tp-w-700);
+}
+
+/* مفتوحة: يمتلئ الزرّ بلون العلامة فيقول أين أنت */
+.tp-menu__btn[aria-expanded='true'] {
+  background: var(--tp-purple);
+  border-color: var(--tp-purple);
+  color: var(--tp-white);
+}
+
+.tp-menu__btn:focus-visible {
+  outline: var(--tp-s-2) solid var(--tp-purple);
+  outline-offset: var(--tp-s-2);
 }

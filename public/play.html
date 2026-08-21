@@ -16,17 +16,20 @@
   </head>
   <body>
     <div class="topbar tp">
-      <div class="brand"><img class="dot" src="/assets/icon.svg?v=1.65.0" alt="" width="34" height="34" /><span id="quizTitle" class="title-line">Tapio</span></div>
-      <div class="topbar-actions">
-        <span id="conn" class="badge">…</span>
-        <span id="teamBadge" class="badge hidden"></span>
-        <span id="scoreBadge" class="badge hidden">0</span>
-        <!-- الصوت واللغة والسِمَة خلف زرٍّ واحد: شاشة السؤال لا تحتمل صفّاً من الأزرار -->
+      <!-- الصوت واللغة والسِمَة خلف زرٍّ واحد، في بداية القراءة: يمين الشاشة
+           بالعربية ويسارها بالإنجليزية، وتنسدل لوحته من الطرف نفسه -->
+      <div class="tp-bar-start">
         <div class="tp-menu">
-          <button id="exitBtn" class="icon-btn" type="button" aria-haspopup="menu" aria-expanded="false">⋯</button>
+          <button id="exitBtn" class="icon-btn tp-menu__btn" type="button" aria-haspopup="menu" aria-expanded="false">⋯</button>
           <!-- سطورها تُبنى في play.js: الصوت واللغة والسِمَة ثم المغادرة -->
           <div id="exitMenu" class="tp-menu__panel" role="menu" hidden></div>
         </div>
+        <div class="brand"><img class="dot" src="/assets/icon.svg?v=1.65.0" alt="" width="34" height="34" /><span id="quizTitle" class="title-line">Tapio</span></div>
+      </div>
+      <div class="tp-bar-end">
+        <span id="conn" class="badge">…</span>
+        <span id="teamBadge" class="badge hidden"></span>
+        <span id="scoreBadge" class="badge hidden">0</span>
       </div>
     </div>
 

@@ -18,10 +18,19 @@
     <div class="topbar tp">
       <!-- هوية المعلّم في طرف، والشعار ورمز اللغة في الطرف الآخر، وما عداهما
            خلف زرٍّ واحد: شاشة الجوال لا تحتمل صفّاً من ثمانية أزرار -->
-      <a class="tp-who" href="#/profile" id="whoLink">
-        <span class="tp-avatar" id="whoAvatar" aria-hidden="true"></span>
-        <span class="tp-who__name" id="whoName"></span>
-      </a>
+      <!-- زرّ القائمة في **بداية القراءة**: يمين الشاشة بالعربية ويسارها
+           بالإنجليزية، وتنسدل لوحته من الطرف نفسه فلا يقطعها حدّ الشاشة -->
+      <div class="tp-bar-start">
+        <div class="tp-menu">
+          <button id="menuBtn" class="icon-btn tp-menu__btn" type="button" aria-haspopup="menu" aria-expanded="false">⋯</button>
+          <!-- سطورها تُبنى في host.js: هوية الحساب، ثم تنقّل، ثم إعدادات، ثم الحساب -->
+          <div id="hostMenu" class="tp-menu__panel" role="menu" hidden></div>
+        </div>
+        <a class="tp-who" href="#/profile" id="whoLink">
+          <span class="tp-avatar" id="whoAvatar" aria-hidden="true"></span>
+          <span class="tp-who__name" id="whoName"></span>
+        </a>
+      </div>
       <div class="tp-bar-end">
         <span id="codeBadge" class="badge hidden"></span>
         <span id="conn" class="badge hidden">…</span>
@@ -29,11 +38,6 @@
           <img class="logo light-only" src="/assets/logo.svg?v=1.65.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.65.0" alt="Tapio" width="249" height="159" />
         </a>
         <span id="langRow"></span>
-        <div class="tp-menu">
-          <button id="menuBtn" class="icon-btn" type="button" aria-haspopup="menu" aria-expanded="false">⋯</button>
-          <!-- سطورها تُبنى في host.js: هوية الحساب، ثم تنقّل، ثم إعدادات، ثم الحساب -->
-          <div id="hostMenu" class="tp-menu__panel" role="menu" hidden></div>
-        </div>
       </div>
     </div>
 

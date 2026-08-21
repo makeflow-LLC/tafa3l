@@ -101,8 +101,12 @@
 
         function bar() {
           return el('div', { class: 'bar' }, [
-            el('span', { class: 'tp-who' }, [UI.Avatar({ name: 'جهاد' }), el('span', { class: 'tp-who__name', text: 'جهاد' })]),
-            el('div', { class: 'bar__end' }, [el('span', { text: 'EN' }), el('span', { text: 'tapio' }), el('span', { text: '⋯' })]),
+            el('span', { class: 'tp-bar-start' }, [
+              // زرّ القائمة في بداية القراءة، مميَّزٌ بلون العلامة
+              el('span', { class: 'icon-btn tp-menu__btn', text: '⋯' }),
+              el('span', { class: 'tp-who' }, [UI.Avatar({ name: 'جهاد' }), el('span', { class: 'tp-who__name', text: 'جهاد' })]),
+            ]),
+            el('div', { class: 'bar__end' }, [el('span', { text: 'tapio' }), el('span', { text: 'EN' })]),
           ]);
         }
 
