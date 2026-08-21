@@ -6,12 +6,12 @@
     <title>Tapio</title>
     <meta name="description" content="منصة خفيفة لإنشاء أسئلة تفاعلية واستطلاعات حية للمدربين والمعلمين. بلا تسجيل وبلا تخزين دائم." />
     <meta name="theme-color" content="#12102e" />
-    <link rel="icon" href="/assets/icon.svg?v=1.68.0" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.68.0" />
+    <link rel="icon" href="/assets/icon.svg?v=1.69.0" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.69.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.68.0" />
-    <script src="/assets/js/theme.js?v=1.68.0"></script>
-    <script src="/assets/js/i18n.js?v=1.68.0"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.69.0" />
+    <script src="/assets/js/theme.js?v=1.69.0"></script>
+    <script src="/assets/js/i18n.js?v=1.69.0"></script>
   </head>
   <body>
     <div class="wrap narrow">
@@ -24,21 +24,20 @@
       </div>
       <div class="center" style="padding: 10px 0 18px">
         <div class="brand hero" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.68.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.68.0" alt="Tapio" width="249" height="159" />
+          <img class="logo light-only" src="/assets/logo.svg?v=1.69.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.69.0" alt="Tapio" width="249" height="159" />
         </div>
         <p class="muted small" style="margin-top: 8px" id="tagline"></p>
         <p id="welcome" class="hidden" style="margin: 10px 0 0; font-weight: 700"></p>
       </div>
 
       <!--
-        الطالب أولاً: هو الزائر الأكثر — يفتح الصفحة كلَّ حصّة ومعه رمزٌ يريد
-        كتابته الآن. كان مدخله سطراً صغيراً تحت بطاقة المعلّم، فصار أول بطاقة:
-        خاناتٌ ستٌّ تُرسل وحدها فور اكتمالها.
+        الطالب أولاً — لكن بزرٍّ لا بخانات: خانات الرمز على الرئيسية أوهمت
+        معلّمين كثيرين أن عليهم إدخال رمز. البطاقة تسأل «أنت طالب؟» والزرّ
+        ينقل إلى صفحة الرمز، فلا يلتبس على أحد.
       -->
       <div class="card">
         <h2 id="joinTitle" style="margin-top: 0"></h2>
-        <form id="joinForm" class="stack"></form>
-        <p class="muted small center" style="margin: 8px 0 0" id="orScan"></p>
+        <a class="btn accent block big-cta" href="/join.html" id="joinCta"></a>
       </div>
 
       <div class="card">
@@ -59,12 +58,11 @@
         </p>
       </div>
 
-      <p class="footer" id="pageFooter"></p>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.68.0"></script>
-    <script src="/assets/js/common.js?v=1.68.0"></script>
-    <script src="/assets/js/footer.js?v=1.68.0"></script>
+    <script src="/assets/js/avatar.js?v=1.69.0"></script>
+    <script src="/assets/js/common.js?v=1.69.0"></script>
+    <script src="/assets/js/footer.js?v=1.69.0"></script>
     <script>
       (function () {
         const { $, api, store, serverAlive, showOfflineBanner } = window.T;
@@ -76,18 +74,14 @@
 
         $('#tagline').textContent = t('homeTagline');
         $('#topAccount').textContent = t('homeLoginShort');
-        $('#joinTitle').textContent = t('homeJoinTitle');
-        $('#orScan').textContent = t('homeOrScan');
+        $('#joinTitle').textContent = t('homeStudentTitle');
+        $('#joinCta').textContent = t('homeJoinCta');
         $('#teacherTitle').textContent = t('homeTeacherTitle');
         $('#teacherBody').textContent = t('homeTeacherBody');
         $('#createBtn').textContent = t('homeCreateBtn');
         $('#gamesBtn').textContent = t('gNav');
         $('#guideBtn').textContent = t('hteacherGuide');
         $('#accountLink').textContent = t('homeLoginBtn');
-        $('#pageFooter').textContent = t('homeFooter');
-
-        // خانات الرمز — بلا تركيزٍ تلقائي: لوحة مفاتيح تقفز في وجه كل زائرٍ مزعجة
-        window.T.mountCodeEntry($('#joinForm'));
 
         // تشخيص مبكر: إن كان الخادم غير متاح نشرح السبب بدل رسالة خطأ غامضة
         serverAlive().then((alive) => {

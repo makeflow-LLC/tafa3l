@@ -871,11 +871,6 @@
       });
       wrap.append(el('div', { class: 'tp-d-row' }, [prev, el('span', { class: 'grow' }), next]));
 
-      // بنك الأسئلة السابقة يبقى متاحاً تحت المحرّر
-      const reuse = el('div', { id: 'reuseRow' });
-      wrap.append(el('div', { class: 'tp-d-field' }, [el('label', { text: t('bReuseTitle') }), reuse]));
-      reuseRow(reuse);
-
       // الرقم النشط إلى النظر بعد الرسم — على الجوال قد يكون خارج الصفّ
       const activePill = pills.querySelector('.is-on');
       if (activePill && activePill.scrollIntoView) {
@@ -2124,79 +2119,6 @@
       card.append(body);
       return card;
     }
-
-    /**
-     * «أسئلتي السابقة»: بحثٌ في كل ما كتبه المعلّم — في أنشطته المحفوظة وفي
-     * بنكه القديم معاً. حلّ محلّ قائمة البنك المسطّحة، لأن القائمة تُطيل
-     * الصفحة بلا فائدة عند من له مئة سؤال، ولأن أكثر ما يبحث عنه المعلّم
-     * كتبه في نشاطٍ سابق ولم يحفظه في بنكٍ لم يكن يعلم أنه سيحتاجه.
-     */
-    let myQuestions = null;
-
-    function reuseRow(row) {
-      row.innerHTML = '';
-      const input = el('input', { type: 'search', placeholder: t('bReuseSearch'), autocomplete: 'off' });
-      const results = el('div', { class: 'stack tight', style: { marginTop: '8px' } });
-      row.append(input, results);
-
-      const paint = (needle) => {
-        results.innerHTML = '';
-        if (myQuestions === 'anon') {
-          results.append(el('a', { class: 'btn ghost sm', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/new') }, t('bsignInToUse')));
-          return;
-        }
-        if (!myQuestions) return results.append(el('span', { class: 'muted small', text: t('bloading') }));
-        if (!myQuestions.length) return results.append(el('span', { class: 'muted small', text: t('bReuseEmpty') }));
-        const key = needle.trim().toLowerCase();
-        const hits = (key ? myQuestions.filter((item) => String(item.question.text).toLowerCase().includes(key)) : myQuestions).slice(0, 12);
-        if (!hits.length) return results.append(el('span', { class: 'muted small', text: t('bReuseNoHits') }));
-        hits.forEach((item) => {
-          const q = item.question;
-          const add = el('button', { class: 'btn sm ghost', type: 'button', title: t('baddToThisActivity') }, t('badd'));
-          add.addEventListener('click', () => {
-            const copy = sanitizeQuestion({ ...q, id: uid() });
-            // مسودةٌ جديدة تبدأ بسؤالٍ فارغ. لو أضفنا فوقه لخرج المعلّم بسؤالٍ
-            // بلا نصّ عليه أن يحذفه بنفسه — فنحلّ محلّه ما دام لم يُكتب فيه شيء
-            const only = draft.questions.length === 1 ? draft.questions[0] : null;
-            const untouched = only && !String(only.text).trim() && !(only.options || []).some((o) => String(o.text).trim());
-            if (untouched) draft.questions[0] = copy;
-            else draft.questions.push(copy);
-            openIndex = draft.questions.length - 1;
-            adding = false;
-            update();
-          });
-          results.append(
-            el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)' } }, [
-              el('span', { text: TYPE_EMOJI[q.type] }),
-              el('span', { class: 'grow stack tight', style: { margin: '0 8px', textAlign: 'start' } }, [
-                el('span', { text: q.text || TYPE_LABELS[q.type] }),
-                // من أي نشاط جاء: نصّان متشابهان يفترقان بمصدرهما
-                item.from ? el('span', { class: 'muted small', text: item.from }) : null,
-              ]),
-              add,
-            ])
-          );
-        });
-        // البحث يقتصر على ١٢ نتيجة: قول ذلك أصدق من إيهامه بأن هذا كل ما لديه
-        if (!key && myQuestions.length > 12) results.append(el('span', { class: 'muted small', text: t('bReuseMore', { n: myQuestions.length }) }));
-      };
-
-      let timer = null;
-      input.addEventListener('input', () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => paint(input.value), 150);
-      });
-
-      paint('');
-      if (myQuestions === null) {
-        api('/api/my-questions')
-          .then((data) => { myQuestions = data.questions || []; })
-          .catch(() => { myQuestions = 'anon'; })
-          .then(() => row.isConnected && paint(input.value));
-      }
-    }
-
-    /** القوالب محمّلة مع الصفحة (window.TEMPLATES) — لا تعتمد على الشبكة إطلاقاً */
     function loadTemplates(row) {
       const templates = global.TEMPLATES || [];
       row.innerHTML = '';
