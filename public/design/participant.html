@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme-default="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tapio — معاينة شاشة إجابة المتدرب</title>
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.64.0" />
+    <link rel="stylesheet" href="/assets/css/participant.css?v=1.64.0" />
+    <style>
+      /* صفحة معاينة ساكنة: لوحة تعرض الحالات الأربع في السِمَتين جنباً إلى جنب.
+         لا لون هنا خارج الرموز — اللوحة نفسها بلون رمز اللوحة. */
+      .canvas {
+        min-height: 100dvh;
+        padding: var(--tp-s-24);
+        background: var(--tp-canvas);
+        color: var(--tp-text);
+      }
+      .canvas h1 {
+        font-size: var(--tp-fs-22);
+        margin: 0 0 var(--tp-s-8);
+      }
+      .canvas .lead {
+        margin: 0 0 var(--tp-s-24);
+        color: var(--tp-muted);
+        font-size: var(--tp-fs-14);
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--tp-s-24);
+      }
+      .cell {
+        display: flex;
+        flex-direction: column;
+        gap: var(--tp-s-8);
+      }
+      .cell > figcaption {
+        font-size: var(--tp-fs-13);
+        font-weight: var(--tp-w-700);
+        color: var(--tp-muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas tp tp-light">
+      <h1>شاشة إجابة المتدرب — الحالات الأربع في السِمَتين</h1>
+      <p class="lead">
+        معاينة ساكنة مبنيّة بمكوّنات <code>participant-ui.js</code> نفسها التي تعمل في صفحة اللعب،
+        فما تراه هنا هو ما يراه الطالب. المقاس 390×780 مقاس مخطوطة — الشاشة الحقيقية مرنة.
+      </p>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <script src="/assets/js/participant-ui.js?v=1.64.0"></script>
+    <script>
+      (function () {
+        'use strict';
+        const UI = window.TapioUI;
+        const el = UI.el;
+
+        // نموذج سؤالٍ واحد تُعرض عليه الحالات كلها — مثال DESIGN.md نفسه
+        const LETTERS = 'أبجدهوزح';
+        const Q = {
+          text: 'ما عاصمة الجزائر؟',
+          options: [
+            { text: 'الرباط', correct: false },
+            { text: 'الجزائر', correct: true },
+            { text: 'تونس', correct: false },
+            { text: 'طرابلس', correct: false },
+          ],
+        };
+        const MANY = ['الرباط', 'الجزائر', 'تونس', 'طرابلس', 'القاهرة', 'عمّان'];
+
+        /** بناء شاشة كاملة بحالةٍ واحدة */
+        function screen(opts) {
+          const options = opts.options || Q.options;
+          const palette = options.length <= 4;
+          const stage = el('div', { class: 'tp-stage' }, [el('h1', { class: 'tp-q', text: Q.text })]);
+
+          if (opts.waiting) stage.append(UI.WaitingIndicator({ text: 'إجابتك وصلت — بانتظار بقية الصف' }));
+          if (opts.status) stage.append(UI.StatusLine(opts.status));
+
+          const list = el('div', { class: 'tp-options' });
+          options.forEach((option, index) => {
+            list.append(
+              UI.AnswerOption({
+                letter: UI.letterAt(LETTERS, index),
+                text: option.text || option,
+                slot: index,
+                palette,
+                interactive: false,
+                state: opts.stateFor(index, option),
+                chip: 'اختيارك',
+              })
+            );
+          });
+
+          const timer = UI.Timer({ total: 30 });
+          timer.set(opts.msLeft === undefined ? 18000 : opts.msLeft);
+          if (opts.msLeft === 0) timer.expire();
+
+          return el('div', { class: 'tp-screen' }, [
+            el('div', { class: 'tp-head' }, [
+              UI.HeaderStat({ kind: 'counter', value: 3, total: 10 }),
+              UI.HeaderStat({ kind: 'score', value: opts.score === undefined ? 240 : opts.score, label: 'pts' }),
+            ]),
+            timer.node,
+            stage,
+            list,
+          ]);
+        }
+
+        // الحالات الأربع كما في DESIGN.md §2
+        const STATES = [
+          {
+            name: 'نشِط',
+            stateFor: () => 'idle',
+          },
+          {
+            name: 'مختار / بانتظار',
+            waiting: true,
+            stateFor: (index) => (index === 1 ? 'selected' : 'faded'),
+          },
+          {
+            name: 'كُشِف — صحيحة',
+            msLeft: 0,
+            score: 360,
+            status: { tone: 'correct', text: 'إجابة صحيحة', delta: '+120' },
+            stateFor: (index) => (index === 1 ? 'correct' : 'neutral'),
+          },
+          {
+            name: 'كُشِف — خاطئة',
+            msLeft: 0,
+            status: { tone: 'wrong', text: 'إجابة خاطئة', delta: '+0', right: 'الصحيح: ب الجزائر' },
+            stateFor: (index) => (index === 1 ? 'correct' : index === 2 ? 'wrong' : 'neutral'),
+          },
+        ];
+
+        const grid = document.getElementById('grid');
+        [
+          { theme: 'tp-light', label: 'فاتحة' },
+          { theme: 'tp-dark', label: 'داكنة' },
+        ].forEach((mode) => {
+          STATES.forEach((state) => {
+            grid.append(
+              el('figure', { class: 'cell', style: { margin: '0' } }, [
+                el('figcaption', { text: `${state.name} — ${mode.label}` }),
+                el('div', { class: 'tp ' + mode.theme + ' tp-frame' }, screen(state)),
+              ])
+            );
+          });
+        });
+
+        // حالة الخمسة خيارات فأكثر: سطح محايد وحرفٌ بلون العلامة، بلا درجاتٍ مخترعة
+        [
+          { theme: 'tp-light', label: 'فاتحة' },
+          { theme: 'tp-dark', label: 'داكنة' },
+        ].forEach((mode) => {
+          grid.append(
+            el('figure', { class: 'cell', style: { margin: '0' } }, [
+              el('figcaption', { text: `ستة خيارات — ${mode.label}` }),
+              el(
+                'div',
+                { class: 'tp ' + mode.theme + ' tp-frame' },
+                screen({ options: MANY.map((text) => ({ text })), stateFor: () => 'idle' })
+              ),
+            ])
+          );
+        });
+      })();
+    </script>
+  </body>
+</html>

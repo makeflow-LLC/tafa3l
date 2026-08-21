@@ -8,10 +8,11 @@
   /** لغة التنسيق للتواريخ والأرقام */
   const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
   const Fx = window.Fx;
+  const UI = window.TapioUI;
 
   // نصوص الشريط العلوي ومبدّل اللغة (الصفحة نفسها بلا نصوص ثابتة)
   for (const [id, title, aria] of [
-    ['#exitBtn', 'pLeaveTitle', 'pLeaveTitle'],
+    ['#exitBtn', 'pMenuAria', 'pMenuAria'],
     ['#soundBtn', 'pSoundTitle', 'pSoundAria'],
   ]) {
     const node = $(id);
@@ -50,7 +51,17 @@
     review: null, // مراجعة الطالب لأدائه بعد النشاط
     autoNextTimer: null, // الانتقال التلقائي بعد الإجابة في الوضع الحرّ
     clockOffset: 0, // فرق ساعة المتصفح عن ساعة الخادم، يُلتقط عند وصول الرسالة
+    timer: null, // مكوّن المؤقّت في شاشة الإجابة الجديدة
+    optionNodes: [], // عُقَد الخيارات المعروضة الآن (للقفل الفوري)
+    sendBtn: null, // زرّ الإرسال في السؤال متعدّد الاختيار
+    pending: null, // إجابة محفوظة محلياً بانتظار عودة الاتصال
+    online: false,
   };
+
+  // لافتة الاتصال وورقة التفاعلات: نسخة واحدة تعيش بين الرسمات
+  const banner = UI.ConnectionBanner();
+  const PENDING_KEY = SESSION_KEY + ':pending';
+  state.pending = store.get(PENDING_KEY, null);
 
   /** توقيت الخادم الآن كما نقدّره محلياً */
   function serverTime() {
@@ -69,6 +80,11 @@
     onStatus: (status) => {
       connBadge.className = 'badge ' + (status === 'online' ? 'ok' : status === 'offline' ? 'bad' : '');
       connBadge.textContent = status === 'online' ? t('pConnected') : status === 'offline' ? t('pDisconnected') : t('pConnecting');
+      state.online = status === 'online';
+      paintBanner();
+      // الوصل يعود تلقائياً بتراجعٍ أسّي داخل connect()، وما إن يعود
+      // حتى نُزامن مع حالة الصف ثم نرسل ما حُفظ محلياً
+      if (state.online) flushPending();
     },
     onMessage: handleMessage,
   });
@@ -85,12 +101,14 @@
         state.last = msg;
         state.joined = true;
         render();
+        flushPending();
         break;
       case 'answer:accepted':
         vibrate(msg.correct === true ? [18, 60, 18] : 18);
         Fx.play(msg.correct === true ? 'correct' : msg.correct === false ? 'wrong' : 'sent');
         if (msg.correct === true) Fx.confetti(70);
         state.submitting = false;
+        dropPending();
         break;
       case 'review':
         state.review = Array.isArray(msg.items) ? msg.items : [];
@@ -98,6 +116,7 @@
         break;
       case 'answer:rejected':
         state.submitting = false;
+        dropPending();
         toast(msg.message, 'bad');
         render(true);
         break;
@@ -373,6 +392,8 @@
     clearTick();
     cancelAutoNext();
     app.innerHTML = '';
+    // قفل الارتفاع خاصٌّ بشاشة السؤال وحدها؛ ما عداها يمرّر كالمعتاد
+    document.body.classList.remove('tp-lock');
 
     // عدّاد «استعد» متزامن مع الخادم قبل فتح السؤال المؤقّت
     const untilOpen = openIn(s);
@@ -483,6 +504,10 @@
     if (!q) return renderLobby(s);
     state.selection = [];
 
+    // أسئلة الاختيار لها شاشة الإجابة المصمَّمة (DESIGN.md)؛ ما عداها يبقى
+    // على التخطيط القديم حتى يُهجَّر نوعاً نوعاً
+    if (isChoiceQuestion(q)) return renderAnswerScreen(s);
+
     app.append(header(s));
 
     const timerBox = el('div', { class: 'timer', style: { marginBottom: '12px' } }, [
@@ -506,6 +531,254 @@
 
     app.append(answerControls(s, q));
     startTick(s);
+  }
+
+  // ------------------------------------------- شاشة الإجابة (DESIGN.md)
+
+  /** الأنواع التي تعمل بشاشة الإجابة الجديدة: قائمة خيارات يُختار منها */
+  function isChoiceQuestion(q) {
+    return (
+      (q.type === 'mc' || q.type === 'poll' || q.type === 'truefalse') &&
+      Array.isArray(q.options) &&
+      q.options.length > 0
+    );
+  }
+
+  /** حالة الخيار الواحد حسب مرحلة الشاشة — §3.1 */
+  function optionState(option, mine, answered, revealed) {
+    if (!answered) return 'idle';
+    const chosen = mine.includes(option.id);
+    if (!revealed) return chosen ? 'selected' : 'faded';
+    if (option.correct) return 'correct';
+    if (chosen) return 'wrong';
+    return 'neutral';
+  }
+
+  /** سطر الحالة بعد الكشف: «إجابة صحيحة +120» أو «إجابة خاطئة +0 — الصحيح: …» */
+  function revealStatus(s, q, letters) {
+    const answered = s.answered;
+    const delta = showsPoints(s) ? '+' + (answered?.points || 0) : '';
+    if (answered?.correct === true) return UI.StatusLine({ tone: 'correct', text: t('pStatusCorrect'), delta });
+    if (answered?.correct === 'partial') return UI.StatusLine({ tone: 'correct', text: t('pStatusPartial'), delta });
+    const right = q.options
+      .map((option, index) => (option.correct ? `${UI.letterAt(letters, index)} ${option.text}` : null))
+      .filter(Boolean)
+      .join(' + ');
+    return UI.StatusLine({
+      tone: 'wrong',
+      text: t('pStatusWrong'),
+      delta,
+      right: right ? t('pStatusRight', { answer: right }) : '',
+    });
+  }
+
+  /**
+   * شاشة إجابة المتدرب بحالاتها الأربع: نشِطة، مختارة/بانتظار، ومكشوفة
+   * صحيحةً أو خاطئة. لا تمرير فيها: الرأس والمؤقّت ثابتان، والسؤال يتوسّط ما
+   * بينهما، والخيارات في منطقة الإبهام أسفل الشاشة.
+   */
+  function renderAnswerScreen(s) {
+    const q = s.question;
+    document.body.classList.add('tp-lock');
+
+    const queued = pendingFor(q);
+    const answered = !!s.answered || !!queued;
+    // الكشف اختيار المدرب: إن لم يُفعّله لا تصل صحّة الخيارات أصلاً، فتبقى
+    // الشاشة على حالة «وصلت إجابتك»
+    const revealed = !!q.scored && q.options.some((option) => option.correct !== undefined);
+    const mine = s.answered ? [].concat(s.answered.value) : queued ? [].concat(queued.value) : [];
+    const letters = t('pOptionLetters');
+    const palette = q.options.length <= 4;
+    const spoken = { selected: t('pOptState'), correct: t('pOptStateCorrect'), wrong: t('pOptStateWrong') };
+
+    const stage = el('div', { class: 'tp-stage' });
+    const media = UI.ImageSlot({
+      src: q.imageUrl,
+      alt: t('pQuestionImage'),
+      node: q.video ? videoNode(q.video) : null,
+    });
+    if (media) stage.append(media);
+    stage.append(el('h1', { class: 'tp-q', text: q.text }));
+    if (answered) {
+      stage.append(revealed ? revealStatus(s, q, letters) : UI.WaitingIndicator({ text: t('pWaitingLine') }));
+    } else if (q.multi) {
+      stage.append(el('p', { class: 'tp-hint', text: t('pPickAll') }));
+    }
+
+    const list = el('div', { class: 'tp-options' });
+    const nodes = [];
+    q.options.forEach((option, index) => {
+      const node = UI.AnswerOption({
+        letter: UI.letterAt(letters, index),
+        text: option.text,
+        slot: index,
+        palette,
+        value: option.id,
+        chip: t('pYourPick'),
+        spoken,
+        interactive: !answered,
+        state: optionState(option, mine, answered, revealed),
+        onSelect: () => pick(q, option, node, nodes),
+      });
+      nodes.push(node);
+      list.append(node);
+    });
+    state.optionNodes = nodes;
+
+    state.timer = UI.Timer({ total: q.timeLimit || 0, infinite: !q.timeLimit });
+    if (answered && !q.timeLimit) state.timer.node.classList.add('is-done');
+
+    state.sendBtn = null;
+    if (q.multi && !answered) {
+      state.sendBtn = el('button', { class: 'tp-send', type: 'button', disabled: true }, t('pSendAnswer'));
+      // الاختيار المتعدّد يحتاج ضغطاتٍ عدّة، فالقفل عند الإرسال لا عند أول ضغطة
+      state.sendBtn.addEventListener('click', () => {
+        if (state.sendBtn.disabled || !state.selection.length) return;
+        state.sendBtn.disabled = true;
+        nodes.forEach((node) => node.lock());
+        submitAnswer(q, state.selection.slice());
+      });
+    }
+
+    app.append(
+      el('div', { class: 'tp-screen' }, [
+        el('div', { class: 'tp-head' }, [
+          UI.HeaderStat({ kind: 'counter', value: s.index + 1, total: s.total }),
+          showsPoints(s) ? UI.HeaderStat({ kind: 'score', value: s.me?.score || 0, label: t('pPtsLabel') }) : null,
+        ]),
+        state.timer.node,
+        banner.node,
+        stage,
+        list,
+        state.sendBtn,
+        answered ? reactionButton() : null,
+      ])
+    );
+
+    paintBanner();
+    startTick(s);
+  }
+
+  /**
+   * ضغطة على خيار.
+   *
+   * في الاختيار الأحادي تُقفل الشبكة كلها فور الضغطة الأولى وتُرسم النتيجة
+   * تفاؤلياً قبل أن يردّ الخادم — لا إرسال مزدوج ولا انتظارَ شبكةٍ في لحظةٍ
+   * يعدّ فيها الصفّ الثواني.
+   */
+  function pick(q, option, node, nodes) {
+    if (state.submitting) return;
+    vibrate(10);
+
+    if (q.multi) {
+      const at = state.selection.indexOf(option.id);
+      if (at >= 0) {
+        state.selection.splice(at, 1);
+        node.setState('idle');
+      } else {
+        state.selection.push(option.id);
+        node.setState('selected');
+      }
+      if (state.sendBtn) state.sendBtn.disabled = state.selection.length === 0;
+      return;
+    }
+
+    state.selection = [option.id];
+    nodes.forEach((other) => {
+      other.lock();
+      other.setState(other === node ? 'selected' : 'faded');
+    });
+    submitAnswer(q, option.id);
+  }
+
+  /** زرّ التفاعلات: ورقة تُفتح عند الحاجة بدل شريطٍ يأكل ارتفاع الشاشة */
+  function reactionButton() {
+    const sheet = UI.ReactionSheet({
+      title: t('pReactionsTitle'),
+      buttonLabel: t('pReactOpen'),
+      closeLabel: t('pSheetClose'),
+      itemLabel: t('pReactionAria', { emoji: '' }),
+      emojis: Fx.REACTIONS,
+      onPick: (emoji, item) => {
+        socket.send({ t: 'reaction', emoji });
+        item.classList.remove('bump');
+        void item.offsetWidth;
+        item.classList.add('bump');
+        vibrate(10);
+      },
+    });
+    const host = el('div', { class: 'tp' }, sheet.sheet);
+    document.body.append(host);
+    state.sheetHost = host;
+    return sheet.button;
+  }
+
+  // ------------------------------------------- الإرسال وطابور الإجابات
+
+  /** الإجابة المحفوظة إن كانت لهذا السؤال بعينه */
+  function pendingFor(q) {
+    return state.pending && q && state.pending.questionId === q.id ? state.pending : null;
+  }
+
+  function rememberPending(q, value) {
+    state.pending = { questionId: q.id, value };
+    store.set(PENDING_KEY, state.pending);
+  }
+
+  function dropPending() {
+    if (!state.pending) return;
+    state.pending = null;
+    store.del(PENDING_KEY);
+    paintBanner();
+  }
+
+  /**
+   * إرسال إجابة شاشة الإجابة الجديدة.
+   *
+   * إن سقطت الشبكة حُفظت الإجابة محلياً وأُرسلت وحدها عند العودة، ما دام
+   * السؤال نفسه ما زال مفتوحاً.
+   */
+  function submitAnswer(q, value) {
+    if (state.submitting) return;
+    state.submitting = true;
+    // تُحفظ الإجابة **قبل** الإرسال دائماً: المقبس قد يبدو مفتوحاً وقد ماتت
+    // الشبكة تحته، فتُبتلع الرسالة بلا خطأ. تُمحى عند وصول الإقرار.
+    rememberPending(q, value);
+    const sent = socket.send({ t: 'answer', questionId: q.id, value });
+    if (sent) return;
+    state.submitting = false;
+    paintBanner();
+  }
+
+  /** إرسال ما حُفظ محلياً بعد عودة الاتصال ومزامنة الحالة مع الصف */
+  function flushPending() {
+    const saved = state.pending;
+    if (!saved || !state.online) return;
+    const s = state.last;
+    if (!s) return;
+    // الخادم سجّلها فعلاً (وصلت قبل الانقطاع) — نطويها بلا ضجّة
+    if (s.answered) return dropPending();
+    const open = s.phase === 'question' && s.question && s.question.id === saved.questionId && !s.locked;
+    if (!open) {
+      dropPending();
+      toast(t('pQueuedLost'), 'bad');
+      render(true);
+      return;
+    }
+    if (socket.send({ t: 'answer', questionId: saved.questionId, value: saved.value })) {
+      toast(t('pQueuedSent'));
+    }
+  }
+
+  /**
+   * ما تقوله اللافتة الآن: انقطاعٌ، أو إجابةٌ محفوظة تنتظر العودة.
+   *
+   * الإجابة المحفوظة لا تُذكر ما دام الاتصال قائماً — إقرار الخادم يصل بعد
+   * أجزاءٍ من الثانية، فذكرها يومض بلا داعٍ في كل إجابة.
+   */
+  function paintBanner() {
+    if (state.online) return banner.set('');
+    banner.set(state.pending ? t('pQueuedBanner') : t('pOfflineBanner'));
   }
 
   /** بطاقة نص السؤال مع صورته إن وُجدت */
@@ -1741,24 +2014,30 @@
   function startTick(s) {
     const q = s.question;
     if (!q?.timeLimit || !s.endsAt) return;
-    const num = $('#tnum');
-    const bar = $('#tbar');
-    if (!num || !bar) return;
+    const timer = state.timer;
+    const num = timer ? null : $('#tnum');
+    const bar = timer ? null : $('#tbar');
+    if (!timer && (!num || !bar)) return;
     const total = q.timeLimit * 1000;
     let lastSecond = null;
 
     state.tickTimer = setInterval(() => {
       const left = Math.max(0, s.endsAt - serverTime());
       const seconds = Math.ceil(left / 1000);
-      num.textContent = String(seconds);
-      bar.style.width = Math.max(0, (left / total) * 100) + '%';
+      if (timer) {
+        timer.set(left);
+      } else {
+        num.textContent = String(seconds);
+        bar.style.width = Math.max(0, (left / total) * 100) + '%';
+      }
       // نبضة صوتية في الثواني الأخيرة لرفع الحماس
       if (seconds !== lastSecond) {
         if (lastSecond !== null && seconds > 0 && seconds <= 5 && !s.answered) Fx.play('tick');
         lastSecond = seconds;
       }
-      num.classList.toggle('hot', seconds <= 5);
+      if (num) num.classList.toggle('hot', seconds <= 5);
       if (left <= 0) {
+        timer?.expire();
         clearTick();
         // الوضع الحر: انتهى وقته دون إجابة — نعرض له زر الانتقال بنفسه
         if (s.pace === 'self' && !s.answered) renderSelfTimeout(s);
@@ -1769,6 +2048,11 @@
   function clearTick() {
     if (state.tickTimer) clearInterval(state.tickTimer);
     state.tickTimer = null;
+    state.timer = null;
+    state.optionNodes = [];
+    state.sendBtn = null;
+    state.sheetHost?.remove();
+    state.sheetHost = null;
     state.cancelCountdown?.();
     state.cancelCountdown = null;
     // عدّادا الجدولة والمدة يعيشان بين الرسمات، فنوقفهما مع كل إعادة رسم
@@ -1782,15 +2066,40 @@
     if (!document.hidden && state.last) render(true);
   });
 
-  // زر الخروج من النشاط
+  /*
+   * قائمة النشاط: الصوت واللغة والسِمَة والمغادرة خلف زرٍّ واحد. شاشة السؤال
+   * تُقاس بالارتفاع، وصفٌّ من الأزرار في أعلاها يزاحم السؤال نفسه.
+   */
   const exitBtn = $('#exitBtn');
-  if (exitBtn) {
-    exitBtn.addEventListener('click', () => {
+  const exitMenu = $('#exitMenu');
+  if (exitBtn && exitMenu) {
+    const setOpen = (open) => {
+      exitMenu.hidden = !open;
+      exitBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    exitBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setOpen(exitMenu.hidden);
+    });
+    document.addEventListener('click', (event) => {
+      if (!exitMenu.hidden && !exitMenu.contains(event.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    });
+  }
+
+  // المغادرة: الفعل الوحيد الذي لا رجعة فيه، فيبقى بتأكيد
+  const leaveBtn = $('#leaveBtn');
+  if (leaveBtn) {
+    leaveBtn.textContent = t('pLeaveAction');
+    leaveBtn.addEventListener('click', () => {
       const live = state.last && state.last.status !== 'ended';
       if (live && !confirm(t('pLeaveConfirm'))) return;
       // لا نرسل «مغادرة» قبل الانضمام أصلاً حتى لا تظهر رسالة خطأ
       if (state.joined) socket.send({ t: 'leave' });
       store.del(SESSION_KEY);
+      store.del(PENDING_KEY);
       socket.close();
       location.href = '/';
     });
@@ -1799,7 +2108,7 @@
   // زر كتم الصوت
   const soundBtn = $('#soundBtn');
   if (soundBtn) {
-    const paint = () => (soundBtn.textContent = Fx.soundOn() ? '🔊' : '🔇');
+    const paint = () => (soundBtn.textContent = Fx.soundOn() ? t('pSoundOn') : t('pSoundOff'));
     paint();
     soundBtn.addEventListener('click', () => {
       Fx.setSound(!Fx.soundOn());

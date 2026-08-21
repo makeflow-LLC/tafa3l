@@ -192,7 +192,8 @@ Fill `#1A2250`, 1px `#2A3158`, radius 14px, padding 14px 16px, text 16/500 white
 
 - Participant question must fit the viewport. No scrolling during an
   active question. Use 100dvh and respect safe-area-inset-bottom.
-- Minimum tap target on the participant screen: 56px.
+- Minimum tap target on the participant screen: 56px for answer options,
+  44px for every other control.
 - Every view needs all of: loading skeleton, empty state, error state,
   success state. A view missing any of these is not done.
 - Connection state is always visible on live screens. On disconnect:

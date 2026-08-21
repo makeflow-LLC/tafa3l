@@ -265,6 +265,30 @@
       pSoundTitle: 'الصوت',
       pSoundAria: 'تشغيل أو كتم الصوت',
 
+      // شاشة الإجابة الجديدة (DESIGN.md)
+      // تسلسل حروف الخيارات — يتبع لغة الواجهة فيرى الإنجليزيُّ A B C D
+      pOptionLetters: 'أبجدهوزح',
+      pYourPick: 'اختيارك',
+      pPtsLabel: 'نقطة',
+      pStatusCorrect: 'إجابة صحيحة',
+      pStatusWrong: 'إجابة خاطئة',
+      pStatusPartial: 'إجابة صحيحة جزئياً',
+      pStatusRight: 'الصحيح: {answer}',
+      pWaitingLine: 'إجابتك وصلت — بانتظار بقية المشاركين',
+      pOfflineBanner: 'انقطع الاتصال — نعيد وصلك تلقائياً',
+      pQueuedBanner: 'إجابتك محفوظة، ستُرسل فور عودة الاتصال',
+      pQueuedSent: 'أُرسلت إجابتك المحفوظة',
+      pQueuedLost: 'أُغلق السؤال قبل عودة الاتصال',
+      pReactOpen: '☺ تفاعل',
+      pSheetClose: 'إغلاق',
+      pMenuAria: 'خيارات النشاط',
+      pLeaveAction: '🚪 مغادرة النشاط',
+      pSoundOn: '🔊 الصوت مفعّل',
+      pSoundOff: '🔇 الصوت مكتوم',
+      pOptState: 'اختيارك',
+      pOptStateCorrect: 'الإجابة الصحيحة',
+      pOptStateWrong: 'إجابتك الخاطئة',
+
 
       // ---------------------------------------------- شاشة العرض (screen)
       sInvalidLink: 'رابط شاشة غير صالح',
@@ -1518,6 +1542,29 @@
       pLeaveTitle: 'Leave the activity',
       pSoundTitle: 'Sound',
       pSoundAria: 'Turn sound on or off',
+
+      // new answer screen (DESIGN.md)
+      pOptionLetters: 'ABCDEFGH',
+      pYourPick: 'Your pick',
+      pPtsLabel: 'pts',
+      pStatusCorrect: 'Correct answer',
+      pStatusWrong: 'Wrong answer',
+      pStatusPartial: 'Partly correct',
+      pStatusRight: 'Correct: {answer}',
+      pWaitingLine: 'Answer received — waiting for the others',
+      pOfflineBanner: 'Connection lost — reconnecting automatically',
+      pQueuedBanner: 'Your answer is saved and will be sent once you are back online',
+      pQueuedSent: 'Your saved answer was sent',
+      pQueuedLost: 'The question closed before you reconnected',
+      pReactOpen: '☺ React',
+      pSheetClose: 'Close',
+      pMenuAria: 'Activity options',
+      pLeaveAction: '🚪 Leave activity',
+      pSoundOn: '🔊 Sound on',
+      pSoundOff: '🔇 Sound off',
+      pOptState: 'your pick',
+      pOptStateCorrect: 'the correct answer',
+      pOptStateWrong: 'your wrong pick',
 
 
       // ---------------------------------------------- projector screen
