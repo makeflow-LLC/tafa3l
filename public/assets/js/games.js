@@ -10,13 +10,11 @@
   const app = $('#app');
 
   document.title = t('brand') + ' — ' + t('gTitle');
-  $('#navHome').textContent = t('hhomePage');
-  $('#navMine').textContent = t('gMine');
-  if (window.I18n) window.I18n.mountToggle($('#langRow'));
+  // الشريط المشترك: «الرئيسية» يبنيه بنفسه، و«ألعابي» رابط الصفحة الوحيد
+  window.SiteTopbar?.mount({ links: [{ label: t('gMine'), href: '/host.html#/games' }] });
 
   const state = { q: '', subject: '', grade: '', teacher: '', sort: 'popular', page: 0, items: [], total: 0, rated: new Set(), saved: new Set() };
 
-  if (window.Theme) window.Theme.mountToggle($('#themeRow'), { toDark: t('gThemeDark'), toLight: t('gThemeLight') });
 
   /** الألعاب المحفوظة على هذا الجهاز — الحقيقة في مخبأ عامل الخدمة، وهذه مرآتها للواجهة */
   const SAVED_KEY = 'tapio:offlineGames';

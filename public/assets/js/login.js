@@ -7,9 +7,7 @@
   const app = $('#app');
 
   document.title = t('brand') + ' — ' + t('loginTitle');
-  $('#homeLink').textContent = t('loginBackHome');
-  window.I18n.mountToggle($('#langRow'));
-  window.Theme?.mountToggle($('#langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
+  // الشريط العلوي مشترك: يبني «الرئيسية» والشعار ومبدّلي اللغة والسِمَة بنفسه
 
   // إلى أين نعود بعد الدخول (نقبل المسارات الداخلية فقط)
   const params = new URLSearchParams(location.search);

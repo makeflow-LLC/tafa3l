@@ -151,6 +151,7 @@
 
     // تنقّل — الألعاب منها: الصفحات الداخلية لا تعرض شريط الشرائح، فبلا
     // سطرٍ هنا لا يبقى للمعلّم طريقٌ إلى قسم الألعاب من بروفايله أو باقاته
+    menu.append(UI.MenuRow({ label: t('hhome'), href: '#/' }));
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));

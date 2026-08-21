@@ -202,6 +202,25 @@ html.dark .brand .dark-only {
   flex: 0 0 auto;
 }
 
+/*
+ * جهة بداية القراءة من الشريط: روابط التنقّل وحدها (الرئيسية وما بعدها).
+ * تنكمش قبل أن تنكمش جهة النهاية، فالهوية والمبدّلان أثبت من رابطٍ ثانوي.
+ * لا `overflow: hidden` هنا: القوائم المنسدلة من هذه الجهة يبتلعها القصّ.
+ */
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.topbar-nav > * {
+  flex: 0 0 auto;
+}
+
 .topbar-actions .btn.sm,
 .topbar-actions .icon-btn,
 .topbar-actions .badge {
@@ -3431,4 +3450,14 @@ body.screen-body .q-image {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/*
+ * ترقيم القوائم يتبع لغة الصفحة. كان الدليل يخلط النظامين في شاشةٍ واحدة:
+ * عناوينه بأرقام عربية-هندية (١. ٢. ٣.) وقوائمه المرقّمة بلاتينية (1. 2. 3.)
+ * لأنها ترقيم المتصفّح الافتراضي. أرقام الواجهة الحيّة (المؤقّت، النقاط،
+ * العدّاد) تبقى لاتينية كما ينصّ DESIGN.md §4 — هذه للنثر وحده.
+ */
+html[dir='rtl'] ol {
+  list-style-type: arabic-indic;
 }
