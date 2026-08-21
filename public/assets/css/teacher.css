@@ -253,6 +253,14 @@
   color: var(--tp-text);
 }
 
+/* رأس البطاقة: العنوان و«؟» الشرح على طرفَيه — الشرح لمن يطلبه */
+.tp-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tp-s-8);
+}
+
 .tp-card__body {
   margin: 0;
   font-size: var(--tp-fs-13);

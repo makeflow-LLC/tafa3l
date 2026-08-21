@@ -3461,3 +3461,72 @@ body.screen-body .q-image {
 html[dir='rtl'] ol {
   list-style-type: arabic-indic;
 }
+
+/*
+ * أيقونة «؟» وفقاعتها — بيت النصوص الإرشادية بدل فقراتٍ دائمة فوق كل شاشة.
+ * النقطة صغيرة بصرياً (22px) داخل هدف ضغطٍ 40px، والهامش السالب يعيد ما
+ * أضافه الهدف كي لا ينتفخ سطر العنوان.
+ */
+.hintdot {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.hintdot__btn {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  margin: -9px;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.hintdot__dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.hintdot__btn:hover .hintdot__dot,
+.hintdot__btn:focus-visible .hintdot__dot,
+.hintdot__btn[aria-expanded='true'] .hintdot__dot {
+  color: var(--brand);
+  border-color: var(--brand);
+}
+
+.hintdot__pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  inset-inline-start: 0;
+  z-index: 60;
+  min-width: 200px;
+  max-width: min(300px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.7;
+  text-align: start;
+  white-space: pre-line;
+}
+
+.hintdot__pop[hidden] {
+  display: none;
+}

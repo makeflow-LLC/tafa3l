@@ -6,21 +6,21 @@
     <title>Tapio</title>
     <meta name="description" content="ادخل إلى نشاط Tapio برمز الدخول المكوّن من ستة أرقام." />
     <meta name="theme-color" content="#171240" />
-    <link rel="icon" href="/assets/icon.svg?v=1.71.0" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.71.0" />
+    <link rel="icon" href="/assets/icon.svg?v=1.72.0" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.72.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.71.0" />
-    <script src="/assets/js/theme.js?v=1.71.0"></script>
-    <script src="/assets/js/i18n.js?v=1.71.0"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.72.0" />
+    <script src="/assets/js/theme.js?v=1.72.0"></script>
+    <script src="/assets/js/i18n.js?v=1.72.0"></script>
   </head>
   <body>
     <div class="wrap narrow">
       <div class="row" style="justify-content: flex-end; padding-top: 10px" id="langRow"></div>
       <div class="center" style="padding: 10px 0 18px">
         <a class="brand hero" href="/" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.71.0" alt="Tapio" width="249" height="159" /><img
+          <img class="logo light-only" src="/assets/logo.svg?v=1.72.0" alt="Tapio" width="249" height="159" /><img
             class="logo dark-only"
-            src="/assets/logo-white.svg?v=1.71.0"
+            src="/assets/logo-white.svg?v=1.72.0"
             alt="Tapio"
             width="249"
             height="159"
@@ -29,10 +29,9 @@
       </div>
 
       <div class="card">
-        <h2 id="joinTitle"></h2>
+        <h2 id="joinTitle" style="display: flex; align-items: center; justify-content: space-between; gap: 8px"></h2>
         <!-- الخانات الستّ يبنيها mountCodeEntry المشترك مع الرئيسية -->
         <form id="joinForm" class="stack"></form>
-        <p class="muted small center" style="margin: 8px 0 0" id="orScan"></p>
       </div>
 
       <p class="center" style="margin-top: 14px">
@@ -41,8 +40,8 @@
 
     </div>
 
-    <script src="/assets/js/common.js?v=1.71.0"></script>
-    <script src="/assets/js/footer.js?v=1.71.0"></script>
+    <script src="/assets/js/common.js?v=1.72.0"></script>
+    <script src="/assets/js/footer.js?v=1.72.0"></script>
     <script>
       (function () {
         const { $, serverAlive, showOfflineBanner, mountCodeEntry } = window.T;
@@ -52,8 +51,7 @@
         window.I18n.mountToggle($('#langRow'));
         window.Theme?.mountToggle($('#langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
 
-        $('#joinTitle').textContent = t('homeJoinTitle');
-        $('#orScan').textContent = t('homeOrScan');
+        $('#joinTitle').append(t('homeJoinTitle'), window.T.hintDot(t('homeOrScan')));
         $('#backHome').textContent = t('joinBackHome');
 
         serverAlive().then((alive) => {

@@ -560,6 +560,56 @@
   }
 
   /**
+   * أيقونة «؟» تفتح فقاعة شرحٍ عند الضغط — بديل الفقرات الإرشادية الظاهرة.
+   *
+   * القاعدة: الشرح لمن يطلبه، لا فوق كل شاشة. الفقرة الدائمة تحت الزرّ تقرأها
+   * العين في كل زيارة وإن حفظتها من أول مرّة، فتتراكم الصفحة «تعجيقاً». هنا
+   * النص يسكن خلف نقطةٍ صغيرة بجوار العنوان، ويُفتح بضغطة ويُغلق بضغطةٍ خارجه
+   * أو بـ Esc. ما يبقى ظاهراً دائماً: التحذيرات التي تحمي من خسارة (التخزين
+   * غير الدائم، شروط النشر) — تلك ليست شرحاً بل حماية.
+   */
+  function hintDot(text) {
+    const wrap = el('span', { class: 'hintdot' });
+    const btn = el('button', { class: 'hintdot__btn', type: 'button', 'aria-expanded': 'false' });
+    btn.setAttribute('aria-label', window.I18n ? window.I18n.t('hintWhat') : '?');
+    btn.append(el('span', { class: 'hintdot__dot', 'aria-hidden': 'true', text: window.I18n && window.I18n.getLang() === 'en' ? '?' : '؟' }));
+    const pop = el('span', { class: 'hintdot__pop', role: 'note', text });
+    pop.hidden = true;
+
+    function close() {
+      if (pop.hidden) return;
+      pop.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('pointerdown', onOutside, true);
+      document.removeEventListener('keydown', onKey, true);
+    }
+    function onOutside(event) {
+      if (!wrap.contains(event.target)) close();
+    }
+    function onKey(event) {
+      if (event.key === 'Escape') close();
+    }
+    btn.addEventListener('click', () => {
+      if (!pop.hidden) return close();
+      pop.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      // الفقاعة مربوطة بالنقطة، والشاشة قد تقصّها من أي الجهتين — قصٌّ بالبكسل
+      pop.style.transform = '';
+      const box = pop.getBoundingClientRect();
+      const margin = 12;
+      let shift = 0;
+      if (box.right > window.innerWidth - margin) shift = window.innerWidth - margin - box.right;
+      if (box.left + shift < margin) shift = margin - box.left;
+      if (shift) pop.style.transform = 'translateX(' + Math.round(shift) + 'px)';
+      document.addEventListener('pointerdown', onOutside, true);
+      document.addEventListener('keydown', onKey, true);
+    });
+
+    wrap.append(btn, pop);
+    return wrap;
+  }
+
+  /**
    * حقل رمز الدخول بخاناته الستّ — للرئيسية وصفحة الدخول معاً.
    *
    * الحقل الحقيقي واحدٌ شفّاف فوق الخانات: اللصق والإكمال التلقائي ولوحة
@@ -651,6 +701,7 @@
     countrySelect,
     countryList,
     mountCodeEntry,
+    hintDot,
     OFFLINE_HINT: offlineHint,
   };
 })(window);

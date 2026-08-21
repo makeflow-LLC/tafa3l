@@ -112,9 +112,12 @@
 
   function CreationCard(opts) {
     const o = opts || {};
+    /* الشرح خلف «؟» بجوار العنوان لا فقرةً دائمة: البطاقة عنوانٌ وزرّ.
+       (صفحات المعاينة الساكنة لا تحمّل common.js — فتعود الفقرة هناك وحدها) */
+    const hint = o.body && global.T?.hintDot ? global.T.hintDot(o.body) : null;
     return el('div', { class: 'tp-card' + (o.ai ? ' tp-card--ai' : '') }, [
-      el('h2', { class: 'tp-card__title', text: o.title || '' }),
-      el('p', { class: 'tp-card__body', text: o.body || '' }),
+      el('div', { class: 'tp-card__head' }, [el('h2', { class: 'tp-card__title', text: o.title || '' }), hint]),
+      hint ? null : el('p', { class: 'tp-card__body', text: o.body || '' }),
       /* البطاقتان فعلان للمعلّم، فكلتاهما بنفسجية — والتمييز بالرتبة لا
          باللون: الذكيّة ممتلئة والاختيار اليدوي محدَّد، كما في المخطوطة. */
       Button({ label: o.cta, href: o.href, kind: o.ai ? 'purple' : 'outline', block: true }),
@@ -145,8 +148,7 @@
     const o = opts || {};
     return el('div', { class: 'tp-draft' }, [
       el('div', { class: 'tp-draft__text' }, [
-        el('span', { class: 'tp-draft__title', text: o.title || '' }),
-        el('span', { class: 'tp-draft__meta' }, [o.meta || '']),
+        el('span', { class: 'tp-draft__title' }, [o.title || '', o.meta && global.T?.hintDot ? global.T.hintDot(o.meta) : null]),
       ]),
       Button({ label: o.cta, href: o.href, kind: 'ghost', onClick: o.onClick }),
     ]);

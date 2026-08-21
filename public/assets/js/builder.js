@@ -591,9 +591,6 @@
           draft.settings.pace === 'self'
             ? switchRow(t('bAutoNext'), 'autoNext', t('bAutoNextHint'))
             : null,
-          draft.settings.pace === 'self'
-            ? el('p', { class: 'muted small', style: { margin: 0 }, text: t('binSelfPacedMode') })
-            : null,
 
           /*
            * اختيار واحد لا نظامان متوازيان. طالبٌ يرى «٤٦٠٠ نقطة» و«٢٤ من ٣٠»
@@ -820,9 +817,9 @@
           onClick: () => changeType(openIndex, type),
         }));
 
-      panel.append(el('h2', { class: 'tp-d-panel__title', text: t('bquestionType') }));
+      // الشرح خلف «؟» بجوار العنوان — اللوحة شبكة أنواعٍ نظيفة بلا فقرة تحتها
+      panel.append(el('h2', { class: 'tp-d-panel__title' }, [t('bquestionType'), window.T.hintDot(t('bTypeHint'))]));
       panel.append(DUI.TypeGrid(typeItems()));
-      panel.append(DUI.HintBox(t('bTypeHint')));
 
       // سطر النوع للجوال: يقول النوع الحالي، وضغطه يفتح ورقة الأنواع
       const typeRow = el('button', { class: 'tp-d-typerow', type: 'button' }, [
@@ -839,9 +836,6 @@
       wrap.append(sheet.node);
 
       main.append(questionCard(question, openIndex));
-      const mobileHint = DUI.HintBox(t('bTypeHint'));
-      mobileHint.classList.add('tp-d-hint--mobile');
-      main.append(mobileHint);
 
       // ---- زرّ الإضافة الثابت على الجوال
       const fab = el('button', { class: 'tp-btn tp-btn--purple tp-d-fab', type: 'button' }, addLabel);
@@ -941,7 +935,8 @@
            * لطالبٍ غاب. ووضعُها بعد الإطلاق يعني أنه لن يجدها.
            */
           el('div', { class: 'tp-d-row' }, [
-            el('span', { class: 'tp-d-note', style: { flex: '1 1 auto' }, text: t('bPaperHint') }),
+            el('span', { style: { flex: '1 1 auto' } }),
+            window.T.hintDot(t('bPaperHint')),
             el('button', { class: 'tp-btn tp-btn--outline tp-btn--sm', type: 'button', onclick: printPaper }, t('bPaperPrint')),
           ]),
         ])
@@ -974,9 +969,7 @@
           // أزرار إضافية من صفحة المدرب (مثل الحفظ في الحساب)
           ...(typeof extraActions === 'function' ? [extraActions(draft, validate)] : []).filter(Boolean),
           // لغة النشاط تُثبَّت وقت الإطلاق على لغة اللوحة، فليعرف المعلّم ذلك قبل الضغط
-          el('p', { class: 'tp-d-note', text: t('blangNote') }),
-          el('p', { class: 'tp-d-note', text: t('bstorageIsTemporaryThe') }),
-          el('div', { class: 'tp-d-row', style: { justifyContent: 'center' } }, [clear]),
+          el('div', { class: 'tp-d-row', style: { justifyContent: 'center' } }, [window.T.hintDot(t('blangNote')), clear]),
         ])
       );
     }
@@ -1134,8 +1127,8 @@
         });
         group.append(button);
       });
-      const current = options.find((option) => option.value === (read() || options[0].value));
-      return el('div', { class: 'tp-d-field' }, [group, el('p', { class: 'tp-d-note', text: current ? current.hint : '' })]);
+      const legend = options.map((option) => `${option.emoji} ${option.title}: ${option.hint}`).join('\n');
+      return el('div', { class: 'tp-d-field tp-d-field--choices' }, [group, window.T.hintDot(legend)]);
     }
 
     function autoDelayRow() {
@@ -1517,8 +1510,7 @@
       });
       return el('label', { class: 'tp-d-switch' }, [
         el('span', { class: 'tp-d-switch__text' }, [
-          el('span', { class: 'tp-d-switch__label', text: label }),
-          hint ? el('span', { class: 'tp-d-note', text: hint }) : null,
+          el('span', { class: 'tp-d-switch__label' }, [label, hint ? window.T.hintDot(hint) : null]),
         ]),
         input,
       ]);

@@ -367,10 +367,9 @@
     const body = el('div', { class: 'stack' });
     const card = el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
       el('div', { class: 'row between' }, [
-        el('h2', { style: { margin: 0 }, text: t('hClassesTitle') }),
+        el('h2', { style: { margin: 0 } }, [t('hClassesTitle'), ' ', window.T.hintDot(t('hClassesIntro'))]),
         el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(null) }, t('hClassNew')),
       ]),
-      el('p', { class: 'muted small', style: { margin: 0 }, text: t('hClassesIntro') }),
       body,
     ]);
 
@@ -484,15 +483,13 @@
         ]),
       ])
     );
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gMine') }));
-    app.append(el('p', { class: 'muted small', text: t('gMineIntro') }));
+    app.append(el('h1', { style: { marginBottom: '4px' } }, [t('gMine'), ' ', window.T.hintDot(t('gMineIntro'))]));
 
     // رابطُ صفحةِ ألعاب المعلّم: يضعه في مجموعة صفّه فيتصفّح طلابه ألعابه وحدها
     const shelf = location.origin + '/games.html#/t/' + user.id;
     app.append(
       el('div', { class: 'card stack tight' }, [
-        el('strong', { text: t('gShelfTitle') }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: t('gShelfHint') }),
+        el('strong', {}, [t('gShelfTitle'), ' ', window.T.hintDot(t('gShelfHint'))]),
         el('div', { class: 'row', style: { gap: '6px' } }, [
           el('code', { class: 'grow link-box', text: shelf }),
           shareButton(shelf, t('gCopyLink')),
@@ -588,13 +585,11 @@
     });
 
     return el('div', { class: 'card stack' }, [
-      el('h2', { style: { margin: 0 }, text: t('gFormTitle') }),
-      el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormHint') }),
+      el('h2', { style: { margin: 0 } }, [t('gFormTitle'), ' ', window.T.hintDot(t('gFormHint'))]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormName') }), title]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormSubject') }), subject]),
       el('div', { class: 'stack tight' }, [
-        el('span', { class: 'small', text: t('gFormGrades') }),
-        el('span', { class: 'muted small', text: t('gFormGradesHint') }),
+        el('span', { class: 'small' }, [t('gFormGrades'), ' ', window.T.hintDot(t('gFormGradesHint'))]),
         gradePicker.node,
       ]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormDesc') }), description]),
@@ -602,8 +597,7 @@
       el('label', {}, [el('span', { class: 'small', text: t('gFormCode') }), code]),
       note,
       el('label', {}, [
-        el('span', { class: 'small', text: t('gFormShot') }),
-        el('span', { class: 'muted small', style: { display: 'block' }, text: t('gFormShotHint') }),
+        el('span', { class: 'small' }, [t('gFormShot'), ' ', window.T.hintDot(t('gFormShotHint'))]),
         shot,
       ]),
       preview,
@@ -611,8 +605,7 @@
       el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
         offlineOk,
         el('span', { class: 'small grow' }, [
-          el('strong', { text: t('gFormOffline') }),
-          el('span', { class: 'muted small', style: { display: 'block' }, text: t('gFormOfflineHint') }),
+          el('strong', {}, [t('gFormOffline'), ' ', window.T.hintDot(t('gFormOfflineHint'))]),
         ]),
       ]),
       el('div', { class: 'row', style: { gap: '6px' } }, [submit]),
@@ -656,8 +649,7 @@
         ]),
       ])
     );
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('profTitle') }));
-    app.append(el('p', { class: 'muted small', text: t('profIntro') }));
+    app.append(el('h1', { style: { marginBottom: '4px' } }, [t('profTitle'), ' ', window.T.hintDot(t('profIntro'))]));
 
     const displayName = el('input', { maxlength: 60, placeholder: t('profNamePlaceholder'), value: profile.displayName });
     const phone = el('input', { type: 'tel', dir: 'ltr', maxlength: 24, placeholder: t('profPhonePlaceholder'), value: profile.phone });
@@ -719,26 +711,22 @@
         el('div', { class: 'row', style: { gap: '14px', alignItems: 'center' } }, [
           face,
           el('div', { class: 'stack tight grow' }, [
-            el('span', { class: 'small', text: t('profPhoto') }),
-            el('span', { class: 'muted small', text: t('profPhotoHint') }),
+            el('span', { class: 'small' }, [t('profPhoto'), ' ', window.T.hintDot(t('profPhotoHint'))]),
             photoInput,
             el('div', { class: 'row', style: { gap: '6px' } }, [clearPhoto]),
           ]),
         ]),
         photoNote,
         el('label', {}, [
-          el('span', { class: 'small', text: t('profName') }),
-          el('span', { class: 'muted small', style: { display: 'block' }, text: t('profNameHint', { name: firstName(profile.name) }) }),
+          el('span', { class: 'small' }, [t('profName'), ' ', window.T.hintDot(t('profNameHint', { name: firstName(profile.name) }))]),
           displayName,
         ]),
         el('label', {}, [
-          el('span', { class: 'small', text: t('profPhone') }),
-          el('span', { class: 'muted small', style: { display: 'block' }, text: t('profPhoneHint') }),
+          el('span', { class: 'small' }, [t('profPhone'), ' ', window.T.hintDot(t('profPhoneHint'))]),
           phone,
         ]),
         el('label', {}, [
-          el('span', { class: 'small', text: t('cnLabel') }),
-          el('span', { class: 'muted small', style: { display: 'block' }, text: t('cnWhy') }),
+          el('span', { class: 'small' }, [t('cnLabel'), ' ', window.T.hintDot(t('cnWhy'))]),
           country,
         ]),
         el('p', { class: 'note warn small', style: { margin: 0 }, text: t('profPublicWarning') }),

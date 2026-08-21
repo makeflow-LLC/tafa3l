@@ -105,8 +105,7 @@
       }
       app.append(teacherHeader(who, state.items[0]?.author || ''));
     } else {
-      app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gTitle') }));
-      app.append(el('p', { class: 'muted small', text: t('gIntro') }));
+      app.append(el('h1', { style: { marginBottom: '4px' } }, [t('gTitle'), ' ', window.T.hintDot(t('gIntro'))]));
     }
 
     const search = el('input', { type: 'search', placeholder: t('gSearchPlaceholder'), value: state.q, maxlength: 80 });
@@ -202,8 +201,7 @@
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [el('a', { class: 'btn ghost sm', href: '#/' }, t('gBack')), el('span')])
     );
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('gTeachersTitle') }));
-    app.append(el('p', { class: 'muted small', text: t('gTeachersIntro') }));
+    app.append(el('h1', { style: { marginBottom: '4px' } }, [t('gTeachersTitle'), ' ', window.T.hintDot(t('gTeachersIntro'))]));
 
     if (!items.length) {
       app.append(el('div', { class: 'card stack center' }, [el('div', { style: { fontSize: '2.4rem' }, text: '👩‍🏫' }), el('p', { class: 'muted', text: t('gTeachersEmpty') })]));
@@ -232,8 +230,7 @@
     const box = el('div', { class: 'card row teacher-head', style: { gap: '14px', alignItems: 'center' } });
     box.append(faceNode(who, name));
     const side = el('div', { class: 'stack tight grow' }, [
-      el('h1', { style: { margin: 0, fontSize: '1.45rem' }, text: t('gByTeacher', { name }) }),
-      el('span', { class: 'muted small', text: t('gTeacherIntro') }),
+      el('h1', { style: { margin: 0, fontSize: '1.45rem' } }, [t('gByTeacher', { name }), ' ', window.T.hintDot(t('gTeacherIntro'))]),
     ]);
     if (who?.phone) {
       side.append(

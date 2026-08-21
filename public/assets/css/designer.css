@@ -247,6 +247,10 @@
   font-size: var(--tp-fs-13);
   font-weight: var(--tp-w-700);
   color: var(--tp-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tp-s-8);
 }
 
 /* اللوحة الجانبية لسطح المكتب، وسطرُ النوع للجوال — واحدٌ منهما فقط */
@@ -505,12 +509,6 @@
   }
 }
 
-/* التلميح تحت المحرّر للجوال وحده — اللوحة الجانبية تحمله على سطح المكتب */
-@container (min-width: 900px) {
-  .tp-d-hint--mobile {
-    display: none;
-  }
-}
 
 .tp-d-nav__add {
   display: none;
@@ -745,4 +743,15 @@
 .tp-d .badge {
   border-radius: var(--tp-r-pill);
   border-color: var(--tp-border);
+}
+
+/* «؟» شرح الخيارات: في نهاية صفّ البلاطات، والفقاعة تنسدل تحتها */
+.tp-d-field--choices {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--tp-s-8);
+}
+
+.tp-d-field--choices .tp-d-types {
+  flex: 1 1 auto;
 }
