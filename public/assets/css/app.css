@@ -3530,3 +3530,25 @@ html[dir='rtl'] ol {
 .hintdot__pop[hidden] {
   display: none;
 }
+
+/*
+ * قطعة القراءة في الشاشات القديمة (إجابة مفتوحة، أكمل الفراغ، سحابة كلمات)
+ * وفي شاشة العرض. الصندوق يمرّر نصّه ويبقى ما تحته ظاهراً.
+ */
+.passage {
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--brand);
+  background: var(--bg-2);
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.passage.big {
+  max-height: 46vh;
+  font-size: 1.15rem;
+}

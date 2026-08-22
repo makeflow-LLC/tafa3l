@@ -72,6 +72,42 @@ body.tp-lock > .tp-app {
   color: var(--tp-text);
 }
 
+/*
+ * قطعة القراءة — «اقرأ الفقرة ثم أجب».
+ *
+ * سقفُها جزءٌ من ارتفاع الشاشة لا ارتفاعُ نصّها: الفقرة قد تطول فتدفع
+ * السؤال وخياراته خارج الشاشة، والصفحة نفسها لا تُمرَّر (قاعدة DESIGN.md).
+ * فالنصّ ينزلق داخل الصندوق ويبقى السؤال وخياراته مثبَّتَين — الفقرة
+ * ظاهرة والسؤال ظاهر معاً، وهو غرض النوع كلّه.
+ *
+ * والسؤال أكبر خطاً من الفقرة عمداً: العين تعرف أيّهما المطلوب الإجابة عنه.
+ */
+.tp-passage {
+  max-height: min(38dvh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--tp-s-12) var(--tp-s-14);
+  border-radius: var(--tp-r-12);
+  border: var(--tp-hair) solid var(--tp-border);
+  background: var(--tp-slot);
+  /* شريطٌ ملوّن في جهة بداية القراءة: علامةُ «هذا نصٌّ يُقرأ لا سؤال» */
+  border-inline-start: var(--tp-ring) solid var(--tp-accent);
+}
+
+.tp-passage:focus-visible {
+  outline: var(--tp-s-2) solid var(--tp-accent);
+  outline-offset: var(--tp-s-2);
+}
+
+.tp-passage__text {
+  margin: 0;
+  font-size: var(--tp-fs-15);
+  line-height: var(--tp-lh);
+  color: var(--tp-text);
+  white-space: pre-wrap;
+}
+
 /* --------------------------------------------------- 3.3 إحصاءة الرأس */
 
 .tp-stat {

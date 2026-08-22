@@ -128,6 +128,23 @@ Row: digit + track, gap 10px. Digit: LTR, 19px/700, tabular-nums, fixed width 30
 ### 3.5 Image slot (question media)
 Full width, fixed height 110px, radius 12px, 1px solid border, flat fill (`#EFEEF4`+`#D8DAE6` light; `#1A2250`+`#2A3158` dark), centered caption `IMAGE · صورة السؤال` 12px ui-monospace muted. Present in all states; drop when a question has no media and let the question block center.
 
+### 3.5b Reading passage (اقرأ الفقرة ثم أجب)
+An optional passage any answered question can carry — a **field, not a type**, so the
+same passage works with multiple choice, true/false, or open answer, and survives a
+switch between them. Sits above the question text, below the media slot.
+
+Full width, radius 12px, 1px border, fill = image-slot fill, and a 3px accent bar on
+the **inline-start** edge marking it as text-to-read rather than a question.
+Text 15px/1.7, `white-space: pre-wrap`. The question heading stays 22px above it, so
+size alone says which one you answer.
+
+**The box scrolls, the page does not.** `max-height: min(38dvh, 320px)` with
+`overflow-y: auto` and `overscroll-behavior: contain`. This is the one place a
+participant screen scrolls, and it is deliberate: §4's no-scroll rule protects the
+answer controls from being pushed off-screen, and a passage long enough to do that
+must therefore scroll inside itself. Passage visible and question visible at once is
+the whole point of the type. Focusable (`tabindex="0"`) so keyboard users can scroll it.
+
 ### 3.6 Buttons (teacher)
 All pill (99px), font 13–15px/600–700.
 - **Primary (cyan)**: fill `#3BD6EE`, text `#10173A` 700. Heights: 48px (cards), 44px (compact bars).

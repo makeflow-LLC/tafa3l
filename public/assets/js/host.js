@@ -1060,6 +1060,7 @@
             el('span', { class: 'badge', text: `${TYPE_EMOJI[q.type] || '•'} ${index + 1}` }),
             el('strong', { text: q.text }),
           ]),
+          q.passage ? el('p', { class: 'passage', style: { margin: 0 } }, q.passage) : null,
           q.body ? el('p', { class: 'muted small', style: { margin: 0 }, text: q.body }) : null,
           (q.options || []).length
             ? el(

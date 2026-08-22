@@ -236,6 +236,9 @@
       return;
     }
 
+    // قطعة القراءة على الشاشة الكبيرة: يقرؤها الصفّ كلّه قبل السؤال
+    if (q.passage) app.append(el('div', { class: 'card' }, [el('p', { class: 'passage big', text: q.passage })]));
+
     const head = el('div', { class: 'card stack' }, [
       el('div', { class: 'row between' }, [
         el('span', { class: 'badge' }, t('sTypedQuestionFull', { emoji: TYPE_EMOJI[q.type], label: TYPE_LABELS[q.type], index: s.index + 1, total: s.total })),

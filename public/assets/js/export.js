@@ -1036,7 +1036,9 @@ ${marksTableHtml(data)}
         const scored = counted.includes(q);
         const mark = marks && scored ? (share !== null ? share : Number(q.mark) || 0) : 0;
         const tag = mark ? ` <span class="mark">(${mark})</span>` : '';
-        return `<div class="q"><p class="qt"><span class="n">${n}.</span> ${esc(q.text)}${tag}</p>${paperBody(q)}</div>`;
+        // قطعة القراءة تُطبع فوق سؤالها كما تظهر على شاشة الطالب
+        const passage = q.passage ? `<p class="note">${esc(q.passage)}</p>` : '';
+        return `<div class="q">${passage}<p class="qt"><span class="n">${n}.</span> ${esc(q.text)}${tag}</p>${paperBody(q)}</div>`;
       })
       .join('');
 

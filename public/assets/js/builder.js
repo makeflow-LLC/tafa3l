@@ -26,7 +26,7 @@
   function blankQuestion(type) {
     // timeLimit صفر دائماً: الوقت — إن وُضع — واحدٌ لكل الأسئلة في الإعدادات،
     // ورقمٌ تحت السؤال لا يقرؤه أحد إلا مُستنتِج الأنشطة القديمة فيوهمه بمؤقّت
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 0, points: 1000, mark: 0, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '' };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 0, points: 1000, mark: 0, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '', passage: '' };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -157,6 +157,9 @@
       question.blanks = [];
     }
     question.body = question.type === 'slide' ? String(raw.body ?? '') : '';
+    // قطعة القراءة تنجو من تبديل النوع: من كتب فقرةً ثم بدّل الاختيار إلى
+    // صح/خطأ لا يريد أن تُمحى قراءتُه معها
+    question.passage = question.type === 'slide' ? '' : String(raw.passage ?? '');
     question.video = typeof raw.video === 'string' ? raw.video : '';
     question.items =
       question.type === 'order' && Array.isArray(raw.items)
@@ -729,6 +732,8 @@
       fresh.type = type;
       // النصّ يتبع المعلّم لا النوع
       if (type !== 'blank' || !remembered) fresh.text = question.text || fresh.text;
+      // وكذلك قطعة القراءة: المعلّم يكتبها مرّةً ثم يبدّل شكل الإجابة عليها
+      if (type !== 'slide') fresh.passage = question.passage || fresh.passage || '';
       draft.questions[index] = fresh;
       update();
     }
@@ -1523,6 +1528,29 @@
         question.text = text.value;
         saveDraft(draft);
       });
+      /*
+       * قطعة القراءة — «اقرأ الفقرة ثم أجب».
+       *
+       * حقلٌ فوق نصّ السؤال لا نوعٌ مستقل: المعلّم يريدها باختيارٍ من متعدد
+       * أو صح/خطأ أو إجابةٍ مفتوحة، فلو كانت نوعاً لاحتاج قرارين. وهي مطويّة
+       * حتى تُطلب كي لا تزحم من لا يريدها، وتُفتح وحدها إن كانت مكتوبة.
+       * وشريحةُ العرض تُستثنى: نصّها هو متنُها ولا سؤال تحتها.
+       */
+      if (question.type !== 'slide') {
+        const passage = el('textarea', { maxlength: 2000, rows: 5, placeholder: t('bPassagePlaceholder') });
+        passage.value = question.passage || '';
+        passage.addEventListener('input', () => {
+          question.passage = passage.value;
+          saveDraft(draft);
+        });
+        const box = el('details', { class: 'tp-d-adv' }, [
+          el('summary', { text: t('bPassage') }),
+          el('div', { class: 'tp-d-adv__body' }, [passage, window.T.hintDot(t('bPassageHint'))]),
+        ]);
+        if (question.passage) box.open = true;
+        body.append(box);
+      }
+
       body.append(
         el('div', {}, [
           el('label', { text: question.type === 'blank' ? t('bsentenceTextPutWhere') : t('bquestionText') }),

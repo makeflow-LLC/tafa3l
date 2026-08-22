@@ -593,6 +593,9 @@
       node: q.video ? videoNode(q.video) : null,
     });
     if (media) stage.append(media);
+    // قطعة القراءة قبل السؤال — تبقى أمام الطالب وهو يجيب
+    const passage = UI.PassageBox({ text: q.passage, label: t('pPassageLabel') });
+    if (passage) stage.append(passage);
     stage.append(el('h1', { class: 'tp-q', text: q.text }));
     if (answered) {
       stage.append(revealed ? revealStatus(s, q, letters) : UI.WaitingIndicator({ text: t('pWaitingLine') }));
@@ -782,6 +785,8 @@
     return el('div', { class: 'card stack' }, [
       q.imageUrl ? el('img', { class: 'q-image', src: q.imageUrl, alt: t('pQuestionImage'), loading: 'lazy' }) : null,
       q.video ? videoNode(q.video) : null,
+      // قطعة القراءة قبل السؤال — الأنواع القديمة (مفتوحة، فراغ، كلمة…) أيضاً
+      window.TapioUI?.PassageBox({ text: q.passage, label: t('pPassageLabel') }) || null,
       hideText ? el('span', { class: 'badge', text: t('pFillBlank') }) : el('h2', { class: 'big-q', text: q.text }),
     ]);
   }

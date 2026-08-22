@@ -204,6 +204,28 @@
     return el('img', { class: 'tp-media', src: o.src, alt: o.alt || '', loading: 'lazy' });
   }
 
+  // ---------------------------------------------------- قطعة القراءة
+
+  /**
+   * قطعة القراءة التي تعلو السؤال — «اقرأ الفقرة ثم أجب».
+   *
+   * تُمرَّر داخل صندوقها لا بالصفحة: قاعدة DESIGN.md أن شاشة السؤال لا
+   * تُمرَّر، والفقرة قد تطول فتدفع الخيارات خارج الشاشة. فالصندوق سقفُه
+   * جزءٌ من ارتفاع الشاشة، والفقرة تنزلق داخله بينما يبقى السؤال وخياراته
+   * مثبَّتَين — وهو المطلوب: الفقرة ظاهرة والسؤال ظاهر معاً.
+   *
+   * والصندوق قابلٌ للتبئير (tabindex) كي يمرّره من يستعمل لوحة المفاتيح.
+   */
+  function PassageBox(opts) {
+    const o = opts || {};
+    if (!o.text) return null;
+    return el(
+      'div',
+      { class: 'tp-passage', tabindex: '0', role: 'region', 'aria-label': o.label || '' },
+      [el('p', { class: 'tp-passage__text', text: o.text })]
+    );
+  }
+
   // ------------------------------------------------------- سطر الحالة
 
   /** «إجابة صحيحة +120» / «إجابة خاطئة +0 — الصحيح: ب …» */
@@ -368,6 +390,7 @@
     HeaderStat,
     WaitingIndicator,
     ImageSlot,
+    PassageBox,
     StatusLine,
     ConnectionBanner,
     ReactionSheet,
