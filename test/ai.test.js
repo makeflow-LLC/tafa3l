@@ -380,6 +380,73 @@ test('المسار يحذف أسئلة التصحيح اليدوي ويُبلّ�
   }
 });
 
+/** ردودٌ متتابعة: الأول ثم الثاني — لاختبار نداء الترميم */
+function azureSequence(...texts) {
+  let i = 0;
+  return () => {
+    const text = texts[Math.min(i, texts.length - 1)];
+    i += 1;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text }] }] }),
+    };
+  };
+}
+
+const fence = (draft) => 'تفضّل:\n```json\n' + JSON.stringify(draft) + '\n```';
+const mcq = (n) => ({ type: 'mc', text: 'سؤال ' + n, options: ['أ', 'ب'], correct: ['أ'] });
+
+test('العدد لا يَنقص: ما يُحذف لتصحيحه اليدوي يُطلب له بديل فيصل المعلّم عشرة كما طلب', async () => {
+  // النموذج يخالف أولاً (ثمانية آلية + سؤالان يدويّان)، ثم يمتثل بعشرةٍ آلية
+  const bad = fence({ title: 'اختبار', questions: [...Array(8)].map((_, i) => mcq(i + 1)).concat(
+    [{ type: 'open', text: 'اشرح', points: 5 }, { type: 'blank', text: 'الماء ___', blanks: ['يغلي'], points: 1 }]
+  ) });
+  const good = fence({ title: 'اختبار', questions: [...Array(10)].map((_, i) => mcq(i + 1)) });
+
+  const c = client();
+  const mail = `aicount.${Date.now()}@example.com`;
+  const m = mockUpstream({ email: mail, azure: azureSequence(bad, good) });
+  try {
+    await login(c, m);
+    await grantPremium(mail);
+    const res = await c.request('POST', '/api/ai/design', { messages: [{ role: 'user', content: 'اعمل لي ١٠ أسئلة' }] });
+    assert.equal(res.data.draft.questions.length, 10, 'المعلّم طلب عشرة فوصلته عشرة');
+    assert.equal(res.data.draft.questions.some((q) => q.type === 'open' || q.type === 'blank'), false, 'وبلا تصحيحٍ يدوي');
+    assert.equal(m.seen.azureRequests.length, 2, 'نداءٌ واحدٌ للترميم لا أكثر');
+    assert.match(m.seen.azureRequests[1].body.input.at(-1).content[0].text, /لا تنقص العدد/);
+  } finally {
+    m.restore();
+  }
+});
+
+test('الترميم لا يقبل بديلاً أسوأ: يبقى الحارس القديم والتنبيه', async () => {
+  const bad = fence({ title: 'ت', questions: [mcq(1), { type: 'open', text: 'اشرح', points: 5 }] });
+  const worse = fence({ title: 'ت', questions: [{ type: 'open', text: 'اشرح مجدداً', points: 5 }] });
+  const c = client();
+  const mail = `aiworse.${Date.now()}@example.com`;
+  const m = mockUpstream({ email: mail, azure: azureSequence(bad, worse) });
+  try {
+    await login(c, m);
+    await grantPremium(mail);
+    const res = await c.request('POST', '/api/ai/design', { messages: [{ role: 'user', content: 'سؤالان' }] });
+    assert.equal(res.data.draft.questions.length, 1, 'نبقى على الأفضل من الاثنين');
+    assert.equal(res.data.draft.questions[0].type, 'mc');
+    assert.match(res.data.reply, /تصحيحاً يدويّاً/, 'ويُخبَر بما أُسقط');
+  } finally {
+    m.restore();
+  }
+});
+
+test('التعليمات تُلزم العدد والتنويع ومدة الاختبار', () => {
+  const on = systemFor(true);
+  assert.match(on, /هذا العدد بالضبط/, 'العدد قاعدة صارمة');
+  assert.match(on, /لا تجعل النشاط كلّه mc/, 'والتنويع مطلوب');
+  assert.match(on, /ثلاثة أنواع مختلفة على الأقل/);
+  assert.match(on, /durationMinutes/, 'ويعرف مدة الاختبار');
+  assert.match(on, /shuffleQuestions/, 'ونزاهة الاختبار');
+});
+
 test('حارس العلامات: توزيعٌ مخصّص لا يجمع العلامة الكاملة يرجع للتساوي', () => {
   const bad = {
     settings: { reward: 'marks', totalMark: 30, markMode: 'custom' },

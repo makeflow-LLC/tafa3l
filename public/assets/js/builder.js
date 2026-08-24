@@ -249,6 +249,15 @@
     scale: 'scale', rating: 'scale', likert: 'scale', range: 'scale',
     open: 'open', text: 'open', essay: 'open', open_ended: 'open', openended: 'open', free: 'open',
     blank: 'blank', fill: 'blank', fillblank: 'blank', fill_blank: 'blank', fill_in_the_blank: 'blank', cloze: 'blank', gap: 'blank',
+    /*
+     * «رتّب» و«طابِق» و«شريحة» كانت غائبةً عن هذا الجدول، فيرفضها الاستيراد
+     * ويرميها بتحذير. والمساعد الذكي يمرّ من هنا — فكان يصوغها كما طُلب منه
+     * ثم تُحذف في الطريق، فيطلب المعلّم عشرة فيجد ثمانية، ولا يرى إلا اختياراً
+     * وصح/خطأ مهما نوّع المساعد. وهذا نصف الشكوى ونصف سببها.
+     */
+    order: 'order', ordering: 'order', sort: 'order', sequence: 'order', arrange: 'order', rank: 'order',
+    match: 'match', matching: 'match', pairs: 'match', pair: 'match', connect: 'match',
+    slide: 'slide', info: 'slide', content: 'slide', note: 'slide',
   };
 
   /**
@@ -319,6 +328,38 @@
       return null;
     }
     out.explanation = String(q.explanation ?? q.reason ?? q.why ?? '').trim();
+    // قطعة القراءة تصل من المساعد الذكي ومن الاستيراد — بلا هذا تُفقد بصمت
+    if (type !== 'slide') out.passage = String(q.passage ?? '').trim();
+
+    // عناصر «رتّب» بترتيبها الصحيح كما كتبها المصدر
+    if (type === 'order') {
+      const items = Array.isArray(q.items ?? q.steps ?? q.sequence) ? (q.items ?? q.steps ?? q.sequence) : [];
+      out.items = items
+        .map((it, i) => ({ id: 'i' + i, text: String(typeof it === 'string' ? it : (it?.text ?? '')).trim() }))
+        .filter((it) => it.text);
+      if (out.items.length < 2) {
+        warnings.push(t('bWarnOrderItems', { n: index + 1 }));
+        return null;
+      }
+    }
+
+    // أزواج «طابِق»: يقبل {left,right} كما يقبل {term,definition}
+    if (type === 'match') {
+      const pairs = Array.isArray(q.pairs ?? q.matches) ? (q.pairs ?? q.matches) : [];
+      out.pairs = pairs
+        .map((pr, i) => ({
+          id: 'p' + i,
+          left: String(pr?.left ?? pr?.term ?? pr?.a ?? '').trim(),
+          right: String(pr?.right ?? pr?.definition ?? pr?.b ?? '').trim(),
+        }))
+        .filter((pr) => pr.left && pr.right);
+      if (out.pairs.length < 2) {
+        warnings.push(t('bWarnMatchPairs', { n: index + 1 }));
+        return null;
+      }
+    }
+
+    if (type === 'slide') out.body = String(q.body ?? q.content ?? '').trim();
     if (typeof q.image === 'string' && q.image.startsWith('data:image/')) out.image = q.image;
     if (type === 'blank') {
       const count = countBlanks(out.text);
