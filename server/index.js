@@ -476,7 +476,8 @@ function handleMessage(socket, msg) {
         avatar: msg.avatar,
       });
     } catch (err) {
-      return sendTo(socket, { t: 'error', code: 'full', message: err.message });
+      // الاسم المكرّر ليس امتلاءً: رمزُه يخصّه كي تعرف الواجهة أن تُعيد السؤال
+      return sendTo(socket, { t: 'error', code: err.code || 'full', message: err.message });
     }
     attachParticipant(socket, session, participant);
     sendTo(socket, {

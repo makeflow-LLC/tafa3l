@@ -30,6 +30,31 @@
 
   const SESSION_KEY = 'tafa3l:play:' + code;
 
+  /**
+   * هويّة المشارك تعيش في ذاكرة **الجهاز** لا التبويب.
+   *
+   * كانت في `sessionStorage`، وهي خاصةٌ بكل تبويب — ففتحُ تبويبٍ ثانٍ على
+   * الرابط نفسه يبدأ مشاركاً جديداً بنتيجةٍ من الصفر، فيجيب الطالب مرّتين
+   * ويظهر مرّتين في الترتيب. الآن الجهاز يتذكّر مشاركه فيستأنف حيث توقّف،
+   * أياً كان التبويب. (وحارسٌ ثانٍ على الخادم يمنع الاسم المكرّر من جهازٍ
+   * آخر.)
+   *
+   * ونقرأ من الاثنين ونكتب فيهما: جلسةٌ مفتوحة قبل هذا التحديث لا تُفقد.
+   */
+  const seat = {
+    get() {
+      return store.local.get(SESSION_KEY, null) || store.get(SESSION_KEY, null);
+    },
+    set(value) {
+      store.local.set(SESSION_KEY, value);
+      store.set(SESSION_KEY, value);
+    },
+    clear() {
+      store.local.del(SESSION_KEY);
+      store.del(SESSION_KEY);
+    },
+  };
+
   const state = {
     info: null, // معلومات الجلسة العامة
     avatar: window.Avatar.random(),
@@ -66,7 +91,7 @@
 
   const socket = connect({
     onOpen: () => {
-      const saved = store.get(SESSION_KEY, null);
+      const saved = seat.get();
       if (saved?.participantId && saved?.participantToken) {
         socket.send({ t: 'rejoin', code, participantId: saved.participantId, participantToken: saved.participantToken });
       }
@@ -87,7 +112,7 @@
     switch (msg.t) {
       case 'joined':
         state.joined = true;
-        store.set(SESSION_KEY, { participantId: msg.participantId, participantToken: msg.participantToken });
+        seat.set({ participantId: msg.participantId, participantToken: msg.participantToken });
         break;
       case 'state':
         // يجب التقاط الفارق لحظة الوصول؛ حسابه لاحقاً يجعله دائماً صفراً
@@ -133,9 +158,14 @@
         break;
       case 'error':
         if (msg.code === 'no_participant') {
-          store.del(SESSION_KEY);
+          seat.clear();
           state.joined = false;
           renderJoin();
+        } else if (msg.code === 'name_taken') {
+          // اسمٌ داخلٌ بالفعل: نعيده إلى شاشة الاسم برسالةٍ تقول ماذا يفعل
+          state.joined = false;
+          renderJoin();
+          toast(msg.message, 'bad');
         } else if (msg.code === 'no_session' || msg.code === 'ended') {
           renderMessage('🔒', msg.message, t('pCheckCode'));
         } else {

@@ -24,9 +24,28 @@
     return node;
   }
 
+  /**
+   * الأفاتار عقدةٌ جاهزة — والرسم مخزَّنٌ بمفتاح الشكل لا يُعاد بناؤه.
+   *
+   * `innerHTML` مع نصّ SVG يستدعي محلّل HTML في كل مرة، وشاشة المدرّب تعيد
+   * بناء نفسها كلّما أجاب طالب. في اختبارٍ من ستين طالباً وثلاثين سؤالاً
+   * بلغ طابور التصحيح مئات الصفوف، لكلٍّ منها أفاتار — فصار التحليل وحده
+   * جزءاً من ٥.٩ ثانية محجوبة. والأشكال تتكرّر (الطالب نفسه في كل سؤال)،
+   * فالتخزين بمفتاحٍ من الشكل يكفي، والاستنساخ أرخص من التحليل بمراتب.
+   */
+  const avatarCache = new Map();
   function avatarNode(avatar, cls) {
     const box = el('div', { class: 'avatar ' + (cls || '') });
-    box.innerHTML = global.Avatar.toSvg(avatar);
+    const key = avatar ? `${avatar.seed}|${avatar.bg}|${avatar.body}|${avatar.face}|${avatar.accessory}` : '';
+    let svg = avatarCache.get(key);
+    if (!svg) {
+      const holder = document.createElement('div');
+      holder.innerHTML = global.Avatar.toSvg(avatar);
+      svg = holder.firstElementChild;
+      // حدٌّ يمنع تضخّم الذاكرة في جلسةٍ طويلة بأشكالٍ كثيرة
+      if (svg && avatarCache.size < 400) avatarCache.set(key, svg);
+    }
+    if (svg) box.append(svg.cloneNode(true));
     return box;
   }
 
@@ -383,6 +402,13 @@
       set(key, value) {
         try {
           localStorage.setItem(key, JSON.stringify(value));
+        } catch {
+          /* تجاهل */
+        }
+      },
+      del(key) {
+        try {
+          localStorage.removeItem(key);
         } catch {
           /* تجاهل */
         }

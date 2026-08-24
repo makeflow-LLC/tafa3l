@@ -706,9 +706,45 @@ class Session {
 
   // ---------------------------------------------------------------- المشاركون
 
+  /** مفتاح المطابقة: يتجاهل الفروق التي لا يقصدها أحد (مسافات، حالة الأحرف) */
+  static nameKey(name) {
+    return String(name || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLocaleLowerCase();
+  }
+
+  /** هل هذا الاسم داخلٌ بالفعل؟ — الحارس الثاني ضدّ الدخول مرّتين */
+  hasName(name) {
+    const key = Session.nameKey(name);
+    if (!key) return false;
+    for (const p of this.participants.values()) {
+      if (Session.nameKey(p.name) === key) return true;
+    }
+    return false;
+  }
+
   addParticipant({ name, avatar }) {
     if (this.participants.size >= LIMITS.participants) {
       throw Object.assign(new Error('اكتمل عدد المشاركين في هذه الجلسة'), { status: 429 });
+    }
+    /**
+     * حارسٌ ضدّ الدخول مرّتين بالاسم نفسه.
+     *
+     * الجهاز يتذكّر مشاركه فيستأنف بدل أن يُنشئ غيره (الحارس الأول، في
+     * ‎play.js‎)، لكن جهازاً آخر أو متصفّحاً بلا ذاكرة يفتح الباب لطالبٍ
+     * يعيد الاختبار باسمه نفسه ويحتفظ بأفضل نتيجتين، أو يظهر مرّتين في
+     * الترتيب. فالاسم المسجَّل لا يُقبل مرّتين.
+     *
+     * ولا يُقفل على أحد: المعلّم يزيل الاسم من لوحته فيعود صاحبه، ومن
+     * يشارك زميلاً اسمه يضيف ما يميّزه. ولا يُطبَّق حين لا تُطلب الأسماء
+     * أصلاً — فكلّهم «مشارك مجهول» حينها.
+     */
+    if (this.settings.requireName && this.hasName(name)) {
+      throw Object.assign(new Error('هذا الاسم دخل النشاط بالفعل. اكتب اسماً يميّزك، أو اطلب من معلّمك إزالته من القائمة.'), {
+        status: 409,
+        code: 'name_taken',
+      });
     }
     const participant = {
       id: id('p_'),

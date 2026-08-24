@@ -38,6 +38,8 @@
   const EDITING_KEY = 'tafa3l:host:editingActivity';
 
   const state = {
+    // كم صفَّ تصحيحٍ فُتح في كل سؤال — ينجو من إعادة الرسم
+    gradeShown: new Map(),
     code: null,
     hostToken: null,
     socket: null,
@@ -2157,13 +2159,13 @@
           const previous = state.live;
           state.live = msg;
           announce(previous, msg);
-          renderLive();
+          scheduleRender();
         } else if (msg.t === 'reaction') {
           Fx.floatEmoji(msg.emoji);
         } else if (msg.t === 'dashboard') {
           state.dashboard = msg.data;
           // لوحة التحكم ومسرح الوضع الحر كلاهما يرسمان من هذه البيانات
-          if (state.tab === 'dashboard' || state.live?.pace === 'self') renderLive();
+          if (state.tab === 'dashboard' || state.live?.pace === 'self') scheduleRender();
         } else if (msg.t === 'session:closed') {
           toast(t('hsessionEnded'), 'bad');
           teardown();
@@ -2209,6 +2211,8 @@
     state.dashboard = null;
     state.lastPhaseKey = '';
     clearTick();
+    // رسمةٌ معلّقة بعد المغادرة ترسم على شاشةٍ أخرى — تُلغى مع الاتصال
+    cancelRender();
   }
 
   function send(type, extra) {
@@ -2217,7 +2221,47 @@
 
   // ------------------------------------------------------------- الرسم
 
+  /**
+   * رسمةٌ واحدة لكل إطار، مهما تدفّقت الرسائل.
+   *
+   * كان كل «state» وكل «dashboard» يستدعي `renderLive` فوراً، والخادم يرسلهما
+   * معاً كل ١٢٠ms ما دام أحدٌ يجيب. فصفٌّ من ستين طالباً يعني ثماني عمليات
+   * إعادة بناءٍ كاملة للشاشة في الثانية — وتكلفة كلٍّ منها **تكبر** مع تقدّم
+   * الاختبار، لأن طابور التصحيح يضمّ صفّاً لكل طالبٍ في كل سؤالٍ نصّي.
+   *
+   * فتبدأ الشاشة سريعة وتتجمّد في أواخر الاختبار: قِسناها فوجدنا الاستجابة
+   * تنزل من ٢٦ms في الجولة الأولى إلى ٢٥٣ms في الأخيرة، و٥.٩ ثانية محجوبة
+   * إجمالاً. وعلى جهاز معلّمٍ حقيقي — أبطأ من بيئة القياس — تصير ثوانٍ.
+   *
+   * `requestAnimationFrame` يطوي الدفعة كلّها في رسمةٍ واحدة. ومهلة احتياطية
+   * لأن المتصفّح يوقف الإطارات في التبويب المخفيّ، فلولاها لبقيت الشاشة على
+   * حالٍ قديمة حتى يعود إليها المعلّم.
+   */
+  let renderPending = 0;
+  let renderFallback = null;
+  function scheduleRender() {
+    if (renderPending) return;
+    const run = () => {
+      if (!renderPending) return;
+      cancelAnimationFrame(renderPending);
+      clearTimeout(renderFallback);
+      renderPending = 0;
+      renderFallback = null;
+      renderLive();
+    };
+    renderPending = requestAnimationFrame(run);
+    renderFallback = setTimeout(run, 250);
+  }
+
+  function cancelRender() {
+    if (renderPending) cancelAnimationFrame(renderPending);
+    clearTimeout(renderFallback);
+    renderPending = 0;
+    renderFallback = null;
+  }
+
   function renderLive() {
+    cancelRender();
     const s = state.live;
     if (!s) return;
     clearTick();
@@ -2777,8 +2821,24 @@
    * بطاقة تصحيح سؤال نصّي: إجابة كل مشارك وأمامها أزرار العلامات
    * (0..العلامة القصوى) — النقر يمنح العلامة فوراً وتظهر للطالب مباشرة.
    */
+  /**
+   * كم صفَّ تصحيحٍ يُعرض دفعةً واحدة.
+   *
+   * كان يُعرض الجميع: ستون طالباً في سبعة أسئلة نصّية = ٤٢٠ صفّاً بـ٢٥٢٨
+   * زرّاً و١٤٩٤٤ عقدة، تُبنى من الصفر كلّما أجاب أحدٌ في الصفّ. فتتجمّد شاشة
+   * المعلّم في أواخر الاختبار بالضبط — حين يكتمل الطابور.
+   *
+   * والمعلّم يصحّح صفّاً بعد صفّ لا يقرأ أربعمئة دفعةً واحدة، فالسقف يخدم
+   * عينَه كما يخدم جهازه. والباقي خلف زرٍّ يقول عددَه بصراحة.
+   */
+  const GRADE_PAGE = 12;
+
   function gradingCard(item) {
-    const rows = item.answers.map((answer) => {
+    // الخادم يرتّب المعلّق أولاً — فالمعروض هو ما ينتظر التصحيح فعلاً
+    const shown = state.gradeShown.get(item.id) || GRADE_PAGE;
+    const visible = item.answers.slice(0, shown);
+    const hidden = item.answers.length - visible.length;
+    const rows = visible.map((answer) => {
       const grade = (points) => send('host:grade', { participantId: answer.participantId, questionId: item.id, points });
       const done = !answer.pending;
 
@@ -2864,6 +2924,20 @@
       ]),
       el('p', { class: 'muted small', style: { margin: 0 } }, t('hGradingHint', { max: item.maxPoints })),
       rows.length ? el('div', { class: 'stack tight' }, rows) : el('p', { class: 'muted center', text: t('hnoAnswersYet') }),
+      hidden > 0
+        ? el(
+            'button',
+            {
+              class: 'btn ghost sm',
+              type: 'button',
+              onclick: () => {
+                state.gradeShown.set(item.id, shown + GRADE_PAGE);
+                renderLive();
+              },
+            },
+            t('hGradeShowMore', { n: hidden })
+          )
+        : null,
     ]);
   }
 
