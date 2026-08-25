@@ -159,6 +159,65 @@ test('ردّ الصورة برابطٍ بدل البيانات: يُجلب في 
   }
 });
 
+test('يجد الصورة مهما اختلف شكل الردّ — الخدمة وسيطٌ أمام نماذج شتّى', () => {
+  const b64 = 'A'.repeat(900);
+  const shapes = {
+    'OpenAI b64': { data: [{ b64_json: b64 }] },
+    'OpenAI url': { data: [{ url: 'https://cdn.x/i.png' }] },
+    'Gemini inlineData': { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/webp', data: b64 } }] } }] },
+    'Gemini inline_data': { candidates: [{ content: { parts: [{ inline_data: { mime_type: 'image/png', data: b64 } }] } }] },
+    'data URL في نصّ': { data: [{ image: 'data:image/png;base64,' + b64 }] },
+    'مغلَّف في output': { output: { images: [{ b64: b64 }] } },
+    'مغلَّف في result': { result: { data: [{ image_url: 'https://cdn.x/a.jpg' }] } },
+    'مصفوفة نصوص': { images: ['data:image/jpeg;base64,' + b64] },
+  };
+  for (const [label, payload] of Object.entries(shapes)) {
+    const found = cover.imageFrom(payload);
+    assert.ok(found, `لم يجد الصورة في شكل «${label}»`);
+    assert.ok(found.b64 || found.url, `شكل «${label}» بلا بيانات ولا رابط`);
+  }
+});
+
+test('لا يخلط رسالة الخطأ بصورة، ولا نصّاً قصيراً ببيانات', () => {
+  assert.equal(cover.imageFrom({ error: { message: 'x'.repeat(900) } }), null, 'رسالة الخطأ ليست صورة');
+  assert.equal(cover.imageFrom({ model: 'gemini', created: 1 }), null, 'حقولُ الوصف ليست صورة');
+  // الرابط تحت مفتاح url في ردّ صورٍ هو الصورة ولو بلا امتداد (روابط موقّعة)
+  assert.deepEqual(cover.imageFrom({ data: [{ url: 'https://cdn.x/abc?sig=1' }] }), { url: 'https://cdn.x/abc?sig=1' });
+});
+
+test('حين لا تُرجع صورةً: الرسالة تكشف شكل الردّ لا تُخفيه', async () => {
+  const m = mockEvolink({
+    text: '{"name":"ل","prompt":"p"}',
+    image: { created: 1, model: 'x', usage: { total: 3 } },
+  });
+  try {
+    await assert.rejects(
+      () => cover.generate({ html: HTML }),
+      (err) => {
+        assert.match(err.message, /لم نجد صورةً في ردّ الخدمة/);
+        assert.match(err.message, /created/, 'ومفاتيح الردّ الحقيقية فيها');
+        assert.match(err.message, /usage/);
+        return true;
+      }
+    );
+  } finally {
+    m.restore();
+  }
+});
+
+test('نوع الصورة يُحفظ كما جاء لا يُفترض PNG دائماً', async () => {
+  const m = mockEvolink({
+    text: '{"name":"ل","prompt":"p"}',
+    image: { data: [{ b64_json: 'data:image/webp;base64,' + 'B'.repeat(900) }] },
+  });
+  try {
+    const out = await cover.generate({ html: HTML });
+    assert.match(out.image, /^data:image\/webp;base64,/);
+  } finally {
+    m.restore();
+  }
+});
+
 test('بلا شيفرة لا توليد — الصورة تُقرأ من اللعبة لا تُخترع', async () => {
   await assert.rejects(() => cover.generate({ html: '   ', title: 'لعبة' }), /أرفق شيفرة اللعبة/);
 });

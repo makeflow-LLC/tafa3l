@@ -96,14 +96,91 @@ function geminiText(payload) {
   return '';
 }
 
-/** أول صورة في ردّ التوليد — تُقبل b64 أو رابط */
-function imageFrom(payload) {
-  const item = payload?.data?.[0] || payload?.images?.[0] || null;
-  if (!item) return null;
-  const b64 = item.b64_json || item.b64 || item.image_base64 || (typeof item === 'string' && !/^https?:/.test(item) ? item : '');
-  if (b64) return { b64: String(b64) };
-  const url = item.url || (typeof item === 'string' ? item : '');
-  return url ? { url: String(url) } : null;
+/**
+ * أول صورة في ردّ التوليد — **بحثٌ عميق** لا مسارٌ واحد.
+ *
+ * الخدمة وسيطٌ أمام نماذج شتّى، وشكل ردّها ليس واحداً: قد يأتي على هيئة
+ * OpenAI (‎data[0].b64_json‎ أو ‎data[0].url‎)، وقد يأتي على هيئة Gemini
+ * الأصلية (‎candidates[0].content.parts[].inlineData.data‎)، وقد يُغلَّف
+ * في ‎output‎ أو ‎result‎ أو ‎images‎. وقد ردّت علينا فعلاً بـ200 وشكلٍ لم
+ * نتوقّعه فسقط التوليد عند «لم تُرجع صورة» ونحن لا نعرف ماذا وصل.
+ *
+ * فبدل ملاحقة الأشكال واحداً واحداً نمشي في الردّ كلّه: أول قيمةٍ تشبه
+ * صورةً — data URL، أو base64 طويل تحت مفتاحٍ معروف، أو رابط صورة — هي
+ * المطلوبة. والعمق محدودٌ فلا يدور في ردٍّ متشعّب.
+ */
+/*
+ * مفتاحان بدرجتَي ثقة:
+ *  - الصريحة: اسمُها يقول إنّها صورة، فتُقبل مهما قصرت.
+ *  - العامّة: قد تحمل أيّ شيء (`model: "x"`)، فتُشترط فيها طولاً ومحارف
+ *    base64 كي لا نلتقط كلمةً ونحسبها صورة.
+ */
+const B64_KEYS_EXPLICIT = new Set(['b64_json', 'b64', 'base64', 'image_base64', 'imageBase64']);
+const B64_KEYS_LOOSE = new Set(['data', 'image', 'content']);
+const URL_KEYS = new Set(['url', 'image_url', 'imageUrl', 'uri', 'src', 'link']);
+
+function imageFrom(payload, depth = 0) {
+  if (payload === null || payload === undefined || depth > 6) return null;
+
+  if (typeof payload === 'string') {
+    const value = payload.trim();
+    if (/^data:image\/[a-z+.-]+;base64,/i.test(value)) return { b64: value };
+    if (/^https?:\/\//i.test(value)) return /\.(png|jpe?g|webp|gif)(\?|$)/i.test(value) ? { url: value } : null;
+    // base64 عارٍ: طويلٌ بما يكفي ليكون صورة، وبمحارف base64 وحدها
+    if (value.length > 512 && /^[A-Za-z0-9+/\s]+={0,2}$/.test(value)) return { b64: value.replace(/\s+/g, '') };
+    return null;
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const found = imageFrom(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (typeof payload !== 'object') return null;
+
+  // Gemini الأصلية: بياناتٌ مضمّنة بنوعها
+  const inline = payload.inlineData || payload.inline_data;
+  if (inline && typeof inline.data === 'string' && inline.data.length > 64) {
+    const mime = String(inline.mimeType || inline.mime_type || 'image/png');
+    return { b64: `data:${mime};base64,${inline.data.replace(/\s+/g, '')}` };
+  }
+
+  // المفاتيح المعروفة أولاً، ثم بقيّة الردّ
+  for (const key of Object.keys(payload)) {
+    const value = payload[key];
+    if (typeof value !== 'string') continue;
+    const clean = value.trim();
+    if (!clean) continue;
+    const explicit = B64_KEYS_EXPLICIT.has(key);
+    if (explicit || B64_KEYS_LOOSE.has(key)) {
+      if (/^data:image\//i.test(clean)) return { b64: clean };
+      // العامّة وحدها تُشترط فيها العتبة؛ الصريحة اسمُها يكفي
+      const looksB64 = /^[A-Za-z0-9+/\s]+={0,2}$/.test(clean);
+      if (looksB64 && (explicit || clean.length > 512)) return { b64: clean.replace(/\s+/g, '') };
+    }
+    // رابطٌ تحت مفتاحٍ يقول إنّه رابط: نقبله بلا اشتراط امتداد — روابط
+    // الشبكات الموقّعة تأتي بلا `.png` وهي صورٌ صحيحة
+    if (URL_KEYS.has(key) && /^https?:\/\//i.test(clean)) return { url: clean };
+  }
+  for (const key of Object.keys(payload)) {
+    if (key === 'error') continue;
+    const found = imageFrom(payload[key], depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** وصفٌ مختصر لشكل الردّ — يُذكر في الخطأ فيُعرف ما وصل بلا تخمين */
+function describeShape(payload, depth = 0) {
+  if (payload === null) return 'null';
+  if (Array.isArray(payload)) return depth > 2 ? 'array' : `[${payload.length ? describeShape(payload[0], depth + 1) : ''}]`;
+  if (typeof payload === 'string') return `string(${payload.length})`;
+  if (typeof payload !== 'object') return typeof payload;
+  if (depth > 2) return 'object';
+  return `{${Object.keys(payload).slice(0, 12).map((k) => `${k}: ${describeShape(payload[k], depth + 1)}`).join(', ')}}`;
 }
 
 /**
@@ -198,13 +275,16 @@ async function draw(prompt) {
 
   const image = imageFrom(payload);
   if (!image) {
-    const err = new Error('لم تُرجع خدمة الصور صورةً — أعد المحاولة');
+    // الشكل في الرسالة: بلا هذا يبقى العطل تخميناً في كل مرة
+    const err = new Error(`لم نجد صورةً في ردّ الخدمة. شكل الردّ: ${describeShape(payload).slice(0, 400)}`);
     err.status = 502;
     throw err;
   }
   if (image.b64) {
-    const clean = image.b64.replace(/^data:[a-z/+-]+;base64,/i, '');
-    return `data:image/png;base64,${clean}`;
+    // نوع الصورة إن جاء في الـdata URL يبقى كما هو، وإلا PNG
+    const match = /^data:(image\/[a-z+.-]+);base64,(.*)$/i.exec(image.b64);
+    if (match) return `data:${match[1]};base64,${match[2]}`;
+    return `data:image/png;base64,${image.b64}`;
   }
   // رابطٌ بدل البيانات: نجلبه هنا فلا يعتمد المتصفّح على نطاقٍ خارجي
   const res = await fetch(image.url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
@@ -235,4 +315,4 @@ async function generate({ html, title, subject, grades }) {
   return { name, prompt, image };
 }
 
-module.exports = { generate, describe, draw, isConfigured, config, geminiText, imageFrom, titleClause, TEXT_MODEL, IMAGE_MODEL, MAX_HTML_CHARS };
+module.exports = { generate, describe, draw, isConfigured, config, geminiText, imageFrom, describeShape, titleClause, TEXT_MODEL, IMAGE_MODEL, MAX_HTML_CHARS };
