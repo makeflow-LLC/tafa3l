@@ -3681,6 +3681,40 @@ html[dir='rtl'] ol {
   font-variant-numeric: tabular-nums;
 }
 
+/**
+ * مفاتيح الميزات: صفٌّ لكل ميزة، خانةٌ ثم اسمٌ ثم سطرُ شرح.
+ * عمودٌ واحد على الجوال ثم عمودان — الشرح سطرٌ كامل لا يُقصّ.
+ */
+.switch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.switch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: nowrap;
+  /* هدفُ لمسٍ يسع إصبع معلّمٍ على الجوال، والخانة وحدها لا تكفي */
+  min-height: 44px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.switch-row input {
+  margin-block-start: 3px;
+  flex: 0 0 auto;
+}
+
+/* ميزةٌ مطفأة: الصفّ يبهت فيُقرأ حالُه قبل أن تُقرأ خانته */
+.switch-row:has(input:not(:checked)) {
+  opacity: 0.62;
+}
+
 /* بطاقةٌ تُطوى: العنوان وحده ظاهر حتى يطلب المعلّم التفاصيل */
 details.card > summary {
   cursor: pointer;

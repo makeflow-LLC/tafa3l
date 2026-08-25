@@ -40,7 +40,7 @@ const MAX_OUTPUT_TOKENS = Number(process.env.EVOLINK_BUILD_MAX_TOKENS) || 60000;
 /** كم مرّة نُكمل ملفاً بلغ السقف قبل أن نُسلّم بأنه لن يكتمل */
 const MAX_CONTINUATIONS = 2;
 
-/** القيم التي يضبطها المعلّم من الصفحة — وهذه حدودها ومبدئها */
+/** الأرقام التي يضبطها المعلّم من الصفحة — وهذه حدودها ومبدئها */
 const KNOBS = {
   suggestionsCount: { key: 'SUGGESTIONS_COUNT', min: 2, max: 8, def: 4 },
   wildcardCount: { key: 'WILDCARD_COUNT', min: 0, max: 4, def: 1 },
@@ -50,7 +50,30 @@ const KNOBS = {
   itemsPerRun: { key: 'ITEMS_SHOWN_PER_RUN', min: 4, max: 40, def: 12 },
   bankSize: { key: 'CONTENT_BANK_SIZE', min: 6, max: 80, def: 20 },
   playMinutes: { key: 'TARGET_PLAY_TIME', min: 2, max: 45, def: 7 },
-  tensionSystems: { key: 'TENSION_SYSTEMS', min: 1, max: 3, def: 1 },
+  // صفرٌ خيارٌ لا خطأ: معلّمٌ يريد لعبةً بلا ضغطٍ إطلاقاً
+  tensionSystems: { key: 'TENSION_SYSTEMS', min: 0, max: 3, def: 1 },
+};
+
+/**
+ * الميزات التي تُطفأ كليّاً.
+ *
+ * وإطفاؤها **يغيّر التعليمات نفسها** لا سطراً في كتلة CONFIG وحدها. الفرق
+ * جوهري: نصُّ النظام يقول عن محرّك المتعة «All mandatory»، ويأمر بزرّ
+ * تلميح، ويشترط في الفحص الصامت أن يُعاد البناء إن غابت الشخصية أو
+ * الاحتفال. فلو كتبنا `HINTS = off` وتركنا تلك الأسطر كما هي لتناقض
+ * النصّ مع نفسه — والنموذج يتّبع الأمر الصريح لا سطر الإعداد. لذلك كلُّ
+ * مفتاحٍ هنا له فرعٌ في `systemPrompt` يحذف ما يخصّه ويضع مكانه نهياً
+ * صريحاً عنه.
+ */
+const SWITCHES = {
+  hints: { key: 'HINTS', def: true },
+  timer: { key: 'TIMER', def: true },
+  sound: { key: 'SOUND', def: true },
+  character: { key: 'CHARACTER', def: true },
+  celebrations: { key: 'CELEBRATIONS', def: true },
+  surprises: { key: 'SURPRISES', def: true },
+  resultCard: { key: 'NAME_AND_RESULT_CARD', def: true },
+  teacherEditBlock: { key: 'TEACHER_EDIT_BLOCK', def: true },
 };
 
 /**
@@ -64,9 +87,15 @@ function readConfig(raw) {
     const value = Math.round(Number(raw?.[name]));
     out[name] = Number.isFinite(value) ? Math.min(spec.max, Math.max(spec.min, value)) : spec.def;
   }
+  for (const [name, spec] of Object.entries(SWITCHES)) {
+    // الغائب يأخذ مبدأه: طلبٌ قديم لا يحمل المفاتيح يبقى كما كان يعمل
+    out[name] = raw?.[name] === undefined ? spec.def : raw[name] !== false;
+  }
   if (out.bankSize < out.itemsPerRun) out.bankSize = out.itemsPerRun;
   return out;
 }
+
+const onOff = (value) => (value ? 'on' : 'off');
 
 /** كتلة CONFIG بأرقام المعلّم — لا أسماء متغيّرات كما يشترط النصّ */
 function configBlock(cfg) {
@@ -75,19 +104,138 @@ function configBlock(cfg) {
     `SUGGESTIONS_COUNT      = ${cfg.suggestionsCount}`,
     `WILDCARD_COUNT         = ${cfg.wildcardCount}`,
     `CORRECT_POINTS         = ${cfg.correctPoints}`,
-    `HINT_PENALTY           = ${cfg.hintPenalty}`,
+    `HINT_PENALTY           = ${cfg.hints ? cfg.hintPenalty : 0}`,
     `DIFFICULTY_LEVELS      = ${cfg.difficultyLevels}`,
     `ITEMS_SHOWN_PER_RUN    = ${cfg.itemsPerRun}`,
     `CONTENT_BANK_SIZE      = ${cfg.bankSize}`,
     `TARGET_PLAY_TIME       = ${cfg.playMinutes} minutes`,
     `TENSION_SYSTEMS        = ${cfg.tensionSystems}`,
-    'SOUND                  = on    # Web Audio API only',
-    'CHARACTER              = on    # animated SVG companion',
-    'CELEBRATIONS           = on    # confetti, streaks, level-up moments',
-    'SURPRISES              = on    # 1-2 hidden delight moments per game',
-    'TEACHER_EDIT_BLOCK     = on',
-    'NAME_AND_RESULT_CARD   = on',
+    `HINTS                  = ${onOff(cfg.hints)}    # hint button and any hint system`,
+    `TIMER                  = ${onOff(cfg.timer)}    # countdown / clock / any time pressure`,
+    `SOUND                  = ${onOff(cfg.sound)}    # Web Audio API only`,
+    `CHARACTER              = ${onOff(cfg.character)}    # animated SVG companion`,
+    `CELEBRATIONS           = ${onOff(cfg.celebrations)}    # confetti, streaks, level-up moments`,
+    `SURPRISES              = ${onOff(cfg.surprises)}    # 1-2 hidden delight moments per game`,
+    `TEACHER_EDIT_BLOCK     = ${onOff(cfg.teacherEditBlock)}`,
+    `NAME_AND_RESULT_CARD   = ${onOff(cfg.resultCard)}`,
   ].join('\n');
+}
+
+/**
+ * قاعدة التشويق (البند ٧ في قرارات التصميم).
+ *
+ * ثلاث حالات: بلا تشويق أصلاً، أو تشويقٌ بلا مؤقّت، أو النصّ الأصلي. وحين
+ * يُطفأ المؤقّت لا يكفي حذفُ «countdown» من القائمة: نُصرّح بالنهي، لأن
+ * المؤقّت أوّل ما يقفز إلى ذهن النموذج حين يُقال له «تشويق».
+ */
+function tensionRule(cfg) {
+  if (cfg.tensionSystems === 0) {
+    return (
+      '7. TENSION — NONE. The teacher switched tension off: no countdown, no clock, no lives, ' +
+      'no streak pressure, no wagering, nothing that can be lost. The pull comes from curiosity, ' +
+      'from progression, and from the world visibly reacting to the child. A calm game is the goal here, not a soft one.'
+    );
+  }
+  const pool = cfg.timer
+    ? 'countdown / limited lives / wager rounds / streak multiplier / shrinking hints / rising difficulty'
+    : 'limited lives / wager rounds / streak multiplier / rising difficulty';
+  const exactly = cfg.tensionSystems === 1 ? 'exactly one' : `exactly ${cfg.tensionSystems}`;
+  return [
+    `7. TENSION — ${exactly}: ${pool}. For younger ages prefer streaks and lives over pressure.`,
+    cfg.timer
+      ? null
+      : 'THE TIMER IS OFF. No countdown, no clock, no stopwatch, no per-question time limit, no "hurry up" ' +
+        'copy, no time-based scoring or bonus, no ticking sound, and no time indicator in the top bar. ' +
+        'Nothing in this game may be timed. The child sets the pace.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * محرّك المتعة — كل ميزةٍ إمّا أمرٌ بها أو نهيٌ عنها.
+ *
+ * والنهي صريحٌ لا صامت: «لا شخصية» أوضح للنموذج من غياب السطر، وأمنعُ من
+ * أن يعيدها إليه طبعُه.
+ */
+function funEngine(cfg) {
+  const lines = [];
+
+  lines.push(
+    cfg.character
+      ? 'CHARACTER: one simple animated SVG companion tied to the frame (an owl librarian, a lab robot, a falcon guide...). It idles (blinking, breathing via CSS animation), cheers on success, looks comically worried on mistakes, and speaks short playful Arabic lines in a speech bubble. 15-20 varied lines minimum, with age-appropriate humor — never the same reaction twice in a row.'
+      : 'CHARACTER: OFF — the teacher switched the companion off. No mascot, no avatar, no speech bubbles, no character reactions anywhere. Carry the personality through copy, colour, and motion instead.'
+  );
+
+  lines.push('JUICE ON EVERY INTERACTION:');
+  lines.push('- Buttons scale on press, cards lift on touch, nothing appears or disappears without a transition.');
+  lines.push(
+    `- Correct: satisfying pop/settle animation${cfg.sound ? ' + rising pitch tone' : ''} + floating "+${cfg.correctPoints}" that drifts up and fades${cfg.character ? ' + character cheers' : ''}.`
+  );
+  lines.push(
+    `- Wrong: soft shake${cfg.sound ? ' + gentle low tone (never a harsh buzzer)' : ''} + the correction line slides in with a light touch, never scolding.`
+  );
+  lines.push('- Streak: 3 in a row → visual heat (glow, sparks) + combo multiplier shown; breaking it has a visible cost.');
+
+  lines.push(
+    cfg.celebrations
+      ? `CELEBRATIONS: level-up gets a full moment — screen flash, SVG confetti particles, an earned title adapted to the frame ("محقق برونزي ← فضي ← ذهبي")${cfg.character ? ', character dance' : ''}. End screen with a final result that counts up dramatically, not a static number.`
+      : 'CELEBRATIONS: OFF — no confetti, no screen flash, no level-up spectacle, no earned titles. Acknowledge progress quietly: a clean state change and a plain final result.'
+  );
+
+  lines.push(
+    cfg.surprises
+      ? `SURPRISES: hide 1-2 delight moments — a rare golden question worth double${cfg.character ? ', the character doing something unexpected after a long pause, a tiny easter egg when tapping the character 5 times' : ', a hidden bonus round after a long streak'}. Small, discoverable, never disruptive.`
+      : 'SURPRISES: OFF — no easter eggs, no hidden bonuses, no unannounced events. The game behaves exactly as it presents itself.'
+  );
+
+  lines.push(
+    'LIVING SCENE: the background is part of the frame — a subtly animated SVG scene, evolving as the child progresses (the case board fills up, the patient recovers, the city lights turn on). Progress must be VISIBLE in the world, not only in a number.'
+  );
+
+  lines.push(
+    cfg.sound
+      ? `SOUND DESIGN: a tiny palette, not one beep: correct (rising), wrong (soft low), streak (sparkle), level-up (fanfare)${cfg.timer && cfg.tensionSystems > 0 ? ', tick (last 5 seconds)' : ''}, all Web Audio, initialized on first gesture, mute button.`
+      : 'SOUND: OFF — the game must be completely silent. No Web Audio, no AudioContext, no <audio>, no vibration, and no mute button (there is nothing to mute). All feedback is visual.'
+  );
+
+  lines.push(
+    `VARIETY WITHIN THE GAME: never ${cfg.itemsPerRun} identical rounds. Alternate round types, insert one bonus round, change the pace at least once mid-game.`
+  );
+  lines.push(
+    'FUN TEST: before finalizing, ask yourself — would a child laugh, gasp, or say "مرة ثانية!" at least once during this game? If not, add the missing beat **from the parts that are switched on**.'
+  );
+  return lines;
+}
+
+/**
+ * الفحص الصامت — لا يطلب إعادة البناء لغياب ما أطفأه المعلّم، بل لوجوده.
+ * لولا ذلك لأعاد النموذج البناء إلى الأبد بحثاً عن شخصيةٍ مُنع منها.
+ */
+function selfCheck(cfg) {
+  const must = ['incomplete or truncated', 'any placeholder or undefined function'];
+  if (cfg.character) must.push('no character');
+  if (cfg.celebrations) must.push('no celebration');
+  if (cfg.surprises) must.push('no surprise');
+  must.push('no funny beat', 'fails the FUN TEST', 'all rounds identical', 'progress invisible in the scene');
+  must.push('breaks on a 360px portrait screen or requires hover', 'drag has no touch fallback');
+  must.push('mechanic is a lazy default', 'distractors not misconception-based');
+  must.push(
+    cfg.tensionSystems === 0 ? 'any tension system at all is present' : `more than ${cfg.tensionSystems} tension system(s)`
+  );
+
+  // ما أُطفئ: وجودُه هو العطل
+  const banned = [];
+  if (!cfg.hints) banned.push('a hint button or any hint affordance');
+  if (!cfg.timer) banned.push('a countdown, clock, time limit, or any time-based scoring');
+  if (!cfg.sound) banned.push('any sound, AudioContext, or mute button');
+  if (!cfg.character) banned.push('a mascot, avatar, or speech bubble');
+  if (!cfg.celebrations) banned.push('confetti, screen flash, or level-up spectacle');
+  if (!cfg.surprises) banned.push('an easter egg or hidden bonus');
+  if (!cfg.resultCard) banned.push('a name field or a shareable result card');
+  banned.push('anything external loaded', 'not one clean code block', 'repeats a previous activity');
+
+  return `Rebuild if: ${must.join(' · ')} · ${banned.join(' · ')}.`;
 }
 
 /**
@@ -130,7 +278,7 @@ function systemPrompt(cfg) {
     '4. FRAME — a living world derived from the subject: the child IS someone (a detective, a doctor on shift, a merchant, an explorer) doing something exciting, not answering questions about something.',
     '5. AGENCY — at least one real choice that changes what happens next.',
     '6. PROGRESSION — tighter distractors, less scaffolding, combined skills, faster pace.',
-    '7. TENSION — exactly one: countdown / limited lives / wager rounds / streak multiplier / shrinking hints / rising difficulty. For younger ages prefer streaks and lives over countdown pressure.',
+    tensionRule(cfg),
     '8. FUN PLAN — before coding, decide: the character and its reactions, the celebration moments, the 1-2 surprises, the funny beats, and the visual identity. A game with no fun plan does not get built.',
     '',
     '# CREATIVE SEEDS — thinking material, not a menu',
@@ -148,19 +296,8 @@ function systemPrompt(cfg) {
     'Judgement: diagnose as the expert · grade flawed work · choose between competing solutions',
     'Reversal: give the answer, ask for the question · sabotage mode · teach-back',
     '',
-    '# FUN ENGINE — this is what separates a game from a worksheet. All mandatory.',
-    'CHARACTER: one simple animated SVG companion tied to the frame (an owl librarian, a lab robot, a falcon guide...). It idles (blinking, breathing via CSS animation), cheers on success, looks comically worried on mistakes, and speaks short playful Arabic lines in a speech bubble. 15-20 varied lines minimum, with age-appropriate humor — never the same reaction twice in a row.',
-    'JUICE ON EVERY INTERACTION:',
-    '- Buttons scale on press, cards lift on touch, nothing appears or disappears without a transition.',
-    `- Correct: satisfying pop/settle animation + rising pitch tone + floating "+${cfg.correctPoints}" that drifts up and fades + character cheers.`,
-    '- Wrong: soft shake + gentle low tone (never a harsh buzzer) + the correction line slides in with a light touch, never scolding.',
-    '- Streak: 3 in a row → visual heat (glow, sparks) + combo multiplier shown; breaking it has a visible cost.',
-    'CELEBRATIONS: level-up gets a full moment — screen flash, SVG confetti particles, an earned title adapted to the frame ("محقق برونزي ← فضي ← ذهبي"), character dance. End screen with a final result that counts up dramatically, not a static number.',
-    'SURPRISES: hide 1-2 delight moments — a rare golden question worth double, the character doing something unexpected after a long pause, a tiny easter egg when tapping the character 5 times. Small, discoverable, never disruptive.',
-    'LIVING SCENE: the background is part of the frame — a subtly animated SVG scene, evolving as the child progresses (the case board fills up, the patient recovers, the city lights turn on). Progress must be VISIBLE in the world, not only in a number.',
-    'SOUND DESIGN: a tiny palette, not one beep: correct (rising), wrong (soft low), streak (sparkle), level-up (fanfare), tick (last 5 seconds), all Web Audio, initialized on first gesture, mute button.',
-    `VARIETY WITHIN THE GAME: never ${cfg.itemsPerRun} identical rounds. Alternate round types, insert one bonus round, change the pace at least once mid-game.`,
-    'FUN TEST: before finalizing, ask yourself — would a child laugh, gasp, or say "مرة ثانية!" at least once during this game? If not, add the missing beat.',
+    '# FUN ENGINE — this is what separates a game from a worksheet. Everything listed below is mandatory; anything the teacher switched OFF is forbidden instead, and its ban outranks every other line in this prompt.',
+    ...funEngine(cfg),
     '',
     '# ANTI-DEFAULT',
     'Drag-and-drop and multiple-choice only when they serve the objective.',
@@ -188,10 +325,16 @@ function systemPrompt(cfg) {
     '- Portrait as the primary layout; if the mechanic truly needs landscape, show a friendly Arabic rotate prompt.',
     '- Arabic, dir="rtl", lang="ar", system Arabic font stack, large type readable on a small screen.',
     '- All graphics inline SVG; strong contrast; never color alone.',
-    '- Score, streak, level, and tension indicator in a compact top bar that never overlaps content.',
-    `- Hint button suited to the activity, costing ${cfg.hintPenalty} points.`,
-    '- End screen: counting-up score reveal, errors, most-missed concept, earned title, name field, screenshot-friendly result card sized for a phone, replay with different items and order.',
-    '- TEACHER EDIT BLOCK: one clearly named JS array at the top of the script with an Arabic comment explaining how to swap content.',
+    `- Score, streak, level${cfg.tensionSystems > 0 ? ', and the tension indicator' : ''} — in a compact top bar that never overlaps content.`,
+    cfg.hints
+      ? `- Hint button suited to the activity, costing ${cfg.hintPenalty} points.`
+      : '- NO hint button and no hint system of any kind: the teacher switched hints off. Do not offer clues, reveals, "50:50", or a "help me" affordance anywhere.',
+    cfg.resultCard
+      ? '- End screen: counting-up score reveal, errors, most-missed concept, earned title, name field, screenshot-friendly result card sized for a phone, replay with different items and order.'
+      : '- End screen: score, errors, most-missed concept, and replay with different items and order. NO name field and NO shareable result card — the teacher switched them off.',
+    cfg.teacherEditBlock
+      ? '- TEACHER EDIT BLOCK: one clearly named JS array at the top of the script with an Arabic comment explaining how to swap content.'
+      : null,
     '- Complete and runnable as-is. No truncation, no stub functions.',
     '',
     '# OUTPUT',
@@ -199,8 +342,10 @@ function systemPrompt(cfg) {
     'Exceptions: the age question, and Mode B suggestions — both plain Arabic text, then wait.',
     '',
     '# SILENT SELF-CHECK — never printed',
-    'Rebuild if: incomplete or truncated · any placeholder or undefined function · no character, no celebration, no surprise, or no funny beat · fails the FUN TEST · all rounds identical · progress invisible in the scene · breaks on a 360px portrait screen or requires hover · drag has no touch fallback · mechanic is a lazy default · distractors not misconception-based · more than one tension system · repeats a previous activity · anything external loaded · not one clean code block.',
-  ].join('\n');
+    selfCheck(cfg),
+  ]
+    .filter((line) => line !== null && line !== undefined)
+    .join('\n');
 }
 
 function config() {
@@ -419,6 +564,10 @@ async function chat({ turns, config: rawConfig, onProgress }) {
 
 module.exports = {
   chat,
+  SWITCHES,
+  tensionRule,
+  funEngine,
+  selfCheck,
   callModel,
   splitGame,
   stitch,
