@@ -19,7 +19,13 @@
 
 const TEXT_ENDPOINT = 'https://direct.evolink.ai/v1beta/models';
 const IMAGE_ENDPOINT = 'https://api.evolink.ai/v1/images/generations';
-const TEXT_MODEL = 'gemini-3-1-flash-lite';
+/*
+ * معرّف النموذج كما تقبله الخدمة لا كما يظهر في عنوان صفحته: جرّبنا
+ * `gemini-3-1-flash-lite` (وهو اسم الصفحة) فردّت الخدمة بأنه غير معروف
+ * وأنه خطأ دائم لا يُعاد معه المحاولة. القائمة الصالحة في
+ * GET /v1/models، والمختار منها «Gemini 3.5 Flash Lite».
+ */
+const TEXT_MODEL = 'gemini-3.5-flash-lite';
 const IMAGE_MODEL = 'gemini-3.1-flash-lite-image';
 
 const REQUEST_TIMEOUT_MS = 90000;
@@ -40,7 +46,8 @@ function isConfigured() {
   return Boolean(config().key);
 }
 
-async function callJson(url, key, body) {
+async function callJson(url, key, body, step) {
+  const label = step === 'text' ? 'قراءة اللعبة' : 'رسم الصورة';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response;
@@ -53,7 +60,7 @@ async function callJson(url, key, body) {
     });
   } catch (err) {
     const wrapped = new Error(
-      err.name === 'AbortError' ? 'انتهت مهلة توليد الصورة — أعد المحاولة' : 'تعذّر الوصول إلى خدمة توليد الصور'
+      err.name === 'AbortError' ? `انتهت مهلة ${label} — أعد المحاولة` : `تعذّر الوصول إلى خدمة ${label}`
     );
     wrapped.status = 504;
     throw wrapped;
@@ -71,7 +78,7 @@ async function callJson(url, key, body) {
   if (!response.ok) {
     const detail =
       (payload && (payload.error?.message || payload.message)) || (typeof payload === 'string' ? payload.slice(0, 200) : '');
-    const err = new Error(detail ? `خدمة الصور ردّت بخطأ: ${detail}` : 'تعذّر توليد الصورة — أعد المحاولة');
+    const err = new Error(detail ? `تعذّر ${label} — ردّت الخدمة: ${detail}` : `تعذّر ${label} — أعد المحاولة`);
     err.status = response.status === 429 ? 429 : 502;
     throw err;
   }
@@ -147,9 +154,7 @@ async function describe({ html, title, subject, grades }) {
   ].join('\n');
 
   const url = `${cfg.textEndpoint}/${encodeURIComponent(cfg.textModel)}:generateContent`;
-  const payload = await callJson(url, cfg.key, {
-    contents: [{ role: 'user', parts: [{ text: instruction }] }],
-  });
+  const payload = await callJson(url, cfg.key, { contents: [{ role: 'user', parts: [{ text: instruction }] }] }, 'text');
 
   const raw = geminiText(payload);
   if (!raw) {
@@ -184,13 +189,12 @@ async function describe({ html, title, subject, grades }) {
 /** الخطوة الثانية: الرسم. يعيد data URL جاهزاً للواجهة */
 async function draw(prompt) {
   const cfg = config();
-  const payload = await callJson(cfg.imageEndpoint, cfg.key, {
-    model: cfg.imageModel,
-    prompt,
-    size: '16:9',
-    quality: '1K',
-    model_params: { thinking_level: 'auto' },
-  });
+  const payload = await callJson(
+    cfg.imageEndpoint,
+    cfg.key,
+    { model: cfg.imageModel, prompt, size: '16:9', quality: '1K', model_params: { thinking_level: 'auto' } },
+    'image'
+  );
 
   const image = imageFrom(payload);
   if (!image) {

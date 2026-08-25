@@ -61,7 +61,11 @@ test('يقرأ الشيفرة ثم يرسم: نداءان بالشكل الذي 
 
     // ── النداء الأول: قراءة الشيفرة
     const first = m.seen.calls[0];
-    assert.match(first.url, /direct\.evolink\.ai\/v1beta\/models\/gemini-3-1-flash-lite:generateContent$/);
+    assert.equal(
+      first.url,
+      'https://direct.evolink.ai/v1beta/models/gemini-3.5-flash-lite:generateContent',
+      'المعرّف كما تقبله الخدمة — لا اسم صفحة النموذج'
+    );
     assert.equal(first.headers.Authorization, 'Bearer test-evolink-key');
     assert.equal(first.body.contents[0].role, 'user');
     const asked = first.body.contents[0].parts[0].text;
@@ -177,9 +181,24 @@ test('خطأ من الخدمة يصل كرسالة مفهومة', async () => {
     imageStatus: 429,
   });
   try {
-    await assert.rejects(() => cover.generate({ html: HTML }), /quota exceeded/);
+    await assert.rejects(() => cover.generate({ html: HTML }), /رسم الصورة — ردّت الخدمة: quota exceeded/);
   } finally {
     m.restore();
+  }
+});
+
+test('خطأ النموذج النصّي يقول إنّه في قراءة اللعبة لا في الصور', async () => {
+  const original = global.fetch;
+  global.fetch = async (url) => {
+    if (String(url).includes('generateContent')) {
+      return { ok: false, status: 404, text: async () => JSON.stringify({ error: { message: "Model 'x' is not available" } }) };
+    }
+    return original(url);
+  };
+  try {
+    await assert.rejects(() => cover.generate({ html: HTML }), /تعذّر قراءة اللعبة — ردّت الخدمة: Model 'x' is not available/);
+  } finally {
+    global.fetch = original;
   }
 });
 
