@@ -10,9 +10,10 @@
  *     كما طلب صاحب المنصة. فالوصف يحمل الاسم بين علامتَي اقتباس ويشترط
  *     نسخه حرفاً بحرف بحروفٍ متّصلة من اليمين إلى اليسار.
  *
- * والمطلوب **غلافُ لعبة** لا رسمةٌ عامة: مشهدٌ حيٌّ يملأ الإطار كما تُصمَّم
- * صورة لعبةٍ في متجر التطبيقات. والعنوان هو النصّ **الوحيد** فيه — لا سطرٌ
- * فرعيّ ولا شعارٌ ولا زرٌّ ولا حروفُ زينة.
+ * والمطلوب **غلافُ لعبة** يليق بمعرضٍ من عشرات الألعاب — لا رسمةٌ عامة ولا
+ * قالبٌ آمن. قيدان صارمان لا أكثر: يملأ الإطار حافةً إلى حافة، والعنوان هو
+ * النصّ **الوحيد** فيه. وما عداهما تُرك للنموذج: الألوان والتركيب والإضاءة
+ * إبداعه، فلا يُصلَح الرسم الجامد بقيودٍ أكثر بل بحرّيةٍ أكثر.
  *
  * وضمانةٌ خلف التعليمات: إن أغفل النموذج النصّي الاسمَ من وصفه ألحقناه به
  * هنا — فالشرط لا يُترك لحُسن ظنٍّ بنموذج.
@@ -248,28 +249,19 @@ async function describe({ html, title, subject, grades }) {
     '{"name": "...", "prompt": "..."}',
     '',
     '"name": a short Arabic name for the game (2-5 words) that a teacher would recognise. Use the teacher title if it fits.',
-    '"prompt": an English image-generation prompt for the GAME COVER ART. Requirements:',
-    '- This is cover art for an educational game — it must LOOK like a game, not like a diagram,',
-    '  a worksheet, a poster or a corporate illustration. Think of the key art of a polished mobile',
-    '  game on a store page: a lively little scene with a clear focal subject, rich saturated colours,',
-    '  soft depth and lighting, rounded playful shapes, a sense of fun and motion.',
-    '- Age-appropriate for the grades above: cute and cartoonish for young children, bolder and',
-    '  more adventurous for older grades.',
-    '- Show the concrete subject of the game (numbers, letters, planets, shapes, animals…) as the',
-    '  hero of the scene, so a teacher knows what the game is at a glance.',
-    '- Composition: the illustration fills the whole frame edge to edge as a 16:9 landscape cover.',
-    '  No borders, no frames, no white margins, no UI mock-ups, no screenshots of a phone or browser.',
+    '"prompt": an English image-generation prompt for the GAME COVER ART — the thumbnail a teacher sees',
+    'in a gallery of dozens of other games, competing for a click. Be genuinely creative and bold with it:',
+    'invent a striking scene, an eye-catching colour palette, an interesting composition and lighting —',
+    'whatever makes THIS game stand out and look exciting to a child, not a generic template.',
+    'Make your own art-direction choices; do not default to flat, safe, or generic clip-art.',
     '',
-    '- **The Arabic game title is the ONLY text allowed in the entire image.**',
-    '  Write the exact Arabic title in double quotes inside the prompt, then demand it be reproduced',
-    '  character for character with correct Arabic letterforms: cursive, joined, right-to-left,',
-    '  fully diacritic-free, in a bold modern Arabic display font styled like a game logo —',
-    '  large, centred, integrated into the artwork, with enough contrast (a soft shadow, glow or',
-    '  simple panel behind it) that it reads at thumbnail size.',
-    '- Everything else in the frame is pure illustration. Absolutely NO other text of any kind:',
-    '  no subtitle, no tagline, no label, no caption, no watermark, no logo, no button, no score,',
-    '  no numbers or letters used as decoration, no Latin characters anywhere, and no invented or',
-    '  decorative pseudo-Arabic glyphs. The title, and nothing else.',
+    'Two hard constraints only:',
+    '1. It must clearly be game cover art (like mobile-game store key art), not a diagram, worksheet,',
+    '   or corporate illustration — and it must fill the frame edge to edge, no borders or white margins.',
+    '2. The Arabic game title is the ONLY text anywhere in the image. Put the exact title in double',
+    '   quotes in your prompt and demand it be reproduced character-for-character in real, correctly-joined,',
+    '   right-to-left Arabic letterforms, large enough to read at thumbnail size. No other text, no Latin',
+    '   letters, no invented pseudo-Arabic shapes, anywhere in the frame.',
     '',
     'GAME SOURCE:',
     String(html || '').slice(0, MAX_HTML_CHARS),

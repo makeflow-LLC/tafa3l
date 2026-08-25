@@ -72,8 +72,8 @@ test('يقرأ الشيفرة ثم يرسم: نداءان بالشكل الذي 
     assert.match(asked, /لعبة جمع الأعداد/, 'شيفرة اللعبة نفسها تصل النموذج');
     assert.match(asked, /g3, g4/, 'ومعها الصفوف كي تناسب الصورة عمر الطالب');
     assert.match(asked, /GAME COVER ART/, 'المطلوب غلافُ لعبة لا رسمةً عامة');
-    assert.match(asked, /the ONLY text allowed in the entire image/, 'والعنوان وحده نصّاً');
-    assert.match(asked, /no subtitle, no tagline/, 'وما عداه رسمٌ خالص');
+    assert.match(asked, /Be genuinely creative and bold/, 'وحرّيةٌ في الألوان والتصميم');
+    assert.match(asked, /the ONLY text anywhere in the image/, 'والعنوان وحده نصّاً');
 
     // ── النداء الثاني: الرسم
     const second = m.seen.calls[1];
@@ -116,10 +116,9 @@ test('التعليمات تصف غلاف لعبة يملأ الإطار، بلا
   try {
     return cover.generate({ html: HTML, title: 'ل' }).then(() => {
       const asked = m.seen.calls[0].body.contents[0].parts[0].text;
-      assert.match(asked, /key art of a polished mobile\s+game/, 'الأسلوب أسلوب غلاف لعبة');
-      assert.match(asked, /fills the whole frame edge to edge/, 'ويملأ الإطار');
-      assert.match(asked, /no UI mock-ups, no screenshots/, 'بلا واجهاتٍ ولا لقطات شاشة');
-      assert.match(asked, /no numbers or letters used as decoration/, 'ولا حروفَ زينة');
+      assert.match(asked, /like mobile-game store key art/, 'الأسلوب أسلوب غلاف لعبة');
+      assert.match(asked, /fill the frame edge to edge/, 'ويملأ الإطار');
+      assert.match(asked, /Two hard constraints only/, 'قيدان لا أكثر — والباقي حرّية');
       m.restore();
     });
   } catch (err) {
