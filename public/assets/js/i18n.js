@@ -875,6 +875,11 @@
       gbKnobMinutes: 'مدة اللعب (دقيقة)',
       gbKnobTension: 'أنظمة التشويق',
 
+      gbQuotaFree: '🎁 حسابك المجاني: بقيت لك {left} من {limit} لعبة — والاشتراك يفتح {premium} لعبة كل شهر.',
+      gbQuotaPremium: '✨ اشتراكك: بقيت لك {left} من {limit} لعبة هذا الشهر.',
+      gbQuotaUnlimited: '♾️ حسابك بلا حدّ في بناء الألعاب.',
+      gbQuotaSpentFree: 'الحساب المجاني يبني {n} لعبة فقط، وقد استعملتهما. اشترك لتبني {premium} لعبة كل شهر.',
+      gbQuotaSpentPremium: 'بلغت حصّتك الشهرية ({n} لعبة). تتجدّد مع بداية الشهر القادم.',
       gbChatTitle: '💬 حاور المساعد',
       gbChatIntro: 'سيسألك أولاً عن الصف أو العمر، ثم يقترح أفكاراً أو يبني مباشرة.',
       gbStartHint: 'ابدأ بجملة واحدة — أو اختر مثالاً:',
@@ -2254,6 +2259,11 @@
       gbKnobMinutes: 'Target play time (minutes)',
       gbKnobTension: 'Tension systems',
 
+      gbQuotaFree: '🎁 Free account: {left} of {limit} games left — a subscription unlocks {premium} games every month.',
+      gbQuotaPremium: '✨ Your subscription: {left} of {limit} games left this month.',
+      gbQuotaUnlimited: '♾️ Your account has no game-building limit.',
+      gbQuotaSpentFree: 'A free account builds only {n} games, and you have used them. Subscribe to build {premium} games every month.',
+      gbQuotaSpentPremium: 'You have reached your monthly quota ({n} games). It renews at the start of next month.',
       gbChatTitle: '💬 Talk to the assistant',
       gbChatIntro: 'It asks for the grade or age first, then suggests ideas or builds straight away.',
       gbStartHint: 'Start with one sentence — or pick an example:',
