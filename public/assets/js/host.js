@@ -1274,6 +1274,9 @@
       el('div', { class: 'tp-create' }, [
         UI.CreationCard({ ai: true, title: t('startAiTitle'), body: t('startAiBody'), cta: t('startAiCta'), href: '#/ai' }),
         UI.CreationCard({ title: t('startManualTitle'), body: t('startManualBody'), cta: t('startManualCta'), href: '#/new' }),
+        /* اللعبة فعلُ إنشاءٍ ثالثٌ لا سطرٌ في قائمة: المعلّم لا يبحث عمّا لا
+           يعرف أنه موجود، ورقاقةُ تنقّلٍ بين خمسٍ لا تُرى */
+        UI.CreationCard({ ai: true, title: t('startGameTitle'), body: t('startGameBody'), cta: t('startGameCta'), href: '#/game-ai' }),
       ])
     );
 
@@ -2011,9 +2014,17 @@
     bar.innerHTML = '';
     app.innerHTML = '';
     app.append(
-      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '#/new' }, t('hbackToTheEditor')),
-        el('a', { class: 'btn ghost sm', href: '#/' }, t('hhome')),
+      /*
+       * زرٌّ واحد يعود إلى لوحة المعلّم.
+       *
+       * كان هنا زرّان: «العودة للمحرّر» إلى ‎#/new‎ و«الرئيسية» إلى ‎#/‎.
+       * والأوّل — وهو الذي يقع تحت الإبهام أوّلاً ويُقرأ «رجوع» — كان يفتح
+       * المحرّر على أوّل مراحله (الإعدادات)، فيجد المعلّم نفسه في شاشةٍ لم
+       * يطلبها ظنّاً أنه رجع. ولا حاجة إليه أصلاً: المسودة حين تجهز تُفتح في
+       * المحرّر وحدها، وما لم تجهز فلا شيء ينتظره هناك.
+       */
+      el('div', { class: 'row', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hbackToDashboard')),
       ])
     );
     const root = el('div', { class: 'stack' });
