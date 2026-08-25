@@ -29,6 +29,15 @@ const TEXT_MODEL = 'gemini-3.5-flash-lite';
 const IMAGE_MODEL = 'gemini-3.1-flash-lite-image';
 
 const REQUEST_TIMEOUT_MS = 90000;
+/*
+ * الرسم مهمّةٌ غير متزامنة: النداء يُرجع `id` و`status` و`progress`
+ * و`task_info.estimated_time` و`credits_reserved` — أي أن الطلب سُجّل ولم
+ * يُرسم بعد. فنستطلعه حتى يكتمل.
+ */
+const POLL_INTERVAL_MS = 2500;
+const POLL_TIMEOUT_MS = 120000;
+const DONE_STATUS = new Set(['succeeded', 'success', 'completed', 'complete', 'finished', 'done', 'ok']);
+const FAIL_STATUS = new Set(['failed', 'failure', 'error', 'cancelled', 'canceled', 'rejected', 'timeout', 'expired']);
 // ما يكفي النموذج ليعرف اللعبة بلا أن نبعث ملفاً كاملاً قد يبلغ ميغابايتين
 const MAX_HTML_CHARS = 60000;
 
@@ -40,6 +49,26 @@ function config() {
     textEndpoint: String(process.env.EVOLINK_TEXT_ENDPOINT || TEXT_ENDPOINT).trim(),
     imageEndpoint: String(process.env.EVOLINK_IMAGE_ENDPOINT || IMAGE_ENDPOINT).trim(),
   };
+}
+
+/**
+ * عناوين استطلاع المهمّة. وثائق الخدمة محجوبةٌ عن بيئتنا فلم نتحقّق من
+ * العنوان الصحيح بنداءٍ حيّ — فنجرّب المرشّحين بالترتيب، وأولُ عنوانٍ يردّ
+ * بجسمٍ يخصّ المهمّة نلزمه لبقيّة الاستطلاع. ومن عرف العنوان الصحيح يضبطه
+ * بـ EVOLINK_TASK_ENDPOINT ({id} موضع المعرّف) فيُستعمل وحده.
+ */
+function taskUrls(cfg, id) {
+  const custom = String(process.env.EVOLINK_TASK_ENDPOINT || '').trim();
+  if (custom) return [custom.includes('{id}') ? custom.replace('{id}', encodeURIComponent(id)) : `${custom.replace(/\/$/, '')}/${encodeURIComponent(id)}`];
+  const base = cfg.imageEndpoint.replace(/\/v1\/.*$/, '/v1');
+  const key = encodeURIComponent(id);
+  return [
+    `${base}/tasks/${key}`,
+    `${base}/images/generations/${key}`,
+    `${base}/images/tasks/${key}`,
+    `${base}/task/${key}`,
+    `${base}/tasks/${key}/result`,
+  ];
 }
 
 function isConfigured() {
@@ -273,7 +302,11 @@ async function draw(prompt) {
     'image'
   );
 
-  const image = imageFrom(payload);
+  let image = imageFrom(payload);
+  // مهمّةٌ سُجّلت ولم تُرسم بعد: نستطلعها حتى تكتمل
+  if (!image && payload && typeof payload === 'object' && payload.id) {
+    image = await awaitTask(cfg, String(payload.id));
+  }
   if (!image) {
     // الشكل في الرسالة: بلا هذا يبقى العطل تخميناً في كل مرة
     const err = new Error(`لم نجد صورةً في ردّ الخدمة. شكل الردّ: ${describeShape(payload).slice(0, 400)}`);
@@ -298,6 +331,80 @@ async function draw(prompt) {
   return `data:${type};base64,${buf.toString('base64')}`;
 }
 
+/**
+ * يستطلع المهمّة حتى تُرسم الصورة أو تفشل.
+ *
+ * وإن لم يردّ أيُّ عنوانٍ من المرشّحين، فالرسالة تسمّيها كلّها وتقول بم
+ * ردّت — فيُعرف العنوان الصحيح من جولةٍ واحدة لا من تخمينٍ ثالث.
+ */
+async function awaitTask(cfg, id) {
+  const started = Date.now();
+  const candidates = taskUrls(cfg, id);
+  const tried = [];
+  let endpoint = null;
+
+  while (Date.now() - started < POLL_TIMEOUT_MS) {
+    const urls = endpoint ? [endpoint] : candidates;
+    for (const url of urls) {
+      let res;
+      try {
+        res = await fetch(url, {
+          headers: { Authorization: `Bearer ${cfg.key}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch {
+        if (!endpoint) tried.push(`${url} → تعذّر الاتصال`);
+        continue;
+      }
+      const text = await res.text().catch(() => '');
+      let body = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = text;
+      }
+      if (!res.ok) {
+        if (!endpoint) tried.push(`${url} → ${res.status}`);
+        continue;
+      }
+      // عنوانٌ ردّ بنجاح: نلزمه فلا نُتعب الخدمة ببقيّة المرشّحين
+      endpoint = url;
+
+      const found = imageFrom(body);
+      if (found) return found;
+
+      const status = String(body?.status || body?.state || '').toLowerCase();
+      if (FAIL_STATUS.has(status)) {
+        const why = body?.error?.message || body?.message || body?.fail_reason || status;
+        const err = new Error(`فشل رسم الصورة: ${String(why).slice(0, 200)}`);
+        err.status = 502;
+        throw err;
+      }
+      if (DONE_STATUS.has(status)) {
+        // اكتملت ولا صورة: شكلُها في الرسالة كي يُعرف موضعها
+        const err = new Error(`اكتمل الرسم ولم نجد الصورة. شكل الردّ: ${describeShape(body).slice(0, 400)}`);
+        err.status = 502;
+        throw err;
+      }
+      break; // ما زالت تُرسم — ننتظر الدورة التالية
+    }
+
+    if (!endpoint && tried.length >= candidates.length) {
+      const err = new Error(
+        `تعذّر متابعة مهمّة الرسم. جرّبنا: ${tried.slice(0, candidates.length).join(' | ')}. ` +
+          'اضبط EVOLINK_TASK_ENDPOINT بعنوان متابعة المهمّة الصحيح ({id} موضع المعرّف).'
+      );
+      err.status = 502;
+      throw err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+
+  const err = new Error('طال رسم الصورة أكثر من دقيقتين — أعد المحاولة');
+  err.status = 504;
+  throw err;
+}
+
 /** الخطوتان معاً — يعيد { name, prompt, image } */
 async function generate({ html, title, subject, grades }) {
   if (!isConfigured()) {
@@ -315,4 +422,4 @@ async function generate({ html, title, subject, grades }) {
   return { name, prompt, image };
 }
 
-module.exports = { generate, describe, draw, isConfigured, config, geminiText, imageFrom, describeShape, titleClause, TEXT_MODEL, IMAGE_MODEL, MAX_HTML_CHARS };
+module.exports = { generate, describe, draw, awaitTask, taskUrls, isConfigured, config, geminiText, imageFrom, describeShape, titleClause, TEXT_MODEL, IMAGE_MODEL, MAX_HTML_CHARS };

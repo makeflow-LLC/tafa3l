@@ -218,6 +218,97 @@ test('نوع الصورة يُحفظ كما جاء لا يُفترض PNG دائ�
   }
 });
 
+/** الردّ الحقيقي الذي وصل من الخدمة: مهمّةٌ سُجّلت ولم تُرسم بعد */
+const TASK_ACCEPTED = {
+  created: 1, id: 'a'.repeat(32), model: 'gemini-3.1-flash-lite-image',
+  object: 'image.generation.task', progress: 0, status: 'processing',
+  task_info: { can_cancel: true, estimated_time: 30 }, type: 'image',
+  usage: { billing_rule: 'reserved', credits_reserved: 4, user_group: 'default' },
+};
+
+/** يحاكي الخدمة غير المتزامنة: تسجيلٌ ثم استطلاعٌ حتى الاكتمال */
+function mockAsync({ pollUrlMatch = '/v1/tasks/', readyAfter = 2, finalBody } = {}) {
+  const original = global.fetch;
+  const seen = { polls: [], tried: [] };
+  let polls = 0;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.includes('generateContent')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"name":"ل","prompt":"p"}' }] } }] }) };
+    }
+    if (u.includes('/images/generations') && opts?.method === 'POST') {
+      return { ok: true, status: 200, text: async () => JSON.stringify(TASK_ACCEPTED) };
+    }
+    seen.tried.push(u);
+    if (!u.includes(pollUrlMatch)) return { ok: false, status: 404, text: async () => '{"error":{"message":"not found"}}' };
+    seen.polls.push(u);
+    polls += 1;
+    const body = polls >= readyAfter
+      ? (finalBody || { id: 'x', status: 'succeeded', progress: 100, data: [{ b64_json: 'C'.repeat(900) }] })
+      : { id: 'x', status: 'processing', progress: 40 };
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+  };
+  return { seen, restore: () => (global.fetch = original) };
+}
+
+test('الرسم مهمّةٌ غير متزامنة: تُستطلَع حتى تكتمل فتصل الصورة', async () => {
+  const m = mockAsync({});
+  try {
+    const out = await cover.generate({ html: HTML, title: 'ل' });
+    assert.match(out.image, /^data:image\/png;base64,/, 'الصورة وصلت بعد الاستطلاع');
+    assert.ok(m.seen.polls.length >= 2, 'استُطلعت أكثر من مرّة حتى اكتملت');
+    assert.ok(m.seen.polls.every((u) => u.includes(m.seen.polls[0])), 'ولزم العنوان الذي ردّ أولاً');
+  } finally {
+    m.restore();
+  }
+});
+
+test('فشل المهمّة يصل كسببٍ مفهوم لا كانتظارٍ بلا نهاية', async () => {
+  const m = mockAsync({ readyAfter: 1, finalBody: { status: 'failed', error: { message: 'content policy' } } });
+  try {
+    await assert.rejects(() => cover.generate({ html: HTML }), /فشل رسم الصورة: content policy/);
+  } finally {
+    m.restore();
+  }
+});
+
+test('لا عنوان متابعةٍ يردّ: الرسالة تسمّي ما جُرّب وتقول ما يُضبط', async () => {
+  const m = mockAsync({ pollUrlMatch: '/never-matches/' });
+  try {
+    await assert.rejects(
+      () => cover.generate({ html: HTML }),
+      (err) => {
+        assert.match(err.message, /تعذّر متابعة مهمّة الرسم/);
+        assert.match(err.message, /404/, 'ومعها ما ردّ به كل عنوان');
+        assert.match(err.message, /EVOLINK_TASK_ENDPOINT/, 'وكيف يُضبط الصحيح');
+        return true;
+      }
+    );
+  } finally {
+    m.restore();
+  }
+});
+
+test('عنوان المتابعة يُضبط من البيئة فيُستعمل وحده', () => {
+  const before = process.env.EVOLINK_TASK_ENDPOINT;
+  process.env.EVOLINK_TASK_ENDPOINT = 'https://api.evolink.ai/v1/jobs/{id}/status';
+  try {
+    const urls = cover.taskUrls(cover.config(), 'abc123');
+    assert.deepEqual(urls, ['https://api.evolink.ai/v1/jobs/abc123/status'], 'المضبوط وحده لا المرشّحون');
+  } finally {
+    if (before === undefined) delete process.env.EVOLINK_TASK_ENDPOINT;
+    else process.env.EVOLINK_TASK_ENDPOINT = before;
+  }
+});
+
+test('مرشّحو المتابعة يُشتقّون من عنوان الصور نفسه', () => {
+  const urls = cover.taskUrls(cover.config(), 'abc123');
+  assert.ok(urls.length >= 4, 'أكثر من مرشّح');
+  assert.ok(urls.includes('https://api.evolink.ai/v1/tasks/abc123'));
+  assert.ok(urls.includes('https://api.evolink.ai/v1/images/generations/abc123'));
+  assert.ok(urls.every((u) => u.startsWith('https://api.evolink.ai/v1/')), 'كلّها تحت نفس الأصل');
+});
+
 test('بلا شيفرة لا توليد — الصورة تُقرأ من اللعبة لا تُخترع', async () => {
   await assert.rejects(() => cover.generate({ html: '   ', title: 'لعبة' }), /أرفق شيفرة اللعبة/);
 });

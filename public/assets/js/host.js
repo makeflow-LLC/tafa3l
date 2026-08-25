@@ -563,6 +563,11 @@
       if (!html.trim()) return toast(t('gFormShotNeedsCode'), 'bad');
       makeShot.disabled = true;
       shotNote.textContent = t('gFormShotWorking');
+      // الرسم مهمّةٌ قد تبلغ دقيقتين — عدّادٌ يقول للمعلّم إنّها تجري ولم تتعطّل
+      const startedAt = Date.now();
+      const ticker = setInterval(() => {
+        shotNote.textContent = t('gFormShotElapsed', { n: Math.round((Date.now() - startedAt) / 1000) });
+      }, 1000);
       try {
         const res = await api('/api/games/cover', {
           method: 'POST',
@@ -578,6 +583,7 @@
       } catch (err) {
         shotNote.textContent = err.message;
       } finally {
+        clearInterval(ticker);
         makeShot.disabled = false;
       }
     });

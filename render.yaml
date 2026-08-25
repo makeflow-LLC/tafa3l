@@ -66,6 +66,11 @@ services:
       #   value: gemini-3.5-flash-lite
       # - key: EVOLINK_IMAGE_MODEL
       #   value: gemini-3.1-flash-lite-image
+      # عنوان متابعة مهمّة الرسم — الرسم غير متزامن، ونستطلعه حتى يكتمل.
+      # يُضبط فقط إن لم يُصب أحدُ المرشّحين في server/game-cover.js
+      # ({id} موضع معرّف المهمّة):
+      # - key: EVOLINK_TASK_ENDPOINT
+      #   value: https://api.evolink.ai/v1/tasks/{id}
 
       # اشتراك بريميوم ولوحة المالك (كلها اختيارية، ولها قيم افتراضية):
       # - key: ADMIN_EMAILS
