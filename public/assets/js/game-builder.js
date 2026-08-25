@@ -160,9 +160,13 @@
     const STARTERS = [t('gbStarter1'), t('gbStarter2'), t('gbStarter3'), t('gbStarter4')];
 
     function bubble(role, text) {
+      // كما في مساعد الأنشطة: تنسيقٌ للنموذج، وحرفيّةٌ لما كتبه المعلّم
+      const body = el('div', { class: 'body' + (role === 'user' ? '' : ' rich') });
+      if (role === 'user') body.textContent = text;
+      else body.append(global.T.richText(text));
       return el('div', { class: 'bubble ' + (role === 'user' ? 'me' : 'ai') }, [
         el('span', { class: 'who', text: role === 'user' ? t('gbYou') : t('gbAssistant') }),
-        el('div', { class: 'body', text }),
+        body,
       ]);
     }
 

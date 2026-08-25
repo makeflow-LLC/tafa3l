@@ -93,9 +93,14 @@
     root.append(preview);
 
     function bubble(role, text) {
+      // ردُّ النموذج يُرسم تنسيقاً لا رموزَ ماركداون؛ ورسالة المعلّم تبقى
+      // حرفاً كما كتبها — من كتب نجمةً أراد نجمة
+      const body = el('div', { class: 'body' + (role === 'user' ? '' : ' rich') });
+      if (role === 'user') body.textContent = text;
+      else body.append(global.T.richText(text));
       return el('div', { class: 'bubble ' + (role === 'user' ? 'me' : 'ai') }, [
         el('span', { class: 'who', text: role === 'user' ? t('cYou') : t('cAssistant') }),
-        el('div', { class: 'body', text }),
+        body,
       ]);
     }
 
