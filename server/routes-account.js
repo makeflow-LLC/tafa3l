@@ -12,6 +12,7 @@ const google = require('./google-auth');
 const premium = require('./premium');
 const countries = require('./countries');
 const { normalizeQuiz } = require('./session');
+const gameCover = require('./game-cover');
 
 const MAX_ACTIVITIES = 200;
 // سقف ما تعرضه «أسئلتي السابقة» في نداء واحد — القائمة للتصفّح لا للجرد
@@ -1005,6 +1006,44 @@ function accountRoutes(store) {
       res.json({ rating: gameCard(fresh).rating, ratingCount: fresh.ratingCount });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر التقييم' });
+    }
+  });
+
+  /**
+   * توليد صورةٍ مصغّرة من شيفرة اللعبة — بديل رفعِ لقطة شاشة.
+   *
+   * الشيفرة لا تُحفظ هنا: تُقرأ، ويُرسم منها، ويعود الرسم إلى المتصفّح الذي
+   * يكتب عليه اسم اللعبة ثم يرسله مع بقية الحقول عند الرفع.
+   *
+   * وحدُّ استعمالٍ لكل معلّم: التوليد نداءان لخدمةٍ مدفوعة، وزرٌّ يُضغط
+   * مراراً بحثاً عن رسمةٍ أجمل يستنزفها بلا قصد.
+   */
+  const coverUsage = new Map(); // userId -> { count, resetAt }
+  const COVER_WINDOW_MS = 60 * 60 * 1000;
+  const COVER_MAX = 30;
+
+  router.post('/games/cover', auth.requireUser, async (req, res) => {
+    try {
+      const now = Date.now();
+      const entry = coverUsage.get(req.user.id);
+      if (!entry || now >= entry.resetAt) {
+        coverUsage.set(req.user.id, { count: 1, resetAt: now + COVER_WINDOW_MS });
+      } else if (entry.count >= COVER_MAX) {
+        const minutes = Math.ceil((entry.resetAt - now) / 60000);
+        return res.status(429).json({ error: `بلغت حدّ توليد الصور مؤقتاً — أعد المحاولة بعد ${minutes} دقيقة` });
+      } else {
+        entry.count += 1;
+      }
+
+      const out = await gameCover.generate({
+        html: req.body?.html,
+        title: req.body?.title,
+        subject: req.body?.subject,
+        grades: Array.isArray(req.body?.grades) ? req.body.grades.slice(0, 20) : [],
+      });
+      res.json({ name: out.name, image: out.image });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر توليد الصورة' });
     }
   });
 

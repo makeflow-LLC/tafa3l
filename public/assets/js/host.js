@@ -526,24 +526,87 @@
 
     const offlineOk = el('input', { type: 'checkbox' });
     offlineOk.checked = true;
-    const shot = el('input', { type: 'file', accept: 'image/*' });
     const shotNote = el('div', { class: 'muted small' });
     const preview = el('div', { class: 'cover-preview', hidden: true });
+    const makeShot = el('button', { class: 'btn primary', type: 'button' }, t('gFormShotMake'));
     let cover = '';
-    shot.addEventListener('change', async () => {
-      const picked = shot.files?.[0];
-      if (!picked) return;
+
+    /**
+     * الرسم يأتي بلا نصّ، والاسم العربي تكتبه هذه الدالة فوقه.
+     *
+     * ولا نطلبه من نموذج الصور: نماذج الصور تُقطّع الحروف العربية وتفصلها
+     * فيخرج اسمٌ لا يُقرأ. أما خطّ المتصفّح فيصلها صحيحةً دائماً — والشريط
+     * الداكن تحتها يضمن وضوحها مهما كان لون الرسم تحته.
+     */
+    function drawCover(dataUrl, name) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const W = 640;
+          const H = 360;
+          const canvas = document.createElement('canvas');
+          canvas.width = W;
+          canvas.height = H;
+          const ctx = canvas.getContext('2d');
+          // قصٌّ يملأ الإطار بلا تشويهٍ للنِّسَب
+          const scale = Math.max(W / img.width, H / img.height);
+          const w = img.width * scale;
+          const h = img.height * scale;
+          ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+
+          const label = String(name || '').trim();
+          if (label) {
+            const band = 92;
+            const grad = ctx.createLinearGradient(0, H - band, 0, H);
+            grad.addColorStop(0, 'rgba(23, 18, 64, 0)');
+            grad.addColorStop(0.45, 'rgba(23, 18, 64, 0.82)');
+            grad.addColorStop(1, 'rgba(23, 18, 64, 0.94)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, H - band, W, band);
+
+            ctx.direction = 'rtl';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffffff';
+            // الاسم الطويل يصغر خطّه حتى يتّسع، ولا يُبتر
+            let size = 40;
+            do {
+              ctx.font = `700 ${size}px system-ui, -apple-system, 'Segoe UI', sans-serif`;
+              size -= 2;
+            } while (size > 18 && ctx.measureText(label).width > W - 48);
+            ctx.fillText(label, W / 2, H - band / 2 + 6);
+          }
+
+          let out = canvas.toDataURL('image/webp', 0.85);
+          if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.85);
+          resolve(out);
+        };
+        img.onerror = () => reject(new Error(t('gFormShotFailed')));
+        img.src = dataUrl;
+      });
+    }
+
+    makeShot.addEventListener('click', async () => {
+      if (!html.trim()) return toast(t('gFormShotNeedsCode'), 'bad');
+      makeShot.disabled = true;
       shotNote.textContent = t('gFormShotWorking');
       try {
-        cover = await shrinkImage(picked);
+        const res = await api('/api/games/cover', {
+          method: 'POST',
+          body: { html, title: title.value, subject: subject.value, grades: gradePicker.value() },
+        });
+        // اسم المعلّم أولى من اسم النموذج إن كتبه
+        cover = await drawCover(res.image, title.value.trim() || res.name);
         preview.innerHTML = '';
         preview.append(el('img', { src: cover, alt: t('gFormShot') }));
         preview.hidden = false;
         shotNote.textContent = t('gFormShotReady', { kb: Math.round((cover.length * 3) / 4 / 1024) });
+        makeShot.textContent = t('gFormShotAgain');
+        if (!title.value.trim() && res.name) title.value = res.name;
       } catch (err) {
-        cover = '';
-        preview.hidden = true;
         shotNote.textContent = err.message;
+      } finally {
+        makeShot.disabled = false;
       }
     });
 
@@ -598,9 +661,9 @@
       el('label', {}, [el('span', { class: 'small', text: t('gFormFile') }), file]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormCode') }), code]),
       note,
-      el('label', {}, [
+      el('div', { class: 'stack tight' }, [
         el('span', { class: 'small' }, [t('gFormShot'), ' ', window.T.hintDot(t('gFormShotHint'))]),
-        shot,
+        el('div', { class: 'row', style: { gap: '6px' } }, [makeShot]),
       ]),
       preview,
       shotNote,

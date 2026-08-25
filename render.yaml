@@ -57,6 +57,16 @@ services:
       # - key: AZURE_OPENAI_MODEL
       #   value: gpt-4.1
 
+      # «ولّد صورة اللعبة» — مفتاح Evolink (يقرأ شيفرة اللعبة ويرسم غلافها).
+      # ⚠️ المفتاح نفسه لا يُكتب هنا: أضفه من لوحة Render وحدها.
+      # - key: EVOLINK_API_KEY
+      #   value: <المفتاح من evolink.ai>
+      # وهذان اختياريان — القيم الافتراضية مكتوبة في server/game-cover.js:
+      # - key: EVOLINK_TEXT_MODEL
+      #   value: gemini-3-1-flash-lite
+      # - key: EVOLINK_IMAGE_MODEL
+      #   value: gemini-3.1-flash-lite-image
+
       # اشتراك بريميوم ولوحة المالك (كلها اختيارية، ولها قيم افتراضية):
       # - key: ADMIN_EMAILS
       #   value: jihad@makeflow.tech
