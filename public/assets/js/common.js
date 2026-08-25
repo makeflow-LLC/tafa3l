@@ -597,6 +597,201 @@
     return { node, value: () => grades.filter((id) => chosen.has(id)) };
   }
 
+  /**
+   * نصُّ النموذج يُرسم تنسيقاً لا رموزاً.
+   *
+   * النماذج تكتب بلغة ماركداون بطبعها: `**عريض**` و`- قائمة` و«###» فوق
+   * العناوين. وكان المعلّم يرى تلك الرموز كما هي بين كلامه العربي — نجماتٍ
+   * وشرطاتٍ تُقرأ ولا تُفهم، وتُوهم أن المساعد أخطأ. فنترجمها إلى ما قصده
+   * النموذج: عريضٌ عريض، وقائمةٌ قائمة.
+   *
+   * ولا `innerHTML` هنا بحال: النصّ يأتي من نموذجٍ خارجي، والبناء بالعُقَد
+   * وحدها يجعل حقن الوسوم مستحيلاً لا مستبعداً. وما لم نفهمه من رموز يبقى
+   * حرفاً كما كُتب — لا نمحو من نصّ المعلّم ما لم نتيقّن أنه تنسيق.
+   *
+   * والمدعوم ما تكتبه النماذج فعلاً، لا ماركداون كلّها: عريض، ومائل، وشيفرة
+   * سطريّة وكتليّة، وعناوين، وقوائم مرقّمة ونقطيّة، واقتباس، وفاصل، ورابط.
+   */
+
+  /** علامات التنسيق السطريّة — الأطول أولاً كي لا يبتلع `*` علامةَ `**` */
+  const INLINE_MARKS = [
+    { mark: '`', tag: 'code', raw: true },
+    { mark: '**', tag: 'strong' },
+    { mark: '__', tag: 'strong' },
+    { mark: '*', tag: 'em' },
+    { mark: '_', tag: 'em' },
+  ];
+
+  const LINK_RE = /^\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]{1,500})\)/;
+
+  /**
+   * يحوّل سطراً إلى عُقَد، مفسِّراً علاماته السطريّة.
+   * @param {string} text
+   * @param {number} depth حارسٌ ضدّ تداخلٍ لا ينتهي في نصٍّ شاذّ
+   */
+  function inlineNodes(text, depth = 0) {
+    const frag = document.createDocumentFragment();
+    let plain = '';
+    let i = 0;
+
+    const flush = () => {
+      if (plain) frag.append(document.createTextNode(plain));
+      plain = '';
+    };
+
+    while (i < text.length) {
+      // رابط: [نصّ](عنوان) — ولا نقبل إلا http(s) فلا يمرّ `javascript:`
+      if (depth < 4 && text[i] === '[') {
+        const link = LINK_RE.exec(text.slice(i));
+        if (link) {
+          flush();
+          const a = document.createElement('a');
+          a.href = link[2];
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer nofollow';
+          a.append(inlineNodes(link[1], depth + 1));
+          frag.append(a);
+          i += link[0].length;
+          continue;
+        }
+      }
+
+      const found = depth < 4 && INLINE_MARKS.find(({ mark }) => text.startsWith(mark, i));
+      if (found) {
+        const from = i + found.mark.length;
+        const end = text.indexOf(found.mark, from);
+        // علامةٌ بلا قرين، أو بلا محتوى، أو بفراغٍ يليها (ضربٌ لا تشديد):
+        // تبقى حرفاً كما كتبها صاحبها
+        const inner = end > from ? text.slice(from, end) : '';
+        if (inner && !/^\s/.test(inner) && !/\s$/.test(inner)) {
+          flush();
+          const node = document.createElement(found.tag);
+          if (found.raw) node.textContent = inner;
+          else node.append(inlineNodes(inner, depth + 1));
+          frag.append(node);
+          i = end + found.mark.length;
+          continue;
+        }
+      }
+
+      plain += text[i];
+      i += 1;
+    }
+    flush();
+    return frag;
+  }
+
+  /** سطرُ قائمةٍ نقطيّة (`- ` أو `* ` أو `• `) — والنجمة هنا نقطةٌ لا تشديد */
+  const BULLET_RE = /^\s{0,3}[-*•]\s+(.*)$/;
+  const NUMBER_RE = /^\s{0,3}(\d{1,3})[.)]\s+(.*)$/;
+  const HEADING_RE = /^\s{0,3}(#{1,6})\s+(.*)$/;
+  const QUOTE_RE = /^\s{0,3}>\s?(.*)$/;
+  const RULE_RE = /^\s{0,3}([-*_])\1{2,}\s*$/;
+  const FENCE_RE = /^\s{0,3}(```|~~~)(.*)$/;
+
+  /**
+   * يحوّل نصّاً كاملاً إلى شجرة عُقَد جاهزة للإلحاق.
+   * @param {string} source
+   * @returns {DocumentFragment}
+   */
+  function richText(source) {
+    const out = document.createDocumentFragment();
+    const lines = String(source ?? '').split('\n');
+    let paragraph = null;
+    let list = null;
+
+    const endParagraph = () => {
+      paragraph = null;
+    };
+    const endList = () => {
+      list = null;
+    };
+    const block = (node) => {
+      endParagraph();
+      endList();
+      out.append(node);
+    };
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+
+      // كتلة شيفرة: تُنسخ حرفاً بحرف حتى سورها الثاني
+      const fence = FENCE_RE.exec(line);
+      if (fence) {
+        const body = [];
+        i += 1;
+        while (i < lines.length && !FENCE_RE.test(lines[i])) {
+          body.push(lines[i]);
+          i += 1;
+        }
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.textContent = body.join('\n');
+        pre.append(code);
+        block(pre);
+        continue;
+      }
+
+      if (!line.trim()) {
+        endParagraph();
+        endList();
+        continue;
+      }
+
+      if (RULE_RE.test(line)) {
+        block(document.createElement('hr'));
+        continue;
+      }
+
+      const heading = HEADING_RE.exec(line);
+      if (heading) {
+        // مستوياتُ العناوين كلّها سطرٌ عريض واحد: الفقاعة ليست صفحةً لها
+        // هرمُ عناوين، وستّةُ أحجامٍ داخلها ضجيجٌ لا بنية
+        const head = document.createElement('div');
+        head.className = 'md-h';
+        head.append(inlineNodes(heading[2]));
+        block(head);
+        continue;
+      }
+
+      const quote = QUOTE_RE.exec(line);
+      if (quote) {
+        const box = document.createElement('blockquote');
+        box.append(inlineNodes(quote[1]));
+        block(box);
+        continue;
+      }
+
+      const bullet = BULLET_RE.exec(line);
+      const number = bullet ? null : NUMBER_RE.exec(line);
+      if (bullet || number) {
+        const tag = bullet ? 'ul' : 'ol';
+        if (!list || list.tagName.toLowerCase() !== tag) {
+          endParagraph();
+          list = document.createElement(tag);
+          if (number) list.start = Number(number[1]) || 1;
+          out.append(list);
+        }
+        const item = document.createElement('li');
+        item.append(inlineNodes(bullet ? bullet[1] : number[2]));
+        list.append(item);
+        continue;
+      }
+
+      endList();
+      if (!paragraph) {
+        paragraph = document.createElement('p');
+        out.append(paragraph);
+      } else {
+        // سطرٌ تالٍ في الفقرة نفسها: يبقى سطراً مستقلاً كما كتبه النموذج
+        paragraph.append(document.createTextNode('\n'));
+      }
+      paragraph.append(inlineNodes(line));
+    }
+
+    return out;
+  }
+
   /** ينسخ رابطاً إلى الحافظة، وإن مُنع ذلك رجع إلى تحديد النص */
   async function copyLink(url) {
     try {
@@ -803,6 +998,7 @@
     escapeHtml,
     shrinkImage,
     fitCover,
+    richText,
     gradeChips,
     copyLink,
     vibrate,

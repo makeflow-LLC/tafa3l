@@ -2810,6 +2810,95 @@ input[type='range'].slider::-moz-range-thumb {
   line-height: 1.65;
 }
 
+/**
+ * ردُّ النموذج بعد ترجمة رموزه إلى تنسيق.
+ *
+ * `pre-wrap` يبقى: الأسطر داخل الفقرة الواحدة يكتبها النموذج متعمّداً.
+ * لكنّ الكتل تصير عُقَداً حقيقية، فتُضبط هوامشها هنا كي لا تتباعد الفقاعة
+ * بفراغٍ مزدوج — فراغِ الوسم وفراغِ السطر الذي وُلد منه.
+ */
+.bubble .body.rich > :first-child {
+  margin-block-start: 0;
+}
+
+.bubble .body.rich > :last-child {
+  margin-block-end: 0;
+}
+
+.bubble .body.rich p,
+.bubble .body.rich ul,
+.bubble .body.rich ol,
+.bubble .body.rich blockquote,
+.bubble .body.rich pre {
+  margin-block: 8px;
+}
+
+.bubble .body.rich .md-h {
+  font-weight: 700;
+  margin-block: 10px 4px;
+}
+
+.bubble .body.rich ul,
+.bubble .body.rich ol {
+  /* الحشو في الجهة المنطقية: النقاط تسبق النصّ يميناً في العربية */
+  padding-inline-start: 20px;
+  display: grid;
+  gap: 4px;
+}
+
+.bubble .body.rich li {
+  /* عناصر القائمة سطورٌ يلفّها العرض لا نصٌّ محفوظ الأسطر */
+  white-space: normal;
+}
+
+.bubble .body.rich code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  /* الشيفرة رموزٌ لاتينية دائماً، فاتجاهها من اليسار */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.bubble .body.rich pre {
+  margin-block: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  direction: ltr;
+  text-align: left;
+}
+
+.bubble .body.rich pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  white-space: pre;
+}
+
+.bubble .body.rich blockquote {
+  margin-inline: 0;
+  padding-inline-start: 10px;
+  border-inline-start: 3px solid var(--brand);
+  color: var(--muted);
+}
+
+.bubble .body.rich hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin-block: 10px;
+}
+
+.bubble .body.rich a {
+  color: var(--brand);
+  overflow-wrap: anywhere;
+}
+
 .chat-compose {
   display: flex;
   gap: 8px;
