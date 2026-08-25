@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, firstName: baseFirstName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink } =
+  const { $, firstName: baseFirstName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink, fitCover, gradeChips } =
     window.T;
   const Fx = window.Fx;
   // اختصار الترجمة — إن غاب المحرّك نعرض المفتاح بدل الانهيار
@@ -91,6 +91,7 @@
     const lib = hash.match(/^\/library\/([\w-]+)$/);
     if (lib) return openLibraryItem(lib[1]);
     if (hash === '/ai') return openAiDesigner();
+    if (hash === '/game-ai') return openGameBuilder();
     if (hash === '/new') return openBuilder();
     if (hash === '/upgrade') return openUpgrade();
     if (hash === '/admin') return openAdmin();
@@ -157,6 +158,7 @@
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
+    menu.append(UI.MenuRow({ label: t('gbNav'), href: '#/game-ai' }));
     menu.append(UI.MenuRow({ label: t('hteacherGuide'), href: '/help.html', title: t('hteacherGuideTip') }));
 
     // إعدادات — السِمَة ليست هنا بل في الشريط بجوار EN، فلا يُبنى مبدّلان
@@ -302,6 +304,7 @@
       el('div', { class: 'tp-chips' }, [
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
+        UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
       ])
@@ -500,6 +503,17 @@
       ])
     );
 
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between' }, [
+          el('h2', { style: { margin: 0 } }, [t('gbCardTitle'), ' ', window.T.hintDot(t('gbIntro'))]),
+          el('span', { class: 'badge', text: t('gbCardBadge') }),
+        ]),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('gbCardBody') }),
+        el('a', { class: 'btn accent block', href: '#/game-ai' }, t('gbCardCta')),
+      ])
+    );
+
     app.append(uploadCard());
 
     if (!mine.length) {
@@ -530,34 +544,6 @@
     const preview = el('div', { class: 'cover-preview', hidden: true });
     const makeShot = el('button', { class: 'btn primary', type: 'button' }, t('gFormShotMake'));
     let cover = '';
-
-    /**
-     * الصورة تصل من النموذج وفيها اسم اللعبة مرسوماً — لا نكتب عليها شيئاً.
-     * هنا مواءمةُ مقاسٍ فقط: قصٌّ إلى 640×360 يملأ الإطار بلا تشويه النِّسَب،
-     * وضغطٌ إلى webp كي تمرّ من حدّ حجم الغلاف في الخادم.
-     */
-    function fitCover(dataUrl) {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          const W = 640;
-          const H = 360;
-          const canvas = document.createElement('canvas');
-          canvas.width = W;
-          canvas.height = H;
-          const ctx = canvas.getContext('2d');
-          const scale = Math.max(W / img.width, H / img.height);
-          const w = img.width * scale;
-          const h = img.height * scale;
-          ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
-          let out = canvas.toDataURL('image/webp', 0.85);
-          if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.85);
-          resolve(out);
-        };
-        img.onerror = () => reject(new Error(t('gFormShotFailed')));
-        img.src = dataUrl;
-      });
-    }
 
     makeShot.addEventListener('click', async () => {
       if (!html.trim()) return toast(t('gFormShotNeedsCode'), 'bad');
@@ -826,31 +812,6 @@
    * اختيار الصفوف: شرائح تُنقر — واحدة أو عدّة، أو «كل المراحل» فتلغي الباقي.
    * القيمة مصفوفة معرِّفات، والفارغة تعني «الجميع» كما يفهمها الخادم.
    */
-  function gradeChips() {
-    const chosen = new Set();
-    const node = el('div', { class: 'chips' });
-    const all = el('button', { class: 'chip on', type: 'button' }, t('gAllStages'));
-    const paint = () => {
-      all.classList.toggle('on', chosen.size === 0);
-      [...node.querySelectorAll('.chip[data-grade]')].forEach((c) => c.classList.toggle('on', chosen.has(c.dataset.grade)));
-    };
-    all.addEventListener('click', () => {
-      chosen.clear();
-      paint();
-    });
-    node.append(all);
-    GRADES.forEach((id) => {
-      const chip = el('button', { class: 'chip', type: 'button', 'data-grade': id }, tagLabel('grade', id));
-      chip.addEventListener('click', () => {
-        if (chosen.has(id)) chosen.delete(id);
-        else chosen.add(id);
-        paint();
-      });
-      node.append(chip);
-    });
-    return { node, value: () => GRADES.filter((id) => chosen.has(id)) };
-  }
-
   /** حجمٌ مقروء — لعبةٌ صغيرة تُكتب «أقل من ١KB» لا «0KB» */
   const kb = (bytes) => (bytes < 1024 ? t('gUnderKb') : Math.round(bytes / 1024) + 'KB');
 
@@ -1287,6 +1248,7 @@
       el('div', { class: 'tp-chips' }, [
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
+        UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
         UI.NavChip({ label: t('hteacherGuide'), href: '/help.html' }),
@@ -1976,6 +1938,69 @@
       ]),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('aiWaysNote') }),
     ]);
+  }
+
+  /**
+   * صفحة «منشئ الألعاب التفاعلية» — تنتهي بلعبةٍ تُلعب هنا وتُنشر في قسم
+   * ألعاب المعلّم.
+   *
+   * بواباتها بوابات المساعد الذكي نفسها: حسابٌ مسجّل (فالنداء يُكلّف الخادم)
+   * ثم اشتراك. وترتيبهما مقصود — من لا حساب له يُساق إلى الدخول لا إلى
+   * صفحة باقات لا يستطيع الاشتراك فيها أصلاً.
+   */
+  function openGameBuilder() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hhome')),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
+          el('a', { class: 'btn ghost sm', href: '/games.html' }, t('gNav')),
+        ]),
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' } }, [t('gbTitle'), ' ', window.T.hintDot(t('gbIntro'))]));
+
+    const root = el('div', { class: 'stack' });
+    app.append(root);
+
+    if (!state.user) {
+      root.append(
+        el('div', { class: 'card stack center' }, [
+          el('div', { style: { fontSize: '2.2rem' }, text: '🕹' }),
+          el('h2', { style: { margin: 0 }, text: t('gbTitle') }),
+          el('p', { class: 'muted', text: t('gbSignInFirst') }),
+          el('a', { class: 'btn primary', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/game-ai') }, t('hsignInWithGoogle')),
+        ])
+      );
+      return;
+    }
+
+    if (!state.premium?.isPremium) {
+      root.append(
+        el('div', { class: 'card stack center' }, [
+          el('div', { style: { fontSize: '2.2rem' }, text: '🕹' }),
+          el('h2', { style: { margin: 0 }, text: t('gbTitle') }),
+          el('p', { class: 'muted', style: { margin: 0 }, text: t('gbIntro') }),
+        ])
+      );
+      root.append(upgradeCard(state.premium?.plan, t('gbUnlock')));
+      return;
+    }
+
+    window.GameBuilder.render(root);
+
+    // الحالة تُفحص بعد الرسم لا قبله: خادمٌ بلا مفتاح يبقى المعلّم فيه يرى
+    // شاشته كاملة ويعرف لماذا لن ترد، بدل صفحةٍ فارغة
+    api('/api/game-ai/status')
+      .then((status) => {
+        if (!status.configured) root.prepend(el('div', { class: 'note warn small' }, t('gbNotConfigured')));
+      })
+      .catch(() => {});
   }
 
   /** صفحة المحادثة مع المساعد الذكي — تنتهي بمسودة تُفتح في المحرّر */

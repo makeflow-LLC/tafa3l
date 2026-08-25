@@ -1629,6 +1629,11 @@ body.playing .footer {
   min-width: 0;
   overflow-x: auto;
   white-space: nowrap;
+  /* الرابط رمزٌ لاتيني لا نصٌّ عربي: في سياق RTL كان `https://` يُقذف إلى
+     آخره فيُقرأ «://localhost…» — وهو رابطٌ لا يُصدَّق أنه صحيح وإن نُسخ
+     صحيحاً. (DESIGN.md §4: ما لا يُمرآ يُلفّ في LTR صراحةً.) */
+  direction: ltr;
+  text-align: left;
   font-size: 0.8rem;
   padding: 7px 10px;
   border-radius: 8px;
@@ -3551,4 +3556,69 @@ html[dir='rtl'] ol {
 .passage.big {
   max-height: 46vh;
   font-size: 1.15rem;
+}
+
+/* ------------------------------------------- منشئ الألعاب التفاعلية */
+
+/**
+ * نجاحٌ يُقرأ لا يُخمَّن. `.note.warn` كانت وحدها، فكان رابط اللعبة المنشورة
+ * يظهر في صندوقٍ رماديّ لا يقول إن شيئاً نجح.
+ */
+.note.ok {
+  background: var(--ok-soft);
+}
+
+/* سطرٌ تحت الحقل يشرح حدّه — أصغر من `small` لأنه ملحقٌ لا نصّ */
+.tiny {
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+/**
+ * شبكة إعدادات المنشئ: عمودان على الجوال ثم تتّسع.
+ * `auto-fill` مع حدٍّ أدنى يجعلها تتنفّس بلا استعلامات وسائط لكل مقاس.
+ */
+.knob-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.knob input {
+  /* رقمٌ يُقرأ من اليسار كبقية أرقام المنصّة، وهدفُ لمسٍ يسع إصبعاً */
+  direction: ltr;
+  text-align: center;
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* بطاقةٌ تُطوى: العنوان وحده ظاهر حتى يطلب المعلّم التفاصيل */
+details.card > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+details.card > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.card > summary::after {
+  content: '▾';
+  color: var(--muted);
+  margin-inline-start: auto;
+  transition: transform 0.15s ease-out;
+}
+
+details.card[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  details.card > summary::after {
+    transition: none;
+  }
 }

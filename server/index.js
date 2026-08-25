@@ -16,6 +16,7 @@ const auth = require('./auth');
 const googleAuth = require('./google-auth');
 const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 const { aiRoutes } = require('./routes-ai');
+const { gameAiRoutes } = require('./routes-game-ai');
 const ai = require('./ai');
 const premium = require('./premium');
 
@@ -104,6 +105,7 @@ app.use(
 app.use('/api', auth.attachUser);
 app.use('/api', accountRoutes(store));
 app.use('/api', aiRoutes());
+app.use('/api', gameAiRoutes());
 
 // ------------------------------------------------------------------ واجهة REST
 

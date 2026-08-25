@@ -537,6 +537,66 @@
     });
   }
 
+  /**
+   * يقصّ صورةً جاهزة (data URL) إلى مقاس الغلاف ويضغطها.
+   *
+   * `shrinkImage` تأخذ ملفاً يختاره المستخدم، وهذه تأخذ صورةً وُلّدت عندنا —
+   * وكلتاهما تنتهيان إلى الغلاف نفسه بالمقاس نفسه، فالقصّ والضغط مكتوبان
+   * مرّةً واحدة هنا بدل نسخةٍ في كل شاشةٍ ترفع غلافاً.
+   */
+  function fitCover(dataUrl, { width = 640, height = 360, quality = 0.85 } = {}) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        // قصٌّ يملأ الإطار بلا تشويهٍ للنِّسَب (مثل object-fit: cover)
+        const scale = Math.max(width / img.width, height / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (width - w) / 2, (height - h) / 2, w, h);
+        let out = canvas.toDataURL('image/webp', quality);
+        if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', quality);
+        resolve(out);
+      };
+      img.onerror = () => reject(new Error(window.I18n ? window.I18n.t('gFormShotFailed') : 'تعذّرت قراءة الصورة'));
+      img.src = dataUrl;
+    });
+  }
+
+  /**
+   * مُنتقي الصفوف: رقائقُ تُضغط، و«كل المراحل» حين لا يُختار شيء.
+   * ترفع لعبةً من شاشتين — رفعِ المعلّم ومنشئ الألعاب — فالمنتقي واحد.
+   */
+  function gradeChips() {
+    const label = (id) => (window.I18n ? window.I18n.tagLabel('grade', id) : id);
+    const grades = (window.I18n && window.I18n.GRADES) || [];
+    const chosen = new Set();
+    const node = el('div', { class: 'chips' });
+    const all = el('button', { class: 'chip on', type: 'button' }, window.I18n ? window.I18n.t('gAllStages') : 'كل المراحل');
+    const paint = () => {
+      all.classList.toggle('on', chosen.size === 0);
+      [...node.querySelectorAll('.chip[data-grade]')].forEach((c) => c.classList.toggle('on', chosen.has(c.dataset.grade)));
+    };
+    all.addEventListener('click', () => {
+      chosen.clear();
+      paint();
+    });
+    node.append(all);
+    grades.forEach((id) => {
+      const chip = el('button', { class: 'chip', type: 'button', 'data-grade': id }, label(id));
+      chip.addEventListener('click', () => {
+        if (chosen.has(id)) chosen.delete(id);
+        else chosen.add(id);
+        paint();
+      });
+      node.append(chip);
+    });
+    return { node, value: () => grades.filter((id) => chosen.has(id)) };
+  }
+
   /** ينسخ رابطاً إلى الحافظة، وإن مُنع ذلك رجع إلى تحديد النص */
   async function copyLink(url) {
     try {
@@ -742,6 +802,8 @@
     countdownTo,
     escapeHtml,
     shrinkImage,
+    fitCover,
+    gradeChips,
     copyLink,
     vibrate,
     serverAlive,

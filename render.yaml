@@ -66,6 +66,21 @@ services:
       #   value: gemini-3.5-flash-lite
       # - key: EVOLINK_IMAGE_MODEL
       #   value: gemini-3.1-flash-lite-image
+      # «منشئ الألعاب التفاعلية» يستعمل المفتاح نفسه (EVOLINK_API_KEY) —
+      # نموذجٌ واحد يبني ملفّ اللعبة كاملاً. وهذه اختيارية، وقيمها الافتراضية
+      # في server/game-builder.js:
+      # - key: EVOLINK_GAME_MODEL
+      #   value: gemini-3.7-flash
+      # مهلة بناء اللعبة بالمللي ثانية (الافتراضي سبع دقائق):
+      # - key: EVOLINK_BUILD_TIMEOUT_MS
+      #   value: "420000"
+      # سقف مخرجات البناء بالرموز — ملفّ لعبةٍ كاملة لا مسودة أسئلة:
+      # - key: EVOLINK_BUILD_MAX_TOKENS
+      #   value: "60000"
+      # كم لعبةً يبنيها المعلّم الواحد في الساعة:
+      # - key: GAME_AI_HOURLY_LIMIT
+      #   value: "20"
+
       # عنوان متابعة مهمّة الرسم — الرسم غير متزامن، ونستطلعه حتى يكتمل.
       # يُضبط فقط إن لم يُصب أحدُ المرشّحين في server/game-cover.js
       # ({id} موضع معرّف المهمّة):
