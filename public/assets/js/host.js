@@ -598,6 +598,46 @@
     });
     code.addEventListener('input', () => setHtml(code.value, t('gFormPasted')));
 
+    /**
+     * «كيف سترفع لعبتك؟» — سؤالٌ واحد قبل الحقول.
+     *
+     * كان الحقلان معروضين معاً: خانةُ ملفٍّ ومساحةُ لصقٍ فوق بعضهما، فيقف
+     * المعلّم أمامهما لا يدري أيملأ واحداً أم كليهما. الآن يختار طريقته
+     * فيظهر حقلُها وحده، ويستطيع تبديل رأيه بضغطة.
+     */
+    const fileBox = el('div', { class: 'stack tight', hidden: true }, [
+      el('label', {}, [el('span', { class: 'small', text: t('gFormFile') }), file]),
+    ]);
+    const codeBox = el('div', { class: 'stack tight', hidden: true }, [
+      el('label', {}, [el('span', { class: 'small', text: t('gFormCode') }), code]),
+    ]);
+    const pickFile = el('button', { class: 'btn ghost', type: 'button' }, t('gFormHaveFile'));
+    const pickCode = el('button', { class: 'btn ghost', type: 'button' }, t('gFormHaveCode'));
+    const sourceRow = el('div', { class: 'stack tight' }, [
+      el('span', { class: 'small', text: t('gFormSourceAsk') }),
+      el('div', { class: 'row', style: { gap: '6px' } }, [pickFile, pickCode]),
+    ]);
+
+    function chooseSource(which) {
+      const isFile = which === 'file';
+      fileBox.hidden = !isFile;
+      codeBox.hidden = isFile;
+      pickFile.className = 'btn ' + (isFile ? 'primary' : 'ghost');
+      pickCode.className = 'btn ' + (isFile ? 'ghost' : 'primary');
+      // ما لم يعد ظاهراً لا يُحتسب: الطريقة المختارة وحدها مصدر الشيفرة
+      if (isFile) {
+        code.value = '';
+        if (file.files?.length) file.files[0].text().then((text) => setHtml(text, file.files[0].name));
+        else setHtml('', '');
+      } else {
+        file.value = '';
+        setHtml(code.value, t('gFormPasted'));
+      }
+      (isFile ? file : code).focus({ preventScroll: true });
+    }
+    pickFile.addEventListener('click', () => chooseSource('file'));
+    pickCode.addEventListener('click', () => chooseSource('code'));
+
     submit.addEventListener('click', async () => {
       if (!cover) return toast(t('gFormShotRequired'), 'bad');
       submit.disabled = true;
@@ -630,8 +670,9 @@
         gradePicker.node,
       ]),
       el('label', {}, [el('span', { class: 'small', text: t('gFormDesc') }), description]),
-      el('label', {}, [el('span', { class: 'small', text: t('gFormFile') }), file]),
-      el('label', {}, [el('span', { class: 'small', text: t('gFormCode') }), code]),
+      sourceRow,
+      fileBox,
+      codeBox,
       note,
       el('div', { class: 'stack tight' }, [
         el('span', { class: 'small' }, [t('gFormShot'), ' ', window.T.hintDot(t('gFormShotHint'))]),
