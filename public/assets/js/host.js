@@ -532,13 +532,11 @@
     let cover = '';
 
     /**
-     * الرسم يأتي بلا نصّ، والاسم العربي تكتبه هذه الدالة فوقه.
-     *
-     * ولا نطلبه من نموذج الصور: نماذج الصور تُقطّع الحروف العربية وتفصلها
-     * فيخرج اسمٌ لا يُقرأ. أما خطّ المتصفّح فيصلها صحيحةً دائماً — والشريط
-     * الداكن تحتها يضمن وضوحها مهما كان لون الرسم تحته.
+     * الصورة تصل من النموذج وفيها اسم اللعبة مرسوماً — لا نكتب عليها شيئاً.
+     * هنا مواءمةُ مقاسٍ فقط: قصٌّ إلى 640×360 يملأ الإطار بلا تشويه النِّسَب،
+     * وضغطٌ إلى webp كي تمرّ من حدّ حجم الغلاف في الخادم.
      */
-    function drawCover(dataUrl, name) {
+    function fitCover(dataUrl) {
       return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
@@ -548,35 +546,10 @@
           canvas.width = W;
           canvas.height = H;
           const ctx = canvas.getContext('2d');
-          // قصٌّ يملأ الإطار بلا تشويهٍ للنِّسَب
           const scale = Math.max(W / img.width, H / img.height);
           const w = img.width * scale;
           const h = img.height * scale;
           ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
-
-          const label = String(name || '').trim();
-          if (label) {
-            const band = 92;
-            const grad = ctx.createLinearGradient(0, H - band, 0, H);
-            grad.addColorStop(0, 'rgba(23, 18, 64, 0)');
-            grad.addColorStop(0.45, 'rgba(23, 18, 64, 0.82)');
-            grad.addColorStop(1, 'rgba(23, 18, 64, 0.94)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, H - band, W, band);
-
-            ctx.direction = 'rtl';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#ffffff';
-            // الاسم الطويل يصغر خطّه حتى يتّسع، ولا يُبتر
-            let size = 40;
-            do {
-              ctx.font = `700 ${size}px system-ui, -apple-system, 'Segoe UI', sans-serif`;
-              size -= 2;
-            } while (size > 18 && ctx.measureText(label).width > W - 48);
-            ctx.fillText(label, W / 2, H - band / 2 + 6);
-          }
-
           let out = canvas.toDataURL('image/webp', 0.85);
           if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.85);
           resolve(out);
@@ -595,8 +568,7 @@
           method: 'POST',
           body: { html, title: title.value, subject: subject.value, grades: gradePicker.value() },
         });
-        // اسم المعلّم أولى من اسم النموذج إن كتبه
-        cover = await drawCover(res.image, title.value.trim() || res.name);
+        cover = await fitCover(res.image);
         preview.innerHTML = '';
         preview.append(el('img', { src: cover, alt: t('gFormShot') }));
         preview.hidden = false;

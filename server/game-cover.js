@@ -6,12 +6,12 @@
  * خطوتان بنموذجين:
  *  ١) نموذج نصّي يقرأ HTML اللعبة فيعرف ما هي، ويعيد اسمها بالعربية ووصفاً
  *     إنجليزياً للصورة (النماذج تفهم الوصف الإنجليزي أدقّ).
- *  ٢) نموذج صور يرسم الوصف.
+ *  ٢) نموذج صور يرسم الوصف — **والاسم العربي مرسومٌ داخل الصورة نفسها**،
+ *     كما طلب صاحب المنصة. فالوصف يحمل الاسم بين علامتَي اقتباس ويشترط
+ *     نسخه حرفاً بحرف بحروفٍ متّصلة من اليمين إلى اليسار.
  *
- * والاسم العربي **لا يُطلب من نموذج الصور**: نماذج الصور تُشوّه الحروف
- * العربية وتفصلها، فيخرج اسمٌ لا يُقرأ. فنطلب رسماً بلا نصّ وبمساحةٍ سفلية
- * هادئة، ثم تكتب الواجهة الاسم فوقها بخطّ المتصفّح — حروفٌ متّصلة صحيحة
- * دائماً. (‎host.js: drawCover‎)
+ * وضمانةٌ خلف التعليمات: إن أغفل النموذج النصّي الاسمَ من وصفه ألحقناه به
+ * هنا — فالشرط لا يُترك لحُسن ظنٍّ بنموذج.
  *
  * والمفتاح من البيئة وحدها (EVOLINK_API_KEY) كما مفتاح أزور — لا يُكتب في
  * المستودع ولا يصل المتصفّح: كل نداءٍ يمرّ من هنا.
@@ -99,6 +99,16 @@ function imageFrom(payload) {
   return url ? { url: String(url) } : null;
 }
 
+/**
+ * الجملة التي تفرض رسم الاسم العربي داخل الصورة — تُستعمل ضمانةً حين
+ * يُغفلها النموذج النصّي، وتُختبر بنصّها فلا تضيع في تعديلٍ لاحق.
+ */
+const titleClause = (name) =>
+  `The Arabic title "${name}" must appear inside the image as large, bold, perfectly readable Arabic text ` +
+  'in a clean modern Arabic display font, cursive and properly joined, right-to-left, spelled exactly ' +
+  'character for character, centred in the lower part of the image on a simple high-contrast band. ' +
+  'No Latin text, no pseudo-Arabic shapes, no misspelling, no extra words.';
+
 const GRADE_HINT = (grades) =>
   Array.isArray(grades) && grades.length ? `The game targets these school grades: ${grades.join(', ')}.` : 'The game targets school children.';
 
@@ -124,7 +134,13 @@ async function describe({ html, title, subject, grades }) {
     '- Age-appropriate for the grades above: playful and cartoonish for young children, cleaner and more mature for older grades.',
     '- Name the concrete objects of the game (numbers, letters, planets, shapes, animals…) so the picture reads at a glance.',
     '- Cheerful colours, simple shapes, soft background, no clutter.',
-    '- MUST end with: "no text, no letters, no numbers written anywhere, leave the bottom third simple and uncluttered".',
+    '- **The Arabic game title must be rendered INSIDE the image as real readable text.**',
+    '  Write the exact Arabic title in double quotes inside the prompt, then demand it be reproduced',
+    '  character for character with correct Arabic letterforms: cursive, joined, right-to-left,',
+    '  fully diacritic-free, in a clean bold modern Arabic display font, large and centred in the',
+    '  lower part of the image, high contrast against a simple band or panel behind it so it reads at',
+    '  thumbnail size. No Latin text anywhere, no invented or decorative pseudo-Arabic glyphs,',
+    '  no misspelling, no extra words beyond the title itself.',
     '',
     'GAME SOURCE:',
     String(html || '').slice(0, MAX_HTML_CHARS),
@@ -152,13 +168,16 @@ async function describe({ html, title, subject, grades }) {
       parsed = null;
     }
   }
-  const name = String(parsed?.name || title || '').trim().slice(0, 60);
-  const prompt = String(parsed?.prompt || '').trim().slice(0, 1200);
+  // عنوان المعلّم إن كتبه هو الاسم، فهو ما يتوقّع رؤيته على الغلاف
+  const name = String(title || parsed?.name || '').trim().slice(0, 60);
+  let prompt = String(parsed?.prompt || '').trim().slice(0, 1200);
   if (!prompt) {
     const err = new Error('تعذّر وصف اللعبة للرسم — أعد المحاولة');
     err.status = 502;
     throw err;
   }
+  // الاسم شرطٌ لا اقتراح: إن غاب عن الوصف أُلحق به
+  if (name && !prompt.includes(name)) prompt = `${prompt} ${titleClause(name)}`;
   return { name, prompt };
 }
 
@@ -212,4 +231,4 @@ async function generate({ html, title, subject, grades }) {
   return { name, prompt, image };
 }
 
-module.exports = { generate, describe, draw, isConfigured, config, geminiText, imageFrom, TEXT_MODEL, IMAGE_MODEL, MAX_HTML_CHARS };
+module.exports = { generate, describe, draw, isConfigured, config, geminiText, imageFrom, titleClause, TEXT_MODEL, IMAGE_MODEL, MAX_HTML_CHARS };

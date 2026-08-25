@@ -51,7 +51,7 @@ const B64 = Buffer.from('fake-png-bytes').toString('base64');
 
 test('يقرأ الشيفرة ثم يرسم: نداءان بالشكل الذي تنصّ عليه الخدمة', async () => {
   const m = mockEvolink({
-    text: '{"name":"جمع الأعداد","prompt":"Flat vector illustration of colourful numbers, no text, no letters, no numbers written anywhere, leave the bottom third simple and uncluttered"}',
+    text: '{"name":"جمع الأعداد","prompt":"Flat vector illustration of colourful numbers with the Arabic title \\"جمع الأعداد\\" written large in the lower part"}',
     image: { data: [{ b64_json: B64 }] },
   });
   try {
@@ -67,7 +67,7 @@ test('يقرأ الشيفرة ثم يرسم: نداءان بالشكل الذي 
     const asked = first.body.contents[0].parts[0].text;
     assert.match(asked, /لعبة جمع الأعداد/, 'شيفرة اللعبة نفسها تصل النموذج');
     assert.match(asked, /g3, g4/, 'ومعها الصفوف كي تناسب الصورة عمر الطالب');
-    assert.match(asked, /no text, no letters/, 'ويُمنع النصّ في الرسم');
+    assert.match(asked, /must be rendered INSIDE the image as real readable text/, 'والاسم العربي مطلوبٌ داخل الصورة');
 
     // ── النداء الثاني: الرسم
     const second = m.seen.calls[1];
@@ -79,8 +79,39 @@ test('يقرأ الشيفرة ثم يرسم: نداءان بالشكل الذي 
     );
     assert.match(second.body.prompt, /colourful numbers/, 'الوصف الذي استخرجه النموذج هو ما يُرسم');
 
-    assert.equal(out.name, 'جمع الأعداد', 'والاسم العربي يعود للواجهة لتكتبه على الصورة');
+    assert.equal(out.name, 'جمع الأعداد', 'والاسم العربي يعود مع الصورة');
+    assert.match(second.body.prompt, /جمع الأعداد/, 'واسم اللعبة داخل وصف الرسم نفسه');
     assert.match(out.image, /^data:image\/png;base64,/, 'والصورة data URL جاهزة');
+  } finally {
+    m.restore();
+  }
+});
+
+test('الاسم شرطٌ لا اقتراح: يُلحق بالوصف إن أغفله النموذج', async () => {
+  const m = mockEvolink({
+    text: '{"name":"مطابقة الحروف","prompt":"Flat vector illustration of playful letters"}',
+    image: { data: [{ b64_json: B64 }] },
+  });
+  try {
+    await cover.generate({ html: HTML, title: '', subject: '', grades: [] });
+    const prompt = m.seen.calls[1].body.prompt;
+    assert.match(prompt, /مطابقة الحروف/, 'الاسم أُلحق بالوصف');
+    assert.match(prompt, /perfectly readable Arabic text/, 'مع شرط وضوح الحروف');
+    assert.match(prompt, /cursive and properly joined, right-to-left/, 'ومتّصلةً من اليمين لليسار');
+  } finally {
+    m.restore();
+  }
+});
+
+test('عنوان المعلّم إن كتبه هو ما يُرسم لا اسمُ النموذج', async () => {
+  const m = mockEvolink({
+    text: '{"name":"اسم اخترعه النموذج","prompt":"Flat vector illustration"}',
+    image: { data: [{ b64_json: B64 }] },
+  });
+  try {
+    const out = await cover.generate({ html: HTML, title: 'رحلة الفضاء', subject: '', grades: [] });
+    assert.equal(out.name, 'رحلة الفضاء');
+    assert.match(m.seen.calls[1].body.prompt, /رحلة الفضاء/, 'وهو ما يُرسم في الصورة');
   } finally {
     m.restore();
   }
