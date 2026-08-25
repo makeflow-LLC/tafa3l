@@ -134,15 +134,120 @@ test('بلا حساب: لا بناء', async () => {
   assert.equal(res.status, 401);
 });
 
-test('حسابٌ بلا اشتراك: بوابة البريميوم تسبق النداء', async () => {
+test('الحساب المجاني يبني لعبتين ثم يُقال له لماذا توقّف', async () => {
   const email = 'free-gb@example.com';
-  const mock = mockUpstream({ email, evolink: () => modelReply('لا ينبغي أن يُنادى') });
+  const mock = mockUpstream({ email, evolink: () => modelReply('تفضّل\n```html\n' + GAME + '\n```') });
   try {
     const c = client();
     await login(c);
-    const res = await c.request('POST', '/api/game-ai/chat', { message: 'دورة الماء' });
-    assert.equal(res.status, 402);
-    assert.equal(mock.seen.calls.length, 0);
+
+    // الحصّة معلنة قبل أن يكتب حرفاً
+    const before = await c.request('GET', '/api/game-ai/status');
+    assert.deepEqual(
+      { plan: before.data.quota.plan, limit: before.data.quota.limit, remaining: before.data.quota.remaining, period: before.data.quota.period },
+      { plan: 'free', limit: 2, remaining: 2, period: 'lifetime' }
+    );
+
+    for (const expected of [1, 0]) {
+      const started = await c.request('POST', '/api/game-ai/chat', { message: 'ابنِ لعبة' });
+      assert.equal(started.status, 202);
+      const done = await awaitJob(c, started.data.jobId);
+      assert.equal(done.data.status, 'done');
+      // ما بقي يعود مع اللعبة نفسها، فلا تحتاج الواجهة نداءً ثانياً
+      assert.equal(done.data.quota.remaining, expected, `بعد البناء يبقى ${expected}`);
+    }
+
+    const third = await c.request('POST', '/api/game-ai/chat', { message: 'ابنِ ثالثة' });
+    assert.equal(third.status, 402);
+    assert.match(third.data.error, /الحساب المجاني يبني 2 لعبة فقط/);
+    assert.match(third.data.error, /اشترك/, 'الرسالة تقول ماذا يفعل لا «ممنوع» وحدها');
+    assert.equal(mock.seen.calls.length, 2, 'الطلب الثالث لم يُنفق نداءً أصلاً');
+  } finally {
+    mock.restore();
+  }
+});
+
+test('حصّة المجاني في العمر لا في الشهر — لا تتجدّد بانقلاب الشهر', async () => {
+  const email = 'lifetime-gb@example.com';
+  const mock = mockUpstream({ email, evolink: () => modelReply('تفضّل\n```html\n' + GAME + '\n```') });
+  try {
+    const c = client();
+    await login(c);
+    for (let i = 0; i < 2; i += 1) {
+      const started = await c.request('POST', '/api/game-ai/chat', { message: 'ابنِ لعبة' });
+      await awaitJob(c, started.data.jobId);
+    }
+    // نُقدّم عدّاد الشهر إلى شهرٍ ماضٍ: المشترك تعود حصّته، والمجاني لا
+    const user = await storage.get().findUserByEmail(email);
+    await storage.get().bumpGameBuilds(user.id, '2000-01');
+    const after = await c.request('GET', '/api/game-ai/status');
+    assert.equal(after.data.quota.plan, 'free');
+    assert.equal(after.data.quota.remaining, 0, 'مجموع العمر هو المرجع، ومفتاح الشهر لا يمسّه');
+  } finally {
+    mock.restore();
+  }
+});
+
+test('المشترك يبني عشرين في الشهر، والعدّاد شهريٌّ يُصفَّر بانقلابه', async () => {
+  const email = 'premium-gb@example.com';
+  const mock = mockUpstream({ email, evolink: () => modelReply('تفضّل\n```html\n' + GAME + '\n```') });
+  try {
+    const c = client();
+    await login(c);
+    const user = await grantPremium(email);
+
+    const before = await c.request('GET', '/api/game-ai/status');
+    assert.deepEqual(
+      { plan: before.data.quota.plan, limit: before.data.quota.limit, remaining: before.data.quota.remaining, period: before.data.quota.period },
+      { plan: 'premium', limit: 20, remaining: 20, period: 'month' }
+    );
+
+    const started = await c.request('POST', '/api/game-ai/chat', { message: 'ابنِ لعبة' });
+    const done = await awaitJob(c, started.data.jobId);
+    assert.equal(done.data.quota.remaining, 19);
+
+    // شهرٌ مضى بعشرين لعبة: لا يُحسب على الشهر الجديد
+    const { monthKey } = require('../server/game-quota');
+    await storage.get().bumpGameBuilds(user.id, '2000-01');
+    const stale = await c.request('GET', '/api/game-ai/status');
+    assert.equal(stale.data.quota.remaining, 20, 'مفتاحُ شهرٍ ماضٍ يعني حصّةً كاملة');
+    assert.equal(typeof monthKey(), 'string');
+  } finally {
+    mock.restore();
+  }
+});
+
+test('دورُ حوارٍ لا ينتهي بلعبة لا يُخصم من الحصّة', async () => {
+  const email = 'talk-gb@example.com';
+  const mock = mockUpstream({ email, evolink: () => modelReply('لأي عمر أو صف هذه اللعبة؟') });
+  try {
+    const c = client();
+    await login(c);
+    const started = await c.request('POST', '/api/game-ai/chat', { message: 'أريد لعبة' });
+    const done = await awaitJob(c, started.data.jobId);
+    assert.equal(done.data.html, '');
+    assert.equal(done.data.quota, null, 'لم يُبنَ شيء فلا خصم');
+    const after = await c.request('GET', '/api/game-ai/status');
+    assert.equal(after.data.quota.remaining, 2, 'الحصّة كما هي');
+  } finally {
+    mock.restore();
+  }
+});
+
+test('نداءٌ فشل لا يُخصم ثمنه — من لم يستلم لعبةً لا يدفع', async () => {
+  const email = 'failed-gb@example.com';
+  const mock = mockUpstream({
+    email,
+    evolink: () => ({ ok: false, status: 500, text: async () => JSON.stringify({ error: { message: 'upstream down' } }) }),
+  });
+  try {
+    const c = client();
+    await login(c);
+    const started = await c.request('POST', '/api/game-ai/chat', { message: 'ابنِ لعبة' });
+    const done = await awaitJob(c, started.data.jobId);
+    assert.equal(done.data.status, 'error');
+    const after = await c.request('GET', '/api/game-ai/status');
+    assert.equal(after.data.quota.remaining, 2);
   } finally {
     mock.restore();
   }

@@ -25,6 +25,8 @@ const express = require('express');
 const auth = require('./auth');
 const premium = require('./premium');
 const builder = require('./game-builder');
+const quota = require('./game-quota');
+const storage = require('./storage');
 const { sendGameFrame } = require('./game-frame');
 
 const MAX_MESSAGE_CHARS = 6000;
@@ -110,20 +112,24 @@ function gameAiRoutes() {
   }
 
   router.get('/game-ai/status', (req, res) => {
+    const status = premium.summary(req.user);
     res.json({
       configured: builder.isConfigured(),
       model: builder.config().model,
       signedIn: Boolean(req.user),
       knobs: builder.KNOBS,
       defaults: builder.readConfig({}),
-      ...premium.summary(req.user),
+      ...status,
+      // الحصّة تُرسل كاملةً: الواجهة تقول للمعلّم كم بقي له قبل أن يبدأ،
+      // لا بعد أن ينتظر دقيقتين ثم يُردّ
+      quota: req.user ? quota.summary(req.user, status) : null,
     });
   });
 
   /**
    * يبدأ دوراً جديداً. يعيد `chatId` و`jobId` فوراً — والبناء يجري خلفه.
    */
-  router.post('/game-ai/chat', auth.requireUser, premium.requirePremium, (req, res) => {
+  router.post('/game-ai/chat', auth.requireUser, (req, res) => {
     sweep();
     if (!builder.isConfigured()) {
       return res.status(503).json({ error: 'منشئ الألعاب غير مُفعّل — أضف المتغيّر EVOLINK_API_KEY في إعدادات الخادم' });
@@ -131,6 +137,29 @@ function gameAiRoutes() {
 
     const message = String(req.body?.message ?? '').slice(0, MAX_MESSAGE_CHARS).trim();
     if (!message) return res.status(400).json({ error: 'اكتب رسالتك أولاً' });
+
+    /*
+     * الحصّة تُفحص قبل النداء لا بعده. ولا نمنع الحوار وحده: من نفدت حصّته
+     * لا يبني، وأيّ دورٍ قد ينتهي بملفّ — فالبابُ واحد.
+     */
+    const status = premium.summary(req.user);
+    const left = quota.quotaOf(req.user, status);
+    if (!left.unlimited && left.remaining <= 0) {
+      return res.status(402).json({ error: quota.exhaustedMessage(left, premium.PLAN), quota: quota.summary(req.user, status), upgrade: premium.PLAN });
+    }
+
+    /*
+     * بناءٌ واحدٌ في كل مرّة لكل معلّم.
+     *
+     * وهذا ما يُحكم الحصّة فعلاً: الخصم يقع بعد أن يُسلَّم الملفّ، فلو سُمح
+     * بطلبين متزامنين لقرأ كلاهما «بقيت لك واحدة» فبُنيت اثنتان. والواجهة
+     * تُعطّل الزرّ أثناء البناء أصلاً، فهذا حارسُ ما وراءها.
+     */
+    for (const job of jobs.values()) {
+      if (job.userId === req.user.id && job.status === 'working') {
+        return res.status(409).json({ error: 'لديك لعبةٌ تُبنى الآن — انتظر حتى تكتمل ثم اطلب التالية' });
+      }
+    }
 
     const minutes = rateLimited(req.user.id);
     if (minutes) {
@@ -156,9 +185,26 @@ function gameAiRoutes() {
     const cfg = req.body?.config;
     builder
       .chat({ turns: contextOf(chat), config: cfg, onProgress: (stage) => (job.stage = stage) })
-      .then((out) => {
+      .then(async (out) => {
         chat.turns.push({ role: 'model', text: out.text + (out.html ? '\n\n```html\n' + out.html + '\n```' : ''), built: Boolean(out.html) });
         chat.at = Date.now();
+
+        /*
+         * الخصم هنا لا عند الطلب: دورٌ انتهى بسؤالٍ عن العمر أو باقتراح
+         * أفكارٍ لم يُبنَ فيه شيء، فلا يُخصم منه. وما فشل نداؤه لا يصل هنا
+         * أصلاً — من لم يستلم لعبةً لا يدفع ثمنها.
+         */
+        let after = null;
+        if (out.html) {
+          try {
+            const counters = await storage.get().bumpGameBuilds(job.userId, quota.monthKey());
+            after = quota.summary({ ...req.user, ...counters }, premium.summary(req.user));
+          } catch (err) {
+            // تعذّر تسجيل الخصم: اللعبة بُنيت ولا نحرم المعلّم منها لأجل عدّاد
+            console.error('game quota bump:', err.message);
+          }
+        }
+
         Object.assign(job, {
           status: 'done',
           stage: 'done',
@@ -166,6 +212,7 @@ function gameAiRoutes() {
           html: out.html,
           truncated: out.truncated,
           config: out.config,
+          quota: after,
           finishedAt: Date.now(),
         });
       })
@@ -192,6 +239,8 @@ function gameAiRoutes() {
       html: job.html || '',
       truncated: Boolean(job.truncated),
       config: job.config,
+      // ما بقي بعد هذا البناء — الواجهة تُحدّث عدّادها بلا نداءٍ ثانٍ
+      quota: job.quota || null,
       elapsed,
     });
   });

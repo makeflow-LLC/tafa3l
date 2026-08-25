@@ -82,6 +82,12 @@ async function attachUser(req, _res, next) {
             // يميّز منحة التسجيل عن اشتراكٍ مدفوع في ما تعرضه الواجهة
             trialGrantedAt: user.trialGrantedAt ?? null,
             country: user.country || '',
+            // عدّادا بناء الألعاب: منهما تُحسب الحصّة في كل طلب. والقائمة هنا
+            // بيضاء لا نسخةً كاملة، فحقلٌ لا يُذكر فيها لا يصل المسارات —
+            // وحصّةٌ تُقرأ صفراً دائماً تعني حداً لا يُبلَغ أبداً.
+            gamesBuilt: user.gamesBuilt ?? 0,
+            gamesMonth: user.gamesMonth ?? 0,
+            gamesMonthKey: user.gamesMonthKey || '',
             // وجودُ الصورة فقط لا بايتاتها — كي يرسمها الشريط العلوي من مسارها
             hasPhoto: Boolean(user.hasPhoto),
             createdAt: user.createdAt,

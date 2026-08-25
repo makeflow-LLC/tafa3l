@@ -86,8 +86,9 @@
   /**
    * يرسم الشاشة داخل عنصر.
    * @param {HTMLElement} root
+   * @param {object|null} quota حصّة البناء الباقية — تُحدَّث بعد كل لعبة
    */
-  function render(root) {
+  function render(root, quota) {
     const mine = (generation += 1);
     const alive = () => generation === mine && root.isConnected;
 
@@ -101,6 +102,7 @@
       truncated: false,
       published: null,
       config: readSettings(),
+      quota: quota || null,
     };
 
     const thread = el('div', { class: 'chat-thread' });
@@ -470,6 +472,10 @@
         if (data.status === 'error') throw new Error(data.error);
 
         state.messages.push({ role: 'assistant', text: data.reply || (data.html ? t('gbBuiltLine') : t('gbEmptyReply')) });
+        if (data.quota) {
+          state.quota = data.quota;
+          paintQuota();
+        }
         if (data.html) {
           state.gameJob = started.jobId;
           state.html = data.html;
@@ -483,9 +489,37 @@
       } finally {
         if (alive()) {
           state.busy = false;
-          sendBtn.disabled = false;
           drawThread();
+          // `paintQuota` هي التي تفتح الزرّ أو تُبقيه مقفلاً: آخر لعبةٍ في
+          // الحصّة تُبنى ثم يُقفل الباب خلفها في اللحظة نفسها
+          paintQuota();
         }
+      }
+    }
+
+    /**
+     * الحصّة على الشاشة دائماً.
+     *
+     * الشارة يرسمها host.js فوق هذه الشاشة، ونحدّثها هنا بعد كل بناء —
+     * فالمعلّم يرى الرقم ينقص لحظة نقصانه لا في زيارته التالية. وحين تنفد
+     * يُقفل الإرسال: زرٌّ يُضغط ثم يُردّ بعد نداءٍ أسوأ من زرٍّ مقفل يقول لماذا.
+     */
+    function paintQuota() {
+      const q = state.quota;
+      const badge = document.querySelector('[data-quota]');
+      if (badge && q && !q.unlimited) {
+        badge.textContent =
+          q.plan === 'premium'
+            ? t('gbQuotaPremium', { left: q.remaining, limit: q.limit })
+            : t('gbQuotaFree', { left: q.remaining, limit: q.limit, premium: q.premiumMonthly });
+        badge.classList.toggle('warn', q.remaining <= 1);
+      }
+      const spent = Boolean(q) && !q.unlimited && q.remaining <= 0;
+      sendBtn.disabled = spent || state.busy;
+      input.disabled = spent;
+      if (spent) {
+        input.placeholder =
+          q.plan === 'premium' ? t('gbQuotaSpentPremium', { n: q.limit }) : t('gbQuotaSpentFree', { n: q.limit, premium: q.premiumMonthly });
       }
     }
 
@@ -525,6 +559,7 @@
     root.append(stage);
 
     drawThread();
+    paintQuota();
     input.focus();
   }
 

@@ -150,6 +150,24 @@ function fileDriver() {
       schedule();
       return user;
     },
+    /**
+     * يسجّل بناء لعبةٍ واحدة في حساب المعلّم — ويعيد عدّاديه بعد الزيادة.
+     *
+     * عدّادان لا واحد: `gamesBuilt` مجموعُ العمر (منه حصّةُ الحساب المجاني،
+     * وهي لعبتان مرّةً واحدة لا تتجدّدان)، و`gamesMonth` عدّادُ الشهر الجاري
+     * (منه حصّةُ المشترك، عشرون كل شهر). و`gamesMonthKey` هو ما يجعل الشهري
+     * شهريّاً: نقارنه بمفتاح الشهر الحالي فنصفّر عند انقلابه — بلا مهمّةٍ
+     * دوريّة تمرّ على الحسابات كلّها.
+     */
+    async bumpGameBuilds(userId, monthKey) {
+      const user = db.users[userId];
+      if (!user) return null;
+      user.gamesBuilt = (Number(user.gamesBuilt) || 0) + 1;
+      user.gamesMonth = user.gamesMonthKey === monthKey ? (Number(user.gamesMonth) || 0) + 1 : 1;
+      user.gamesMonthKey = monthKey;
+      schedule();
+      return { gamesBuilt: user.gamesBuilt, gamesMonth: user.gamesMonth, gamesMonthKey: user.gamesMonthKey };
+    },
     /** بروفايل المعلّم الاختياري — يكتبه هو، ولا يمسّه دخول جوجل */
     async updateProfile(userId, patch) {
       const u = db.users[userId];
@@ -449,6 +467,7 @@ function postgresDriver(connectionString) {
    */
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
                         premium_until, trial_granted_at, created_at,
+                        games_built, games_month, games_month_key,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
 
   const userRow = (r) => ({
@@ -462,6 +481,9 @@ function postgresDriver(connectionString) {
     premiumUntil: r.premium_until == null ? null : Number(r.premium_until),
     trialGrantedAt: r.trial_granted_at == null ? null : Number(r.trial_granted_at),
     country: r.country || '',
+    gamesBuilt: Number(r.games_built) || 0,
+    gamesMonth: Number(r.games_month) || 0,
+    gamesMonthKey: r.games_month_key || '',
     createdAt: Number(r.created_at),
   });
 
@@ -555,6 +577,12 @@ function postgresDriver(connectionString) {
         -- أحدٌ عن بلده كلّها فلسطينية، فنُثبت ذلك بدل تركه فراغاً يُخمَّن لاحقاً.
         -- والشرط الزمني يترك للحساب الجديد نافذةً ليجيب بنفسه قبل أن نفترض عنه.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS country TEXT;
+        -- حصّة بناء الألعاب: مجموع العمر (حصّة المجاني منه)، وعدّاد الشهر
+        -- الجاري ومفتاحه YYYY-MM (حصّة المشترك منه). المفتاح يغني عن مهمّةٍ
+        -- دوريّة تصفّر العدّادات: يُقارَن عند القراءة، ويُكتب عند الزيادة.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS games_built BIGINT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS games_month BIGINT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS games_month_key TEXT;
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -672,6 +700,27 @@ function postgresDriver(connectionString) {
     async setPremiumUntil(userId, until) {
       const { rows } = await pool.query('UPDATE users SET premium_until = $2 WHERE id = $1 RETURNING *', [userId, until]);
       return rows[0] ? userRow(rows[0]) : null;
+    },
+
+    /**
+     * يسجّل بناء لعبةٍ واحدة — الزيادةُ داخل جملة SQL واحدة.
+     *
+     * والقراءةُ ثم الكتابة من العُقدة كانتا ستسمحان لطلبين متزامنين بقراءة
+     * العدّاد نفسه فيُحسب بناءان بواحد. أمّا هنا فالقاعدة هي التي تجمع، فلا
+     * سباق مهما تزامنت الطلبات.
+     */
+    async bumpGameBuilds(userId, monthKey) {
+      const { rows } = await pool.query(
+        `UPDATE users
+            SET games_built = COALESCE(games_built, 0) + 1,
+                games_month = CASE WHEN games_month_key = $2 THEN COALESCE(games_month, 0) + 1 ELSE 1 END,
+                games_month_key = $2
+          WHERE id = $1
+      RETURNING games_built, games_month, games_month_key`,
+        [userId, monthKey]
+      );
+      const r = rows[0];
+      return r ? { gamesBuilt: Number(r.games_built) || 0, gamesMonth: Number(r.games_month) || 0, gamesMonthKey: r.games_month_key || '' } : null;
     },
 
     async updateProfile(userId, patch) {

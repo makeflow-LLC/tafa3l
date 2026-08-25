@@ -1947,11 +1947,20 @@
    * صفحة «منشئ الألعاب التفاعلية» — تنتهي بلعبةٍ تُلعب هنا وتُنشر في قسم
    * ألعاب المعلّم.
    *
-   * بواباتها بوابات المساعد الذكي نفسها: حسابٌ مسجّل (فالنداء يُكلّف الخادم)
-   * ثم اشتراك. وترتيبهما مقصود — من لا حساب له يُساق إلى الدخول لا إلى
-   * صفحة باقات لا يستطيع الاشتراك فيها أصلاً.
+   * بوابتان لا واحدة، وترتيبهما مقصود:
+   *
+   *  ١) **حساب مسجّل** — فالنداء يُكلّف الخادم. ومن لا حساب له يُساق إلى
+   *     الدخول لا إلى صفحة باقاتٍ لا يستطيع الاشتراك فيها أصلاً.
+   *
+   *  ٢) **حصّة باقية** — لا اشتراكٌ صريح. الحساب المجاني يبني لعبتين مرّةً
+   *     واحدة في عمره، والمشترك عشرين كل شهر. فمن معه حصّةٌ يدخل ويبني وإن
+   *     كان مجانياً، ومن نفدت حصّته يرى ما نفد ولماذا وكيف يزيده — لا باباً
+   *     مغلقاً بلا سبب.
+   *
+   * والحصّة تُقرأ من الخادم **قبل الرسم**: أن يكتب المعلّم درسه وينتظر
+   * دقيقتين ثم يُقال له «لا حصّة لك» أسوأ من أن يُقال له قبل أن يبدأ.
    */
-  function openGameBuilder() {
+  async function openGameBuilder() {
     teardown();
     codeBadge.classList.add('hidden');
     connBadge.classList.add('hidden');
@@ -1983,27 +1992,55 @@
       return;
     }
 
-    if (!state.premium?.isPremium) {
+    root.append(el('div', { class: 'card center' }, el('div', { class: 'spinner' })));
+
+    let status;
+    try {
+      status = await api('/api/game-ai/status');
+    } catch (err) {
+      root.replaceChildren(el('div', { class: 'card stack center' }, [el('h2', { text: t('gbTitle') }), el('p', { class: 'muted small', text: err.message })]));
+      return;
+    }
+    // غادر المعلّم الشاشة قبل أن يردّ الخادم
+    if (!root.isConnected) return;
+    root.replaceChildren();
+
+    const quota = status.quota;
+    if (quota && !quota.unlimited && quota.remaining <= 0) {
       root.append(
         el('div', { class: 'card stack center' }, [
           el('div', { style: { fontSize: '2.2rem' }, text: '🕹' }),
           el('h2', { style: { margin: 0 }, text: t('gbTitle') }),
-          el('p', { class: 'muted', style: { margin: 0 }, text: t('gbIntro') }),
+          el('p', { class: 'muted', style: { margin: 0 }, text: quotaSpentLine(quota) }),
         ])
       );
-      root.append(upgradeCard(state.premium?.plan, t('gbUnlock')));
+      // المشترك الذي نفدت حصّته لا يُعرض عليه اشتراك: حصّته تعود مع الشهر
+      if (quota.plan !== 'premium') root.append(upgradeCard(status.plan, t('gbUnlock')));
       return;
     }
 
-    window.GameBuilder.render(root);
+    if (!status.configured) root.append(el('div', { class: 'note warn small' }, t('gbNotConfigured')));
+    if (quota) root.append(quotaNote(quota));
+    const chat = el('div', { class: 'stack' });
+    root.append(chat);
+    window.GameBuilder.render(chat, quota);
+  }
 
-    // الحالة تُفحص بعد الرسم لا قبله: خادمٌ بلا مفتاح يبقى المعلّم فيه يرى
-    // شاشته كاملة ويعرف لماذا لن ترد، بدل صفحةٍ فارغة
-    api('/api/game-ai/status')
-      .then((status) => {
-        if (!status.configured) root.prepend(el('div', { class: 'note warn small' }, t('gbNotConfigured')));
-      })
-      .catch(() => {});
+  /** سطرُ ما نفد — يقول كم كانت الحصّة ومتى تعود */
+  function quotaSpentLine(quota) {
+    return quota.plan === 'premium'
+      ? t('gbQuotaSpentPremium', { n: quota.limit })
+      : t('gbQuotaSpentFree', { n: quota.limit, premium: quota.premiumMonthly });
+  }
+
+  /** شارةُ ما بقي — تُقرأ قبل أن يكتب المعلّم حرفاً */
+  function quotaNote(quota) {
+    if (quota.unlimited) return el('div', { class: 'note small', text: t('gbQuotaUnlimited') });
+    const line =
+      quota.plan === 'premium'
+        ? t('gbQuotaPremium', { left: quota.remaining, limit: quota.limit })
+        : t('gbQuotaFree', { left: quota.remaining, limit: quota.limit, premium: quota.premiumMonthly });
+    return el('div', { class: 'note small' + (quota.remaining <= 1 ? ' warn' : ''), 'data-quota': '1', text: line });
   }
 
   /** صفحة المحادثة مع المساعد الذكي — تنتهي بمسودة تُفتح في المحرّر */
