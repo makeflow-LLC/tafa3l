@@ -221,3 +221,112 @@ test('خادمٌ بلا مفتاح يقول ذلك صراحةً بدل أن ين
     process.env.EVOLINK_API_KEY = key;
   }
 });
+
+// ------------------------------------------------- الميزات التي تُطفأ
+
+/**
+ * المهمّ ليس أن تُكتب `off` في كتلة CONFIG — بل أن **تتغيّر التعليمات**.
+ * نصُّ النظام يأمر بزرّ تلميح، ويقول عن محرّك المتعة «All mandatory»،
+ * ويشترط في الفحص الصامت إعادةَ البناء إن غابت الشخصية. فلو بقيت تلك
+ * الأسطر مع `off` لتناقض النصّ مع نفسه، والنموذج يتّبع الأمر الصريح لا
+ * سطر الإعداد. هذه الاختبارات تحرس ذلك بالضبط.
+ */
+
+const prompt = (over) => builder.systemPrompt(builder.readConfig(over));
+
+test('المبدأ: كل الميزات مُشغَّلة، فمن لم يمسّ الإعدادات يجد اللعبة كاملة', () => {
+  const cfg = builder.readConfig({});
+  for (const name of Object.keys(builder.SWITCHES)) assert.equal(cfg[name], true, name);
+  const p = prompt({});
+  assert.match(p, /Hint button suited to the activity, costing 5 points/);
+  assert.match(p, /CHARACTER: one simple animated SVG companion/);
+  assert.match(p, /countdown \/ limited lives/);
+});
+
+test('إطفاء التلميحات ينزع الأمر بالزرّ ويضع مكانه نهياً صريحاً', () => {
+  const p = prompt({ hints: false });
+  assert.equal(/Hint button suited to the activity/.test(p), false, 'لم يعد يأمر بزرّ التلميح');
+  assert.match(p, /NO hint button and no hint system of any kind/);
+  assert.match(p, /a hint button or any hint affordance/, 'ووجودُه صار عطلاً في الفحص الصامت');
+  // وخصم التلميح يصير صفراً في كتلة CONFIG، فلا رقمٌ لميزةٍ لا وجود لها
+  assert.match(builder.configBlock(builder.readConfig({ hints: false, hintPenalty: 30 })), /HINT_PENALTY\s+= 0/);
+});
+
+test('إطفاء المؤقّت ينزع العدّ التنازلي من خيارات التشويق كلّها', () => {
+  const p = prompt({ timer: false });
+  assert.equal(/countdown \/ limited lives/.test(p), false, 'العدّ التنازلي خرج من قائمة الخيارات');
+  assert.match(p, /THE TIMER IS OFF/);
+  assert.match(p, /no per-question time limit/);
+  assert.match(p, /no time-based scoring or bonus/);
+  // ونقرةُ الثواني الأخيرة تخرج من لوحة الأصوات وإن كان الصوت مُشغَّلاً
+  assert.equal(/tick \(last 5 seconds\)/.test(p), false);
+  // والتشويق يبقى قائماً — أطفأ المؤقّت لا اللعبة
+  assert.match(p, /7\. TENSION — exactly one: limited lives/);
+});
+
+test('تشويقٌ بصفر: لا مؤقّت ولا أرواح ولا سلاسل — ووجودُ أيّها عطل', () => {
+  const p = prompt({ tensionSystems: 0 });
+  assert.match(p, /7\. TENSION — NONE/);
+  assert.match(p, /any tension system at all is present/);
+  // ومؤشّر التشويق يخرج من الشريط العلوي: لا مؤشّر لما لا وجود له
+  assert.equal(/and the tension indicator/.test(p), false);
+});
+
+test('إطفاء الصوت يجعل اللعبة صامتة تماماً — بلا زرّ كتم أصلاً', () => {
+  const p = prompt({ sound: false });
+  assert.match(p, /the game must be completely silent/);
+  assert.equal(/rising pitch tone/.test(p), false);
+  assert.equal(/mute button \(there is nothing to mute\)/.test(p), true);
+  assert.match(p, /any sound, AudioContext, or mute button/);
+});
+
+test('إطفاء الشخصية يمحوها من كل موضعٍ ذُكرت فيه لا من سطرها وحده', () => {
+  const p = prompt({ character: false });
+  assert.match(p, /CHARACTER: OFF/);
+  // كانت مذكورة في ثلاثة مواضع: سطرها، وتشجيعُها عند الصواب، ورقصُها عند الترقّي
+  assert.equal(/character cheers/.test(p), false);
+  assert.equal(/character dance/.test(p), false);
+  assert.equal(/tapping the character 5 times/.test(p), false, 'ومفاجأةٌ مبنيّة عليها تُستبدل بغيرها');
+  assert.match(p, /a hidden bonus round after a long streak/);
+});
+
+test('الفحص الصامت لا يطلب ما أُطفئ — وإلا أعاد النموذج البناء إلى الأبد', () => {
+  const p = prompt({ character: false, celebrations: false, surprises: false });
+  const check = p.split('\n').find((line) => line.startsWith('Rebuild if:'));
+  for (const demand of ['no character', 'no celebration', 'no surprise']) {
+    assert.equal(check.includes(demand), false, `لم يعد يطلب «${demand}»`);
+  }
+  for (const ban of ['a mascot, avatar, or speech bubble', 'confetti, screen flash', 'an easter egg or hidden bonus']) {
+    assert.ok(check.includes(ban), `وصار وجودُه عطلاً: ${ban}`);
+  }
+});
+
+test('إطفاء بطاقة النتيجة يبقي شاشة النهاية وينزع خانة الاسم وحدها', () => {
+  const p = prompt({ resultCard: false });
+  assert.match(p, /End screen: score, errors, most-missed concept/, 'الشاشة باقية');
+  assert.match(p, /NO name field and NO shareable result card/);
+});
+
+test('إطفاء كتلة تعديل المعلّم يحذف سطرها بلا أن يترك فراغاً', () => {
+  const p = prompt({ teacherEditBlock: false });
+  assert.equal(/TEACHER EDIT BLOCK: one clearly named JS array/.test(p), false);
+  assert.equal(/\n\n\n/.test(p), false, 'لا سطر فارغ مضاعف مكان المحذوف');
+});
+
+test('المفتاح الغائب يأخذ مبدأه — فطلبٌ قديم بلا مفاتيح يعمل كما كان', () => {
+  const cfg = builder.readConfig({ correctPoints: 15 });
+  assert.equal(cfg.hints, true);
+  assert.equal(cfg.timer, true);
+  // والصريح وحده يُطفئ: أيّ قيمةٍ غير false تُقرأ تشغيلاً
+  assert.equal(builder.readConfig({ hints: false }).hints, false);
+  assert.equal(builder.readConfig({ hints: 'نعم' }).hints, true);
+  assert.equal(builder.readConfig({ hints: 0 }).hints, true);
+});
+
+test('كتلة CONFIG تعلن حال كل ميزة on/off — والمفاتيح كلّها فيها', () => {
+  const block = builder.configBlock(builder.readConfig({ hints: false, sound: false }));
+  assert.match(block, /HINTS\s+= off/);
+  assert.match(block, /SOUND\s+= off/);
+  assert.match(block, /TIMER\s+= on/);
+  for (const spec of Object.values(builder.SWITCHES)) assert.match(block, new RegExp(`${spec.key}\\s+= (on|off)`));
+});

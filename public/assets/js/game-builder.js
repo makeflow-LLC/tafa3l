@@ -44,10 +44,35 @@
     { name: 'itemsPerRun', label: 'gbKnobItems', min: 4, max: 40, def: 12 },
     { name: 'bankSize', label: 'gbKnobBank', min: 6, max: 80, def: 20 },
     { name: 'playMinutes', label: 'gbKnobMinutes', min: 2, max: 45, def: 7 },
-    { name: 'tensionSystems', label: 'gbKnobTension', min: 1, max: 3, def: 1 },
+    // صفرٌ خيارٌ لا خطأ: لعبةٌ بلا ضغطٍ إطلاقاً
+    { name: 'tensionSystems', label: 'gbKnobTension', min: 0, max: 3, def: 1 },
   ];
 
-  const defaults = () => Object.fromEntries(KNOBS.map((k) => [k.name, k.def]));
+  /**
+   * الميزات التي تُطفأ كليّاً — وإطفاؤها يغيّر تعليمات النموذج نفسها لا
+   * سطراً في إعداداته (انظر `server/game-builder.js`).
+   *
+   * `needs` يربط رقماً بمفتاحه: خصمُ التلميح لا معنى له وقد أُطفئت
+   * التلميحات، فيختفي حقله بدل أن يبقى رقماً لا أثر له.
+   */
+  const SWITCHES = [
+    { name: 'hints', label: 'gbSwitchHints', hint: 'gbSwitchHintsHint' },
+    { name: 'timer', label: 'gbSwitchTimer', hint: 'gbSwitchTimerHint' },
+    { name: 'sound', label: 'gbSwitchSound', hint: 'gbSwitchSoundHint' },
+    { name: 'character', label: 'gbSwitchCharacter', hint: 'gbSwitchCharacterHint' },
+    { name: 'celebrations', label: 'gbSwitchCelebrations', hint: 'gbSwitchCelebrationsHint' },
+    { name: 'surprises', label: 'gbSwitchSurprises', hint: 'gbSwitchSurprisesHint' },
+    { name: 'resultCard', label: 'gbSwitchResultCard', hint: 'gbSwitchResultCardHint' },
+  ];
+
+  /** رقمٌ لا يظهر إلا وميزتُه مُشغَّلة */
+  const KNOB_NEEDS = { hintPenalty: 'hints' };
+
+  const defaults = () => ({
+    ...Object.fromEntries(KNOBS.map((k) => [k.name, k.def])),
+    // كل الميزات مُشغَّلة ابتداءً: من لم يمسّ الإعدادات يجد اللعبة كاملة
+    ...Object.fromEntries(SWITCHES.map((sw) => [sw.name, true])),
+  });
 
   function readSettings() {
     const out = defaults();
@@ -56,6 +81,9 @@
       KNOBS.forEach((k) => {
         const value = Math.round(Number(saved[k.name]));
         if (Number.isFinite(value)) out[k.name] = Math.min(k.max, Math.max(k.min, value));
+      });
+      SWITCHES.forEach((sw) => {
+        if (typeof saved[sw.name] === 'boolean') out[sw.name] = saved[sw.name];
       });
     } catch {
       /* تخزين معطّل — الافتراضات تكفي */
@@ -114,6 +142,8 @@
     // ------------------------------------------------------------ الإعدادات
 
     function settingsCard() {
+      const knobRows = {};
+
       const fields = KNOBS.map((knob) => {
         const box = el('input', {
           type: 'number',
@@ -129,10 +159,39 @@
           box.value = String(state.config[knob.name]);
           writeSettings(state.config);
         });
-        return el('label', { class: 'stack tight knob' }, [
+        const row = el('label', { class: 'stack tight knob' }, [
           el('span', { class: 'small', text: t(knob.label) }),
           box,
           el('span', { class: 'muted tiny', text: t('gbKnobRange', { min: knob.min, max: knob.max }) }),
+        ]);
+        knobRows[knob.name] = { row, box, knob };
+        return row;
+      });
+
+      /** رقمٌ تابعٌ لميزةٍ مطفأة يختفي: خصمُ تلميحٍ لا تلميح فيه رقمٌ لا أثر له */
+      function paintDependants() {
+        for (const [name, needs] of Object.entries(KNOB_NEEDS)) {
+          const entry = knobRows[name];
+          if (entry) entry.row.hidden = !state.config[needs];
+        }
+      }
+
+      const boxes = {};
+      const switchRows = SWITCHES.map((sw) => {
+        const box = el('input', { type: 'checkbox' });
+        box.checked = state.config[sw.name] !== false;
+        box.addEventListener('change', () => {
+          state.config[sw.name] = box.checked;
+          writeSettings(state.config);
+          paintDependants();
+        });
+        boxes[sw.name] = box;
+        return el('label', { class: 'switch-row' }, [
+          box,
+          el('span', { class: 'grow' }, [
+            el('strong', { class: 'small', text: t(sw.label) }),
+            el('span', { class: 'muted tiny', style: { display: 'block' }, text: t(sw.hint) }),
+          ]),
         ]);
       });
 
@@ -140,17 +199,23 @@
       restore.addEventListener('click', () => {
         state.config = defaults();
         writeSettings(state.config);
-        KNOBS.forEach((knob, i) => {
-          fields[i].querySelector('input').value = String(state.config[knob.name]);
-        });
+        KNOBS.forEach((knob) => (knobRows[knob.name].box.value = String(state.config[knob.name])));
+        SWITCHES.forEach((sw) => (boxes[sw.name].checked = true));
+        paintDependants();
         toast(t('gbKnobResetDone'), 'ok');
       });
 
       const body = el('div', { class: 'stack' }, [
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('gbKnobsIntro') }),
         el('div', { class: 'knob-grid' }, fields),
+        el('div', { class: 'stack tight' }, [
+          el('strong', { class: 'small' }, [t('gbSwitchesTitle'), ' ', global.T.hintDot(t('gbSwitchesHint'))]),
+          el('div', { class: 'switch-grid' }, switchRows),
+        ]),
         el('div', { class: 'row' }, [restore]),
       ]);
+
+      paintDependants();
 
       const details = el('details', { class: 'card stack' });
       details.append(el('summary', {}, [el('strong', { text: t('gbKnobsTitle') })]), body);
