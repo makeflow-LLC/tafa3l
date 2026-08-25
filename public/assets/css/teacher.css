@@ -323,9 +323,14 @@
   gap: var(--tp-s-12);
 }
 
+/**
+ * ثلاث بطاقات إنشاء لا اثنتان (نشاط بالذكاء الاصطناعي · نشاط بيدك · لعبة
+ * تفاعلية)، فالأعمدة تُشتقّ من العرض لا تُثبَّت باثنين: عمودان ثابتان كانا
+ * يتركان الثالثة وحدها في سطرٍ نصفِ فارغ.
+ */
 @container (min-width: 720px) {
   .tp-create {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   }
 }
 

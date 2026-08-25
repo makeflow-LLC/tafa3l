@@ -13,6 +13,7 @@ const premium = require('./premium');
 const countries = require('./countries');
 const { normalizeQuiz } = require('./session');
 const gameCover = require('./game-cover');
+const { sendGameFrame } = require('./game-frame');
 
 const MAX_ACTIVITIES = 200;
 // سقف ما تعرضه «أسئلتي السابقة» في نداء واحد — القائمة للتصفّح لا للجرد
@@ -966,29 +967,7 @@ function accountRoutes(store) {
       if (!game) return res.status(404).type('text/plain; charset=utf-8').send('اللعبة غير موجودة');
       if (!seenRecently(req, game.id, 'play')) storage.get().bumpGamePlays(game.id).catch(() => {});
 
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Cache-Control', 'private, max-age=60');
-      // sandbox في الترويسة يجعل الأصل مبهماً حتى لو فُتح المستند خارج إطارنا
-      res.setHeader(
-        'Content-Security-Policy',
-        [
-          "sandbox allow-scripts allow-forms allow-modals allow-pointer-lock",
-          "default-src 'none'",
-          "script-src 'unsafe-inline' 'unsafe-eval' https: blob: data:",
-          "style-src 'unsafe-inline' https: data:",
-          "img-src https: data: blob:",
-          "media-src https: data: blob:",
-          "font-src https: data:",
-          // لا اتصال ولا إرسال نموذج: ما يكتبه الطالب داخل اللعبة لا يغادرها
-          "connect-src 'none'",
-          "form-action 'none'",
-          "base-uri 'none'",
-          "frame-src 'none'",
-          "object-src 'none'",
-        ].join('; ')
-      );
-      res.send(game.html);
+      sendGameFrame(res, game.html);
     } catch (err) {
       res.status(500).type('text/plain; charset=utf-8').send('تعذّر تشغيل اللعبة');
     }

@@ -96,7 +96,7 @@ None. All surfaces flat; elevation expressed by fill + 1px border only.
 3. **Participant Answer Screen — Revealed, Correct**. Timer at 0 with empty track; correct option keeps green fill + ✓ circle + outline; others recolored to neutral fill; status line «إجابة صحيحة +120»; score in header already incremented.
 4. **Participant Answer Screen — Revealed, Wrong**. Correct option green + ✓; the user's pick keeps its hue + ✕ circle; uninvolved options neutral; status line «إجابة خاطئة +0 — الصحيح: ب الجزائر».
    (All four states exist in a light and a dark theme; structure identical.)
-5. **Teacher Home** (mobile, 390 wide, scrolls). Vertical flex: top bar (avatar+name / EN chip+wordmark) → nav chip row (wrap) → greeting block → 2 creation cards (AI, manual) → dashed draft-resume bar → «نشاطاتي» activity card list.
+5. **Teacher Home** (mobile, 390 wide, scrolls). Vertical flex: top bar (avatar+name / EN chip+wordmark) → nav chip row (wrap) → greeting block → 3 creation cards (AI activity, manual activity, interactive game — grid auto-fits, so the count is not load-bearing) → dashed draft-resume bar → «نشاطاتي» activity card list.
 6. **Activity Designer — Questions tab** (desktop, 1000 wide). Vertical: top bar (back / title+autosave / guide) → 3-step tab bar → question navigator row (label / pills 1–10 / new-question CTA) → two columns (RTL): main column (question text field, options list, media buttons) + fixed 280px side panel (question-type grid 2×5, hint box).
 
 ---
