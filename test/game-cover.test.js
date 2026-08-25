@@ -71,7 +71,9 @@ test('يقرأ الشيفرة ثم يرسم: نداءان بالشكل الذي 
     const asked = first.body.contents[0].parts[0].text;
     assert.match(asked, /لعبة جمع الأعداد/, 'شيفرة اللعبة نفسها تصل النموذج');
     assert.match(asked, /g3, g4/, 'ومعها الصفوف كي تناسب الصورة عمر الطالب');
-    assert.match(asked, /must be rendered INSIDE the image as real readable text/, 'والاسم العربي مطلوبٌ داخل الصورة');
+    assert.match(asked, /GAME COVER ART/, 'المطلوب غلافُ لعبة لا رسمةً عامة');
+    assert.match(asked, /the ONLY text allowed in the entire image/, 'والعنوان وحده نصّاً');
+    assert.match(asked, /no subtitle, no tagline/, 'وما عداه رسمٌ خالص');
 
     // ── النداء الثاني: الرسم
     const second = m.seen.calls[1];
@@ -102,8 +104,27 @@ test('الاسم شرطٌ لا اقتراح: يُلحق بالوصف إن أغف
     assert.match(prompt, /مطابقة الحروف/, 'الاسم أُلحق بالوصف');
     assert.match(prompt, /perfectly readable Arabic text/, 'مع شرط وضوح الحروف');
     assert.match(prompt, /cursive and properly joined, right-to-left/, 'ومتّصلةً من اليمين لليسار');
+    assert.match(prompt, /Game cover art/, 'وأنّه غلاف لعبة');
+    assert.match(prompt, /ONLY text in the whole image/, 'والعنوان وحده نصّاً');
   } finally {
     m.restore();
+  }
+});
+
+test('التعليمات تصف غلاف لعبة يملأ الإطار، بلا واجهاتٍ ولا لقطات شاشة', () => {
+  const m = mockEvolink({ text: '{"name":"ل","prompt":"p"}', image: { data: [{ b64_json: B64 }] } });
+  try {
+    return cover.generate({ html: HTML, title: 'ل' }).then(() => {
+      const asked = m.seen.calls[0].body.contents[0].parts[0].text;
+      assert.match(asked, /key art of a polished mobile\s+game/, 'الأسلوب أسلوب غلاف لعبة');
+      assert.match(asked, /fills the whole frame edge to edge/, 'ويملأ الإطار');
+      assert.match(asked, /no UI mock-ups, no screenshots/, 'بلا واجهاتٍ ولا لقطات شاشة');
+      assert.match(asked, /no numbers or letters used as decoration/, 'ولا حروفَ زينة');
+      m.restore();
+    });
+  } catch (err) {
+    m.restore();
+    throw err;
   }
 });
 

@@ -10,6 +10,10 @@
  *     كما طلب صاحب المنصة. فالوصف يحمل الاسم بين علامتَي اقتباس ويشترط
  *     نسخه حرفاً بحرف بحروفٍ متّصلة من اليمين إلى اليسار.
  *
+ * والمطلوب **غلافُ لعبة** لا رسمةٌ عامة: مشهدٌ حيٌّ يملأ الإطار كما تُصمَّم
+ * صورة لعبةٍ في متجر التطبيقات. والعنوان هو النصّ **الوحيد** فيه — لا سطرٌ
+ * فرعيّ ولا شعارٌ ولا زرٌّ ولا حروفُ زينة.
+ *
  * وضمانةٌ خلف التعليمات: إن أغفل النموذج النصّي الاسمَ من وصفه ألحقناه به
  * هنا — فالشرط لا يُترك لحُسن ظنٍّ بنموذج.
  *
@@ -217,10 +221,12 @@ function describeShape(payload, depth = 0) {
  * يُغفلها النموذج النصّي، وتُختبر بنصّها فلا تضيع في تعديلٍ لاحق.
  */
 const titleClause = (name) =>
-  `The Arabic title "${name}" must appear inside the image as large, bold, perfectly readable Arabic text ` +
-  'in a clean modern Arabic display font, cursive and properly joined, right-to-left, spelled exactly ' +
-  'character for character, centred in the lower part of the image on a simple high-contrast band. ' +
-  'No Latin text, no pseudo-Arabic shapes, no misspelling, no extra words.';
+  `Game cover art, 16:9, filling the frame edge to edge. The Arabic title "${name}" must appear inside ` +
+  'the image as large, bold, perfectly readable Arabic text styled like a game logo, in a modern Arabic ' +
+  'display font, cursive and properly joined, right-to-left, spelled exactly character for character, ' +
+  'centred and integrated into the artwork with enough contrast to read at thumbnail size. ' +
+  'That title is the ONLY text in the whole image: no subtitle, tagline, caption, watermark, logo, ' +
+  'button or UI, no Latin characters, no pseudo-Arabic shapes, no misspelling, no extra words.';
 
 const GRADE_HINT = (grades) =>
   Array.isArray(grades) && grades.length ? `The game targets these school grades: ${grades.join(', ')}.` : 'The game targets school children.';
@@ -242,18 +248,28 @@ async function describe({ html, title, subject, grades }) {
     '{"name": "...", "prompt": "..."}',
     '',
     '"name": a short Arabic name for the game (2-5 words) that a teacher would recognise. Use the teacher title if it fits.',
-    '"prompt": an English image-generation prompt for the game\'s thumbnail. Requirements:',
-    '- Describe a bright, friendly, flat vector illustration that shows what the game is about.',
-    '- Age-appropriate for the grades above: playful and cartoonish for young children, cleaner and more mature for older grades.',
-    '- Name the concrete objects of the game (numbers, letters, planets, shapes, animals…) so the picture reads at a glance.',
-    '- Cheerful colours, simple shapes, soft background, no clutter.',
-    '- **The Arabic game title must be rendered INSIDE the image as real readable text.**',
+    '"prompt": an English image-generation prompt for the GAME COVER ART. Requirements:',
+    '- This is cover art for an educational game — it must LOOK like a game, not like a diagram,',
+    '  a worksheet, a poster or a corporate illustration. Think of the key art of a polished mobile',
+    '  game on a store page: a lively little scene with a clear focal subject, rich saturated colours,',
+    '  soft depth and lighting, rounded playful shapes, a sense of fun and motion.',
+    '- Age-appropriate for the grades above: cute and cartoonish for young children, bolder and',
+    '  more adventurous for older grades.',
+    '- Show the concrete subject of the game (numbers, letters, planets, shapes, animals…) as the',
+    '  hero of the scene, so a teacher knows what the game is at a glance.',
+    '- Composition: the illustration fills the whole frame edge to edge as a 16:9 landscape cover.',
+    '  No borders, no frames, no white margins, no UI mock-ups, no screenshots of a phone or browser.',
+    '',
+    '- **The Arabic game title is the ONLY text allowed in the entire image.**',
     '  Write the exact Arabic title in double quotes inside the prompt, then demand it be reproduced',
     '  character for character with correct Arabic letterforms: cursive, joined, right-to-left,',
-    '  fully diacritic-free, in a clean bold modern Arabic display font, large and centred in the',
-    '  lower part of the image, high contrast against a simple band or panel behind it so it reads at',
-    '  thumbnail size. No Latin text anywhere, no invented or decorative pseudo-Arabic glyphs,',
-    '  no misspelling, no extra words beyond the title itself.',
+    '  fully diacritic-free, in a bold modern Arabic display font styled like a game logo —',
+    '  large, centred, integrated into the artwork, with enough contrast (a soft shadow, glow or',
+    '  simple panel behind it) that it reads at thumbnail size.',
+    '- Everything else in the frame is pure illustration. Absolutely NO other text of any kind:',
+    '  no subtitle, no tagline, no label, no caption, no watermark, no logo, no button, no score,',
+    '  no numbers or letters used as decoration, no Latin characters anywhere, and no invented or',
+    '  decorative pseudo-Arabic glyphs. The title, and nothing else.',
     '',
     'GAME SOURCE:',
     String(html || '').slice(0, MAX_HTML_CHARS),
