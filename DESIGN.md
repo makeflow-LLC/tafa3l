@@ -99,6 +99,11 @@ None. All surfaces flat; elevation expressed by fill + 1px border only.
 5. **Teacher Home** (mobile, 390 wide, scrolls). Vertical flex: top bar (avatar+name / EN chip+wordmark) → nav chip row (wrap) → greeting block → 3 creation cards (AI activity, manual activity, interactive game — grid auto-fits, so the count is not load-bearing) → dashed draft-resume bar → «نشاطاتي» activity card list.
 6. **Activity Designer — Questions tab** (desktop, 1000 wide). Vertical: top bar (back / title+autosave / guide) → 3-step tab bar → question navigator row (label / pills 1–10 / new-question CTA) → two columns (RTL): main column (question text field, options list, media buttons) + fixed 280px side panel (question-type grid 2×5, hint box).
 
+6. **Site Home** (public, mobile 430 max, scrolls). Entry point. Vertical: top bar (theme + EN chips / «نشاطاتي» pill) → brand block (logo, tagline, welcome badge) → student card (teal CTA → Join) → teacher card (account CTA + «نشاط جديد» / «لعبة تفاعلية») → link row → site footer.
+7. **Join** (public, mobile, single task). Back chip + logo → title → code card (six drawn slots over a transparent real input, progress bar, status line) → spacer → 3×4 numeric keypad → submit.
+
+> Screens 6–7 carry their **own token set**, scoped to `.tp-entry` in `assets/css/entry.css`: a radial page gradient, two glow discs, a drifting dot layer, glass cards (`rgba(255,255,255,.055)` on dark, `#ffffff` on light), and the brand ramps purple `#8b6ff0→#6f4fd8`, teal `#2ed3c6→#00a9a4`, yellow `#ffc714`. They are deliberately outside §1.1: those tokens describe the working surfaces (designer, live session, participant), and the entry screens are the marketing-facing skin. Nothing else on the platform may use the `--e-*` tokens, and these two screens do not use §1.1 colors. Typography, however, stays the platform stack — a webfont for two screens would make the product read in two voices.
+
 ---
 
 ## 3. COMPONENTS

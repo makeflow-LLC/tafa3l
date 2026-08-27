@@ -6,74 +6,85 @@
     <title>Tapio</title>
     <meta name="description" content="منصة خفيفة لإنشاء أسئلة تفاعلية واستطلاعات حية للمدربين والمعلمين. بلا تسجيل وبلا تخزين دائم." />
     <meta name="theme-color" content="#171240" />
-    <link rel="icon" href="/assets/icon.svg?v=1.83.2" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.83.2" />
+    <link rel="icon" href="/assets/icon.svg?v=1.84.0" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.84.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.83.2" />
-    <script src="/assets/js/theme.js?v=1.83.2"></script>
-    <script src="/assets/js/i18n.js?v=1.83.2"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.84.0" />
+    <link rel="stylesheet" href="/assets/css/entry.css?v=1.84.0" />
+    <script src="/assets/js/theme.js?v=1.84.0"></script>
+    <script src="/assets/js/i18n.js?v=1.84.0"></script>
   </head>
-  <body>
-    <div class="wrap narrow">
-      <div class="row" style="gap: 8px; padding-top: 10px">
-        <!-- زرّ الحساب هنا وملوّن: معلّمون كثيرون لم يجدوه حين كان زرّاً شاحباً في آخر البطاقة -->
-        <!-- إلى جوجل مباشرةً: صفحة دخولٍ وسيطة تسأل السؤال نفسه مرّةً ثانية -->
-        <a class="btn primary sm" href="/api/auth/google?next=%2Fhost.html%23%2Fmine" id="topAccount"></a>
+  <body class="tp-entry">
+    <div class="tp-col">
+      <!-- طبقات الخلفية: تدرّجات CSS لا صور، وخارج مسار اللمس -->
+      <div class="tp-fx tp-fx--dots" aria-hidden="true"></div>
+      <div class="tp-fx tp-fx--glow-a" aria-hidden="true"></div>
+      <div class="tp-fx tp-fx--glow-b" aria-hidden="true"></div>
+
+      <!-- الشريط: السِمَة واللغة في طرفٍ، ومدخل المعلّم في الطرف الآخر -->
+      <header class="tp-bar tp-rise" style="--rise: 0ms">
+        <span id="langRow" style="display: contents"></span>
         <span class="grow"></span>
-        <span id="langRow"></span>
-      </div>
-      <div class="center" style="padding: 10px 0 18px">
-        <div class="brand hero" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.83.2" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.83.2" alt="Tapio" width="478" height="315" />
+        <a class="tp-pill" id="topAccount" href="/api/auth/google?next=%2Fhost.html%23%2Fmine"></a>
+      </header>
+
+      <div class="tp-hero">
+        <div class="tp-rise" style="--rise: 80ms">
+          <div class="tp-hero__float">
+            <span class="tp-hero__ring" aria-hidden="true"></span>
+            <img class="tp-hero__logo light-only" src="/assets/logo.svg?v=1.84.0" alt="Tapio" width="249" height="159" /><img
+              class="tp-hero__logo dark-only"
+              src="/assets/logo-white.svg?v=1.84.0"
+              alt="Tapio"
+              width="478"
+              height="315"
+            />
+          </div>
         </div>
-        <p class="muted small" style="margin-top: 8px" id="tagline"></p>
-        <p id="welcome" class="hidden" style="margin: 10px 0 0; font-weight: 700"></p>
+        <p class="tp-hero__tag tp-rise" id="tagline" style="--rise: 160ms"></p>
+        <span class="tp-badge tp-rise hidden" id="welcome" style="--rise: 220ms"></span>
       </div>
 
-      <!--
-        الطالب أولاً — لكن بزرٍّ لا بخانات: خانات الرمز على الرئيسية أوهمت
-        معلّمين كثيرين أن عليهم إدخال رمز. البطاقة تسأل «أنت طالب؟» والزرّ
-        ينقل إلى صفحة الرمز، فلا يلتبس على أحد.
-      -->
-      <div class="card">
-        <h2 id="joinTitle" style="margin-top: 0"></h2>
-        <a class="btn accent block big-cta" href="/join.html" id="joinCta"></a>
-      </div>
-
-      <div class="card">
-        <h2 id="teacherTitle" style="display: flex; align-items: center; justify-content: space-between; gap: 8px"></h2>
-        <a class="btn primary block big-cta" id="accountLink" href="/api/auth/google?next=%2Fhost.html%23%2Fmine"></a>
-        <p class="muted small center hidden" id="trialPromise" style="margin: 8px 0 0"></p>
-        <!-- ثانويّ لا تركوازيّ: التركوازي لون الطالب، ويظهر على هذه الصفحة
-             مرّةً واحدة على زرّ الدخول بالرمز. زرٌّ للمعلّم بلون الطالب فوقه
-             مباشرةً يُلغي الدلالة التي بُني عليها اللونان. -->
-        <!--
-          فعلا إنشاءٍ متساويان في صفٍّ واحد: نشاطٌ ولعبة.
-          كان الإنشاء زرّاً واحداً للنشاط، ومنشئُ الألعاب لا يُبلَغ من الرئيسية
-          أصلاً — فمن لم يدخل لوحة المعلّم لم يعرف أنه موجود. وصفٌّ واحد يُبقي
-          ثقل البطاقة كما هو: سطرٌ واحد لا سطران فوق زرّ الحساب.
-        -->
-        <div class="btn-duo" style="margin-top: 8px">
-          <a class="btn ghost" href="/host.html" id="createBtn"></a>
-          <a class="btn ghost" href="/host.html#/game-ai" id="createGameBtn"></a>
+      <!-- الطالب أولاً: زرٌّ واحد ينقل إلى شاشة الرمز، لا خانات على الرئيسية -->
+      <section class="tp-panel tp-panel--first tp-rise" style="--rise: 290ms">
+        <div class="tp-panel__head">
+          <span class="tp-dot" aria-hidden="true"></span>
+          <h2 id="joinTitle"></h2>
         </div>
-        <button class="btn ghost block hidden" id="logoutBtn" type="button" style="margin-top: 8px"></button>
-        <div id="resume" class="hidden" style="margin-top: 10px">
-          <a class="btn ghost block" id="resumeLink" href="#"></a>
-        </div>
-        <!-- الألعاب والدليل مدخلان ثانويان: سطرُ روابط لا جدارُ أزرار -->
-        <p class="center small" style="margin: 12px 0 0">
-          <a href="/games.html" id="gamesBtn" style="padding: 12px 8px; display: inline-block"></a>
-          ·
-          <a href="/help.html" id="guideBtn" style="padding: 12px 8px; display: inline-block"></a>
-        </p>
-      </div>
+        <p class="tp-panel__note" id="joinNote"></p>
+        <a class="tp-act tp-act--teal" href="/join.html" id="joinCta"></a>
+      </section>
 
+      <section class="tp-panel tp-rise" style="--rise: 360ms">
+        <div class="tp-panel__head">
+          <span class="tp-dot tp-dot--warm" aria-hidden="true"></span>
+          <h2 id="teacherTitle"></h2>
+          <span id="teacherHint"></span>
+        </div>
+        <p class="tp-panel__note" id="teacherNote"></p>
+        <div class="tp-stack">
+          <a class="tp-act tp-act--purple" id="accountLink" href="/api/auth/google?next=%2Fhost.html%23%2Fmine"></a>
+          <p class="tp-panel__note hidden" id="trialPromise" style="margin: 0; text-align: center"></p>
+          <div class="tp-duo">
+            <a class="tp-act tp-act--chip on-teal" href="/host.html" id="createBtn"></a>
+            <a class="tp-act tp-act--chip on-warm" href="/host.html#/game-ai" id="createGameBtn"></a>
+          </div>
+          <a class="tp-act tp-act--chip on-teal hidden" id="resumeLink" href="#"></a>
+        </div>
+      </section>
+
+      <nav class="tp-links tp-rise" style="--rise: 430ms">
+        <a href="/help.html" id="guideBtn"></a>
+        <span class="sep" aria-hidden="true">•</span>
+        <a href="/games.html" id="gamesBtn"></a>
+        <span class="sep hidden" id="logoutSep" aria-hidden="true">•</span>
+        <a class="muted hidden" href="#" id="logoutBtn"></a>
+      </nav>
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.83.2"></script>
-    <script src="/assets/js/common.js?v=1.83.2"></script>
-    <script src="/assets/js/footer.js?v=1.83.2"></script>
+    <script src="/assets/js/avatar.js?v=1.84.0"></script>
+    <script src="/assets/js/common.js?v=1.84.0"></script>
+    <script src="/assets/js/footer.js?v=1.84.0"></script>
     <script>
       (function () {
         const { $, api, store, serverAlive, showOfflineBanner } = window.T;
@@ -81,13 +92,16 @@
 
         document.title = t('brand') + ' — ' + t('homeTagline');
         window.I18n.mountToggle($('#langRow'));
-        window.Theme?.mountToggle($('#langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
+        window.Theme?.mountToggle($('#langRow'), { toDark: t('themeToDark'), toLight: t('themeToLight') });
 
         $('#tagline').textContent = t('homeTagline');
         $('#topAccount').textContent = t('homeLoginShort');
         $('#joinTitle').textContent = t('homeStudentTitle');
+        $('#joinNote').textContent = t('homeStudentNote');
         $('#joinCta').textContent = t('homeJoinCta');
-        $('#teacherTitle').append(t('homeTeacherTitle'), window.T.hintDot(t('homeTeacherBody')));
+        $('#teacherTitle').textContent = t('homeTeacherTitle');
+        $('#teacherNote').textContent = t('homeTeacherNote');
+        $('#teacherHint').append(window.T.hintDot(t('homeTeacherBody')));
         $('#createBtn').textContent = t('homeCreateActivityBtn');
         $('#createGameBtn').textContent = t('homeCreateGameBtn');
         $('#gamesBtn').textContent = t('gNav');
@@ -96,26 +110,30 @@
 
         // تشخيص مبكر: إن كان الخادم غير متاح نشرح السبب بدل رسالة خطأ غامضة
         serverAlive().then((alive) => {
-          if (!alive) showOfflineBanner(document.querySelector('.wrap'));
+          if (!alive) showOfflineBanner(document.querySelector('.tp-col'));
         });
 
         /**
-         * رمزٌ في العنوان (‎/?code=‎ من رابطٍ قديم): نمرّره إلى صفحة الدخول
+         * رمزٌ في العنوان (‎/?code=‎ من رابطٍ قديم): نمرّره إلى صفحة اللعب
          * بدل أن نُبقي حقل رمزٍ في الواجهة. الروابط القديمة تبقى تعمل، والزائر
          * الذي لا رمز معه لا يُسأل عن رمز أصلاً.
          */
         const preset = new URLSearchParams(location.search).get('code');
         if (preset && /^\d{4,8}$/.test(preset)) location.replace('/play.html?code=' + preset);
 
-        // إن كان مسجّل الدخول نوجّهه إلى أنشطته مباشرة
         api('/api/auth/me')
           .then(({ user, premium }) => {
             // التهنئة وسؤال البلد هنا أيضاً: وجهة ما بعد الدخول قد تكون هذه
             // الصفحة لا لوحة المعلّم، والبلد مطلوبٌ أينما هبط
             window.T.afterLogin(user, premium);
+
             if (!user) {
-              // من لا حساب له: وعدُ المنحة تحت الزرّ مباشرةً. عدد الأيام من
-              // الخادم لا رقماً مكتوباً هنا، فلا تَعِد الصفحة بما لا يحدث.
+              /*
+               * بلا حساب: بطاقة المعلّم تبقى كما هي ويتبدّل فعلُها الأوّل إلى
+               * الدخول. المخطوطة تُخفي البطاقة كلّها عند غياب الجلسة، وذلك
+               * يترك المعلّم الزائر بلا طريقٍ إلى المنصّة أصلاً — وهو أول من
+               * تُكتب له هذه الصفحة.
+               */
               const days = premium?.plan?.signupTrialDays || 0;
               if (days) {
                 const note = $('#trialPromise');
@@ -124,20 +142,25 @@
               }
               return;
             }
+
+            const name = window.T.firstName(user.name, user.name);
             const link = $('#accountLink');
             link.href = '/host.html#/mine';
-            link.textContent = t('homeMyActivities', { name: user.name });
+            link.textContent = t('homeMyActivities', { name });
             const top = $('#topAccount');
             top.href = '/host.html#/mine';
             top.textContent = t('homeMyActivitiesShort');
+
             const hello = $('#welcome');
-            hello.textContent = t('homeWelcome', { name: window.T.firstName(user.name, user.name) });
+            hello.textContent = t('homeWelcome', { name });
             hello.classList.remove('hidden');
-            // زر خروج ظاهر للمسجّلين على الصفحة الرئيسية أيضاً
+
             const out = $('#logoutBtn');
-            out.classList.remove('hidden');
             out.textContent = t('homeLogoutBtn');
-            out.addEventListener('click', async () => {
+            out.classList.remove('hidden');
+            $('#logoutSep').classList.remove('hidden');
+            out.addEventListener('click', async (event) => {
+              event.preventDefault();
               await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
               location.reload();
             });
@@ -149,15 +172,15 @@
         if (last?.code && last?.hostToken) {
           api('/api/sessions/' + last.code)
             .then(() => {
-              $('#resume').classList.remove('hidden');
-              $('#resumeLink').href = '/host.html#/live/' + last.code;
-              $('#resumeLink').textContent = t('homeResumeBtn', { title: last.title || last.code });
+              const resume = $('#resumeLink');
+              resume.href = '/host.html#/live/' + last.code;
+              resume.textContent = t('homeResumeBtn', { title: last.title || last.code });
+              resume.classList.remove('hidden');
             })
             .catch(() => {});
         }
-
       })();
-    
+
       window.SiteFooter.mount();
     </script>
   </body>

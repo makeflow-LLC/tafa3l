@@ -1,0 +1,878 @@
+/**
+ * شاشتا الدخول: الرئيسية وإدخال رمز النشاط.
+ *
+ * لهما لغةٌ بصريّة خاصّة بهما — خلفيةٌ متدرّجة وتوهّجان ونقاطٌ تسري وبطاقات
+ * زجاجية — وهي أوسع مما تحمله رموز `app.css` العامّة. فبدل أن نُقحم تلك
+ * الرموز على بقيّة المنصّة، تُحصر هنا تحت `.tp-entry` وحدها: ما دون هاتين
+ * الشاشتين لا يتأثّر بحرف.
+ *
+ * والخطوط خطوطُ المشروع نفسها (`app.css`)، لا خطَّي الويب اللذين في مخطوطة
+ * التصميم: ثماني شاشاتٍ أخرى تُقرأ بخطّ النظام، وخطٌّ خاصٌّ بشاشتين يجعل
+ * المنصّة تُقرأ بصوتين. وهي أيضاً وعدُ «بلا أي شيء خارجي» الذي بُني عليه
+ * عاملُ الخدمة والعملُ بلا إنترنت.
+ *
+ * والحركة كلّها على `transform` و`opacity` وحدهما — بلا مكتبة، وبلا صورة
+ * خلفية: التوهّجان والنقاط تدرّجاتُ CSS.
+ */
+
+.tp-entry {
+  /* الفاتحة أساسٌ والداكنة تعلوها — كترتيب `app.css` نفسه */
+  --e-fg: #1c1150;
+  --e-muted: rgba(28, 17, 80, 0.62);
+  --e-card: #ffffff;
+  --e-card-border: rgba(28, 17, 80, 0.1);
+  --e-chip: rgba(28, 17, 80, 0.05);
+  --e-chip-border: rgba(28, 17, 80, 0.12);
+  --e-dots: 0.45;
+  --e-bg: radial-gradient(120% 80% at 80% -10%, #efeaff 0%, #f7f5ff 45%, #fbfaff 100%);
+  --e-logo-shadow: 0 10px 26px rgba(0, 0, 0, 0.12);
+
+  /* ألوان الهوية — واحدةٌ في السِمَتين، فهي العلامة لا السطح */
+  --e-purple: #8b6ff0;
+  --e-purple-2: #6f4fd8;
+  --e-teal: #2ed3c6;
+  --e-teal-2: #00a9a4;
+  --e-accent: #2ec8c0;
+  --e-yellow: #ffc714;
+  --e-error: #ff7a9c;
+  --e-on-teal: #062a2b;
+
+  min-height: 100dvh;
+  margin: 0;
+  /*
+   * عمودٌ لا صفّ: التذييل المشترك يُلحق بـ`body`، ولو كانت صفّاً لجلس بجوار
+   * المحتوى بدل أن يقع تحته.
+   */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--e-bg);
+  color: var(--e-fg);
+  transition: background 260ms ease, color 260ms ease;
+}
+
+html.dark .tp-entry,
+html.stage .tp-entry {
+  --e-fg: #f4f1ff;
+  --e-muted: rgba(233, 228, 255, 0.66);
+  --e-card: rgba(255, 255, 255, 0.055);
+  --e-card-border: rgba(255, 255, 255, 0.12);
+  --e-chip: rgba(255, 255, 255, 0.08);
+  --e-chip-border: rgba(255, 255, 255, 0.16);
+  --e-dots: 1;
+  --e-bg: radial-gradient(120% 80% at 80% -10%, #2b2166 0%, #1b1442 45%, #150f36 100%);
+  --e-logo-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+}
+
+/* عمودٌ واحد لا يتجاوز 430px: ٩٥٪ من الزائرين على الجوال */
+.tp-col {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  padding: 18px 20px 30px;
+  box-sizing: border-box;
+  /* طبقات التوهّج تخرج عن الحدود عمداً، فتُقصّ هنا لا تمدّ الصفحة */
+  overflow: hidden;
+}
+
+/**
+ * الشعار نسختان: ملوّنٌ على الفاتح وأبيضُ الكلمة على الداكن.
+ * قواعد `app.css` لهما محصورةٌ في `.brand`، وشعارُ هذه الشاشة خارجه.
+ */
+.tp-entry .dark-only {
+  display: none;
+}
+
+html.dark .tp-entry .light-only,
+html.stage .tp-entry .light-only {
+  display: none;
+}
+
+html.dark .tp-entry .dark-only,
+html.stage .tp-entry .dark-only {
+  display: block;
+}
+
+/* التذييل المشترك يتبع عرض العمود ولونه، فلا يبدو ملصقاً من صفحةٍ أخرى */
+.tp-entry .site-footer {
+  width: 100%;
+  max-width: 430px;
+  box-sizing: border-box;
+  border-top-color: var(--e-card-border);
+  color: var(--e-muted);
+}
+
+.tp-entry .site-footer a {
+  color: var(--e-muted);
+}
+
+.tp-entry .site-footer a:hover {
+  color: var(--e-accent);
+}
+
+/* ------------------------------------------------------ طبقات الخلفية */
+
+.tp-fx {
+  position: absolute;
+  pointer-events: none;
+}
+
+.tp-fx--dots {
+  inset: -60px;
+  opacity: var(--e-dots);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.13) 1.4px, transparent 1.5px),
+    radial-gradient(rgba(46, 200, 192, 0.11) 1.4px, transparent 1.5px);
+  background-size: 30px 46px, 46px 46px;
+  will-change: transform;
+  animation: tp-dots 9s linear infinite;
+}
+
+.tp-fx--glow-a {
+  top: -140px;
+  /* فيزيائيّ لا منطقيّ: التوهّج زخرفةٌ ثابتة الموضع لا تتبع اتجاه القراءة */
+  right: -110px;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(123, 97, 217, 0.55), rgba(123, 97, 217, 0) 70%);
+}
+
+.tp-fx--glow-b {
+  top: 190px;
+  left: -130px;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 176, 171, 0.35), rgba(0, 176, 171, 0) 70%);
+}
+
+/* كل ما يعلو الطبقات يحتاج سياق تكديسٍ خاصاً به */
+.tp-entry .tp-col > *:not(.tp-fx) {
+  position: relative;
+}
+
+/* ------------------------------------------------------------ الشريط */
+
+/**
+ * `row-reverse` مقصود: في RTL يضع زرَّي السِمَة واللغة يساراً و«نشاطاتي»
+ * يميناً — وهو ترتيب المخطوطة.
+ */
+.tp-bar {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 10px;
+}
+
+.tp-bar .grow {
+  flex: 1;
+}
+
+/* أزرار السِمَة واللغة يبنيها `theme.js` و`i18n.js`، ونعيد كسوتها هنا */
+.tp-entry .icon-btn {
+  width: auto;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 12px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--e-chip-border);
+  background: var(--e-chip);
+  color: var(--e-fg);
+  border-radius: 14px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 150ms ease, background 200ms ease, border-color 200ms ease;
+}
+
+.tp-entry .lang-btn {
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tp-entry .theme-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 199, 20, 0.18);
+  border-color: rgba(255, 199, 20, 0.6);
+}
+
+.tp-entry .lang-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(46, 200, 192, 0.18);
+  border-color: rgba(46, 200, 192, 0.6);
+}
+
+.tp-entry .icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* حبّةٌ بنفسجية: «نشاطاتي» في الشريط */
+.tp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--e-purple), var(--e-purple-2));
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(111, 79, 216, 0.42);
+  transition: transform 150ms ease, box-shadow 200ms ease;
+}
+
+.tp-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(111, 79, 216, 0.55);
+  color: #fff;
+}
+
+.tp-pill:active {
+  transform: scale(0.96);
+}
+
+/* ------------------------------------------------------------ الهوية */
+
+.tp-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 30px;
+}
+
+.tp-hero__float {
+  position: relative;
+  animation: tp-floaty 6.5s ease-in-out infinite;
+}
+
+/* حلقةٌ تنبض فوق فقاعة السؤال في الشعار — لا تلمس تخطيط الصفحة */
+.tp-hero__ring {
+  position: absolute;
+  top: 0;
+  /* تلاحق فقاعة السؤال في الرسم، وهي في يمينه أياً كان اتجاه الصفحة */
+  left: 128px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 199, 20, 0.75);
+  opacity: 0;
+  pointer-events: none;
+  animation: tp-bubble-pulse 7s ease-out infinite;
+}
+
+.tp-hero__logo {
+  position: relative;
+  display: block;
+  width: 200px;
+  height: auto;
+  filter: drop-shadow(var(--e-logo-shadow));
+  animation: tp-bubble-nudge 7s ease-in-out infinite;
+}
+
+.tp-hero__tag {
+  margin: 20px 0 0;
+  max-width: 320px;
+  text-align: center;
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--e-muted);
+}
+
+.tp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--e-chip);
+  border: 1px solid var(--e-chip-border);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ----------------------------------------------------------- البطاقات */
+
+.tp-panel {
+  margin-top: 16px;
+  padding: 22px 20px 24px;
+  border-radius: 24px;
+  background: var(--e-card);
+  border: 1px solid var(--e-card-border);
+  box-shadow: 0 14px 34px rgba(8, 5, 30, 0.28);
+}
+
+.tp-panel--first {
+  margin-top: 30px;
+}
+
+.tp-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tp-panel__head h2 {
+  margin: 0;
+  flex: 1;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+/* نقطةٌ ملوّنة تسبق العنوان: تركوازيّةٌ للطالب وصفراء للمعلّم */
+.tp-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--e-accent);
+  box-shadow: 0 0 0 4px rgba(46, 200, 192, 0.18);
+}
+
+.tp-dot--warm {
+  background: var(--e-yellow);
+  box-shadow: 0 0 0 4px rgba(255, 199, 20, 0.18);
+}
+
+.tp-panel__note {
+  margin: 8px 0 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--e-muted);
+}
+
+/* «؟» في رأس بطاقة المعلّم — يبنيه `hintDot` المشترك، ونعيد كسوته */
+.tp-panel__head .hintdot__btn {
+  width: 26px;
+  height: 26px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--e-chip-border);
+  background: transparent;
+  color: var(--e-muted);
+  transition: color 200ms ease, border-color 200ms ease;
+}
+
+.tp-panel__head .hintdot__btn:hover {
+  color: var(--e-accent);
+  border-color: var(--e-accent);
+}
+
+.tp-panel__head .hintdot__dot {
+  background: none;
+  width: auto;
+  height: auto;
+  font-size: 13px;
+  color: inherit;
+}
+
+/* ----------------------------------------------------------- الأفعال */
+
+.tp-act {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 150ms cubic-bezier(0.2, 1.6, 0.4, 1), box-shadow 200ms ease, background 200ms ease,
+    border-color 200ms ease;
+}
+
+.tp-act:active {
+  transform: scale(0.96);
+}
+
+/* فعلُ الطالب — أكبر زرٍّ في الصفحة */
+.tp-act--teal {
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--e-teal), var(--e-teal-2));
+  color: var(--e-on-teal);
+  font-size: 18px;
+  font-weight: 800;
+  box-shadow: 0 12px 28px rgba(0, 169, 164, 0.38);
+}
+
+.tp-act--teal:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px rgba(0, 169, 164, 0.5);
+  color: var(--e-on-teal);
+}
+
+/* فعلُ المعلّم الرئيسي */
+.tp-act--purple {
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--e-purple), var(--e-purple-2));
+  color: #fff;
+  font-size: 15px;
+  box-shadow: 0 10px 24px rgba(111, 79, 216, 0.4);
+}
+
+.tp-act--purple:hover {
+  transform: translateY(-2px);
+  color: #fff;
+}
+
+/* فعلان ثانويّان جنباً إلى جنب */
+.tp-act--chip {
+  padding: 15px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--e-chip-border);
+  background: var(--e-chip);
+  color: var(--e-fg);
+  font-size: 14px;
+}
+
+.tp-act--chip:hover {
+  transform: translateY(-2px);
+  color: var(--e-fg);
+}
+
+.tp-act--chip.on-teal:hover {
+  border-color: var(--e-accent);
+}
+
+.tp-act--chip.on-warm:hover {
+  border-color: var(--e-yellow);
+}
+
+.tp-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.tp-duo {
+  display: grid;
+  /* على شاشةٍ ضيّقة جداً ينزل الزرّان فوق بعضهما بدل أن يُقصّ نصّاهما */
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+/* ------------------------------------------------------ روابط سفليّة */
+
+.tp-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 26px;
+  font-size: 13px;
+}
+
+.tp-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* هدف لمسٍ محترم بلا أن يمدّ الصفّ */
+  padding: 8px 2px;
+  color: var(--e-accent);
+  text-decoration: none;
+}
+
+.tp-links a:hover {
+  color: var(--e-yellow);
+}
+
+.tp-links a.muted {
+  color: var(--e-muted);
+}
+
+.tp-links .sep {
+  opacity: 0.35;
+}
+
+/* --------------------------------------------------- شاشة إدخال الرمز */
+
+.tp-join {
+  display: flex;
+  flex-direction: column;
+  min-height: 88dvh;
+}
+
+.tp-join__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tp-back {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--e-chip-border);
+  background: var(--e-chip);
+  color: var(--e-fg);
+  border-radius: 14px;
+  font-size: 18px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 200ms ease;
+}
+
+.tp-back:hover {
+  transform: translateY(-2px);
+  border-color: var(--e-accent);
+  color: var(--e-fg);
+}
+
+.tp-back:active {
+  transform: scale(0.94);
+}
+
+.tp-join__logo {
+  width: 84px;
+  height: auto;
+  opacity: 0.9;
+}
+
+.tp-join__title {
+  margin: 34px 0 0;
+  font-size: 27px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.tp-join__note {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--e-muted);
+}
+
+.tp-code {
+  margin-top: 26px;
+  padding: 26px 18px;
+  border-radius: 24px;
+  background: var(--e-card);
+  border: 1px solid var(--e-card-border);
+  box-shadow: 0 14px 34px rgba(8, 5, 30, 0.28);
+  text-align: center;
+  transition: border-color 200ms ease;
+}
+
+.tp-code.ready {
+  border-color: rgba(46, 200, 192, 0.55);
+}
+
+.tp-code.bad {
+  border-color: rgba(255, 122, 156, 0.6);
+}
+
+/**
+ * الرمز: نصٌّ مرسوم فوق حقلِ إدخالٍ شفّاف.
+ *
+ * ولم نكتفِ بحقلٍ ظاهر لأن الخانات الفارغة تُعرض نقاطاً في موضعها بالضبط —
+ * `1 2 3 · · ·` — وذلك لا يُكتب في قيمة الحقل (فهي الرمز نفسه يُرسَل).
+ * فالمرسوم واحدٌ دائماً بستّ خانات، والحقل تحته شفّافٌ يغطّي مساحته كلّها.
+ *
+ * والحقل حقيقيٌّ لا زينة: من يفتح الصفحة على حاسوب يكتب بلوحته، ومن وصله
+ * الرمز في رسالة يلصقه، وبعض الهواتف تعرضه فوق لوحة المفاتيح لتملأه
+ * (`one-time-code`). و`inputmode="none"` تمنع لوحة النظام من الظهور فوق
+ * لوحتنا — فيبقى ذلك كلّه بلا ازدحام.
+ */
+.tp-code__shell {
+  position: relative;
+  min-height: 46px;
+}
+
+.tp-code__view {
+  display: block;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  line-height: 1.15;
+  direction: ltr;
+  /* الحشو المكافئ لتباعد الحروف: بدونه يميل النصّ يساراً داخل التوسيط */
+  text-indent: 0.22em;
+  color: var(--e-fg);
+  transition: color 200ms ease;
+  user-select: none;
+}
+
+.tp-code__view .slot {
+  color: var(--e-muted);
+  opacity: 0.5;
+}
+
+.tp-code.bad .tp-code__view {
+  color: var(--e-error);
+}
+
+/* الحقل يغطّي المرسوم: لمسةٌ على الرمز تفتح الكتابة، ولا يُرى منه شيء */
+.tp-code__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font: inherit;
+  text-align: center;
+  cursor: default;
+  opacity: 0;
+}
+
+/* بؤرةُ الحقل تظهر على البطاقة لا حول الحقل: إطارٌ يملأ العرض ليس تصميماً */
+.tp-code__input:focus,
+.tp-code__input:focus-visible {
+  outline: none;
+}
+
+.tp-code:focus-within {
+  border-color: rgba(46, 200, 192, 0.45);
+}
+
+.tp-code__track {
+  margin-top: 14px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--e-chip);
+  overflow: hidden;
+}
+
+.tp-code__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--e-teal), var(--e-yellow));
+  transition: width 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tp-code__hint {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--e-muted);
+  min-height: 18px;
+}
+
+.tp-spacer {
+  flex: 1;
+  min-height: 24px;
+}
+
+/* لوحة الأرقام: `dir="ltr"` مقصود — داخل RTL ينقلب ترتيب ١٢٣ */
+.tp-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 24px;
+  direction: ltr;
+}
+
+.tp-key {
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--e-chip-border);
+  border-radius: 18px;
+  background: var(--e-chip);
+  color: var(--e-fg);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  cursor: pointer;
+  /* إصبعٌ يضغط بسرعة لا يُحدّد نصّاً ولا يُكبّر الصفحة بضغطتين */
+  user-select: none;
+  touch-action: manipulation;
+  transition: transform 120ms cubic-bezier(0.2, 1.6, 0.4, 1), background 160ms ease, border-color 160ms ease;
+}
+
+.tp-key:hover {
+  background: rgba(46, 200, 192, 0.14);
+  border-color: rgba(46, 200, 192, 0.5);
+}
+
+.tp-key:active {
+  transform: scale(0.9);
+  background: rgba(46, 200, 192, 0.24);
+}
+
+.tp-join__submit {
+  margin-top: 14px;
+  padding: 19px 20px;
+  border-radius: 18px;
+  background: var(--e-chip);
+  color: var(--e-muted);
+  font-size: 18px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.tp-join__submit.ready {
+  background: linear-gradient(135deg, var(--e-teal), var(--e-teal-2));
+  color: var(--e-on-teal);
+  box-shadow: 0 12px 28px rgba(0, 169, 164, 0.38);
+}
+
+.tp-join__submit:active {
+  transform: scale(0.97);
+}
+
+.tp-join__spin {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0;
+  animation: tp-spin 700ms linear infinite;
+}
+
+.tp-join__submit.busy .tp-join__spin {
+  opacity: 1;
+}
+
+/* -------------------------------------------------------- بؤرة ظاهرة */
+
+.tp-entry :focus-visible {
+  outline: 2px solid var(--e-accent);
+  outline-offset: 3px;
+}
+
+/* ------------------------------------------------------------ الحركة */
+
+/**
+ * ظهورٌ متتابع: كل عنصرٍ يحمل `--rise` تأخيرَه.
+ * `both` ضروريّ — بدونها يومض العنصر ظاهراً قبل أن يبدأ تأخيره.
+ */
+.tp-rise {
+  animation: tp-rise 560ms cubic-bezier(0.2, 0.8, 0.2, 1) var(--rise, 0ms) both;
+}
+
+@keyframes tp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tp-floaty {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(1.5deg);
+  }
+}
+
+@keyframes tp-bubble-pulse {
+  0%,
+  72%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  78% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  88% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes tp-bubble-nudge {
+  0%,
+  70%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  76% {
+    transform: translate(-2px, -4px) rotate(-5deg);
+  }
+  82% {
+    transform: translate(1px, -1px) rotate(3deg);
+  }
+  88% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+@keyframes tp-dots {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-30px, -46px, 0);
+  }
+}
+
+@keyframes tp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/**
+ * من طلب تقليل الحركة: يسكن ما يدور بلا سببٍ من فعله — الطفو والنبض
+ * والنقاط — ويبقى ما يجيب فعلَه: شريط التقدّم ومؤشّر الانتظار. وعناصر
+ * الظهور تبقى **ظاهرة** لا مخفيّة، فتعطيلُ الحركة لا يعني تعطيل الصفحة.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .tp-entry .tp-fx--dots,
+  .tp-entry .tp-hero__float,
+  .tp-entry .tp-hero__ring,
+  .tp-entry .tp-hero__logo {
+    animation: none;
+  }
+
+  .tp-entry .tp-hero__ring {
+    display: none;
+  }
+
+  .tp-rise {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .tp-entry .tp-act,
+  .tp-entry .tp-key,
+  .tp-entry .tp-pill,
+  .tp-entry .icon-btn,
+  .tp-entry .tp-back {
+    transition: background 160ms ease, border-color 160ms ease;
+  }
+
+  .tp-entry .tp-act:active,
+  .tp-entry .tp-key:active,
+  .tp-entry .tp-pill:active,
+  .tp-entry .icon-btn:active,
+  .tp-entry .tp-back:hover,
+  .tp-entry .tp-act:hover,
+  .tp-entry .tp-pill:hover {
+    transform: none;
+  }
+}
