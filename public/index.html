@@ -6,12 +6,12 @@
     <title>Tapio</title>
     <meta name="description" content="منصة خفيفة لإنشاء أسئلة تفاعلية واستطلاعات حية للمدربين والمعلمين. بلا تسجيل وبلا تخزين دائم." />
     <meta name="theme-color" content="#171240" />
-    <link rel="icon" href="/assets/icon.svg?v=1.83.0" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.83.0" />
+    <link rel="icon" href="/assets/icon.svg?v=1.83.1" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=1.83.1" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/assets/css/app.css?v=1.83.0" />
-    <script src="/assets/js/theme.js?v=1.83.0"></script>
-    <script src="/assets/js/i18n.js?v=1.83.0"></script>
+    <link rel="stylesheet" href="/assets/css/app.css?v=1.83.1" />
+    <script src="/assets/js/theme.js?v=1.83.1"></script>
+    <script src="/assets/js/i18n.js?v=1.83.1"></script>
   </head>
   <body>
     <div class="wrap narrow">
@@ -24,7 +24,7 @@
       </div>
       <div class="center" style="padding: 10px 0 18px">
         <div class="brand hero" style="justify-content: center">
-          <img class="logo light-only" src="/assets/logo.svg?v=1.83.0" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.83.0" alt="Tapio" width="249" height="159" />
+          <img class="logo light-only" src="/assets/logo.svg?v=1.83.1" alt="Tapio" width="249" height="159" /><img class="logo dark-only" src="/assets/logo-white.svg?v=1.83.1" alt="Tapio" width="249" height="159" />
         </div>
         <p class="muted small" style="margin-top: 8px" id="tagline"></p>
         <p id="welcome" class="hidden" style="margin: 10px 0 0; font-weight: 700"></p>
@@ -47,7 +47,16 @@
         <!-- ثانويّ لا تركوازيّ: التركوازي لون الطالب، ويظهر على هذه الصفحة
              مرّةً واحدة على زرّ الدخول بالرمز. زرٌّ للمعلّم بلون الطالب فوقه
              مباشرةً يُلغي الدلالة التي بُني عليها اللونان. -->
-        <a class="btn ghost block" href="/host.html" id="createBtn" style="margin-top: 8px"></a>
+        <!--
+          فعلا إنشاءٍ متساويان في صفٍّ واحد: نشاطٌ ولعبة.
+          كان الإنشاء زرّاً واحداً للنشاط، ومنشئُ الألعاب لا يُبلَغ من الرئيسية
+          أصلاً — فمن لم يدخل لوحة المعلّم لم يعرف أنه موجود. وصفٌّ واحد يُبقي
+          ثقل البطاقة كما هو: سطرٌ واحد لا سطران فوق زرّ الحساب.
+        -->
+        <div class="btn-duo" style="margin-top: 8px">
+          <a class="btn ghost" href="/host.html" id="createBtn"></a>
+          <a class="btn ghost" href="/host.html#/game-ai" id="createGameBtn"></a>
+        </div>
         <button class="btn ghost block hidden" id="logoutBtn" type="button" style="margin-top: 8px"></button>
         <div id="resume" class="hidden" style="margin-top: 10px">
           <a class="btn ghost block" id="resumeLink" href="#"></a>
@@ -62,9 +71,9 @@
 
     </div>
 
-    <script src="/assets/js/avatar.js?v=1.83.0"></script>
-    <script src="/assets/js/common.js?v=1.83.0"></script>
-    <script src="/assets/js/footer.js?v=1.83.0"></script>
+    <script src="/assets/js/avatar.js?v=1.83.1"></script>
+    <script src="/assets/js/common.js?v=1.83.1"></script>
+    <script src="/assets/js/footer.js?v=1.83.1"></script>
     <script>
       (function () {
         const { $, api, store, serverAlive, showOfflineBanner } = window.T;
@@ -79,7 +88,8 @@
         $('#joinTitle').textContent = t('homeStudentTitle');
         $('#joinCta').textContent = t('homeJoinCta');
         $('#teacherTitle').append(t('homeTeacherTitle'), window.T.hintDot(t('homeTeacherBody')));
-        $('#createBtn').textContent = t('homeCreateBtn');
+        $('#createBtn').textContent = t('homeCreateActivityBtn');
+        $('#createGameBtn').textContent = t('homeCreateGameBtn');
         $('#gamesBtn').textContent = t('gNav');
         $('#guideBtn').textContent = t('hteacherGuide');
         $('#accountLink').textContent = t('homeLoginBtn');
