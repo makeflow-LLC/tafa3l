@@ -282,3 +282,49 @@ test('البطاقة عامّة وبلا سؤالٍ واحد', async () => {
   assert.equal(card.data.contest.description, 'لصفّي الخامس');
   assert.equal(/عاصمة الأردن/.test(JSON.stringify(card.data)), false, 'ولا نصّ سؤالٍ يتسرّب');
 });
+
+/**
+ * المسار كما تسلكه الواجهة بالضبط: نشاطٌ يُحفظ، ثم يُقرأ من **القائمة**،
+ * ثم تُبنى منه مسابقة.
+ *
+ * وهذا ما كان مكسوراً: `GET /api/activities` تُرجع عدد الأسئلة لا نصوصها،
+ * فكانت البطاقة ترسل مسابقةً بلا سؤالٍ واحد ويردّ الخادم «أضف سؤالاً
+ * واحداً على الأقل». والاختبار الذي كتبتُه أولاً موّه نداء الإنشاء نفسه،
+ * فاختبر محاكاتي لا نظامي.
+ */
+test('مسابقةٌ من نشاطٍ محفوظ — بالمسارات التي تناديها الواجهة فعلاً', async () => {
+  const c = client();
+  await login(c, 'from-activity@example.com');
+
+  const saved = await c.request('POST', '/api/activities', { title: 'مراجعة الوحدة', settings: {}, questions: QUESTIONS });
+  assert.equal(saved.status, 201, JSON.stringify(saved.data));
+
+  // القائمة: عددٌ لا نصوص — فمن بنى عليها بنى على فراغ
+  const list = await c.request('GET', '/api/activities');
+  const row = list.data.activities.find((a) => a.id === saved.data.activity.id);
+  assert.equal(row.questionCount, 3);
+  assert.equal(row.questions, undefined, 'القائمة لا تحمل الأسئلة — وهذا صواب لقائمةٍ طويلة');
+
+  // ولذلك تُجلب الواحدة كاملةً قبل الإنشاء
+  const full = await c.request('GET', '/api/activities/' + row.id);
+  assert.equal(full.data.activity.questions.length, 3);
+
+  const made = await c.request('POST', '/api/contests', {
+    title: full.data.activity.title,
+    questions: full.data.activity.questions,
+    settings: full.data.activity.settings || {},
+    days: 7,
+  });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  assert.equal(made.data.contest.questions, 3);
+});
+
+test('مسابقةٌ بلا أسئلة تقول ما ينقص بلغة المسابقات لا بلغة الجلسة', async () => {
+  const c = client();
+  await login(c, 'empty-ct@example.com');
+  const res = await c.request('POST', '/api/contests', { title: 'فارغة', questions: [], days: 7 });
+  assert.equal(res.status, 400);
+  // «أضف سؤالاً واحداً على الأقل» رسالةُ الجلسة الحيّة، وكانت تتسرّب من
+  // `normalizeQuiz` فيقرأها المعلّم في شاشةٍ لا سؤال فيها أصلاً
+  assert.match(res.data.error, /المسابقة/, JSON.stringify(res.data));
+});

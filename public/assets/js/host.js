@@ -2058,7 +2058,7 @@
   function newContestCard(activities) {
     const pick = el('select', {}, [
       el('option', { value: '', text: t('ctPickActivity') }),
-      ...activities.map((a) => el('option', { value: a.id, text: `${a.title} (${a.questions?.length || 0})` })),
+      ...activities.map((a) => el('option', { value: a.id, text: `${a.title} (${a.questionCount || 0})` })),
     ]);
     const days = el('input', { type: 'number', min: '1', max: '30', step: '1', value: '7', inputmode: 'numeric' });
     const retries = el('input', { type: 'checkbox' });
@@ -2067,16 +2067,25 @@
 
     create.addEventListener('click', async () => {
       if (!pick.value) return toast(t('ctPickActivity'), 'bad');
-      const source = activities.find((a) => a.id === pick.value);
       create.disabled = true;
       note.textContent = '';
       try {
+        /*
+         * النشاط يُجلب كاملاً هنا لا يُؤخذ من القائمة.
+         *
+         * `GET /api/activities` تُرجع **عدد** الأسئلة لا نصوصها — وهو
+         * الصواب لقائمةٍ قد تحمل عشرات الأنشطة. وكان هذا الزرّ يقرأ
+         * `source.questions` منها فيجدها `undefined`، فيصل الخادمَ طلبٌ
+         * بلا سؤال واحد فيردّ «أضف سؤالاً واحداً على الأقل». أي أن الإنشاء
+         * من هذه البطاقة لم يكن يعمل أصلاً.
+         */
+        const { activity } = await api('/api/activities/' + pick.value);
         const res = await api('/api/contests', {
           method: 'POST',
           body: {
-            title: source.title,
-            questions: source.questions,
-            settings: source.settings || {},
+            title: activity.title,
+            questions: activity.questions,
+            settings: activity.settings || {},
             days: Number(days.value) || 7,
             retries: retries.checked,
           },
