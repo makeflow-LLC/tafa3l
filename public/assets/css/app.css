@@ -3674,3 +3674,91 @@ details.card[open] > summary::after {
     transition: none;
   }
 }
+
+/* ------------------------------------------------ المسابقات المفتوحة */
+
+/* شريطُ تقدّمٍ يقول أين المتسابق من المسابقة — لا مؤقّت: تُلعب على مهل */
+.ct-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.ct-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand-2), var(--brand));
+  transition: width 0.25s ease;
+}
+
+/* خيارُ إجابة: هدفُ لمسٍ كامل العرض لا صفٌّ من أزرارٍ ضيّقة */
+.ct-choice {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 12px 14px;
+  text-align: start;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+}
+
+.ct-choice:hover {
+  border-color: var(--brand);
+}
+
+.ct-choice:active {
+  transform: scale(0.99);
+}
+
+.ct-choice.on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.ct-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+/* سطرُ المتسابق نفسه في اللوحة — يجد اسمه بلا بحث */
+.ct-row.mine {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.ct-rank {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ct-score {
+  font-size: 2.4rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-fill,
+  .ct-choice {
+    transition: none;
+  }
+  .ct-choice:active {
+    transform: none;
+  }
+}
