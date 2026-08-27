@@ -3,7 +3,7 @@
 /**
  * حصّة بناء الألعاب — الحساب وحده، بلا خادم ولا قاعدة.
  *
- * المجاني لعبتان في العمر، والمشترك عشرون في الشهر، والمالك بلا حدّ.
+ * المجاني لعبتان في العمر، والمشترك خمس عشرة في الشهر، والمالك بلا حدّ.
  * وأدقّ ما فيها انقلابُ الشهر: عدّادٌ لا يُصفَّر يمنع المشترك من حقّه، وعدّادٌ
  * يُصفَّر في غير موضعه يمنح المجاني ما ليس له.
  */
@@ -35,22 +35,22 @@ test('المجاني: من بنى وهو مشترك ثم انتهى اشتراك
   assert.equal(quota.quotaOf({ gamesBuilt: 5, gamesMonth: 5, gamesMonthKey: now }, FREE).remaining, 0);
 });
 
-test('المشترك: عشرون في الشهر، والعدّاد يُقرأ من مفتاح هذا الشهر وحده', () => {
+test('المشترك: خمس عشرة في الشهر، والعدّاد يُقرأ من مفتاح هذا الشهر وحده', () => {
   assert.deepEqual(pick(quota.quotaOf({ gamesBuilt: 40, gamesMonth: 3, gamesMonthKey: now }, PREMIUM)), {
     plan: 'premium',
-    limit: 20,
+    limit: 15,
     used: 3,
-    remaining: 17,
+    remaining: 12,
     period: 'month',
   });
   // مفتاحٌ من شهرٍ ماضٍ = الحصّة كاملة، بلا مهمّةٍ دوريّة تصفّر العدّادات
-  assert.equal(quota.quotaOf({ gamesBuilt: 40, gamesMonth: 20, gamesMonthKey: past }, PREMIUM).remaining, 20);
+  assert.equal(quota.quotaOf({ gamesBuilt: 40, gamesMonth: 15, gamesMonthKey: past }, PREMIUM).remaining, 15);
   // ولا حسابَ لمجموع العمر عليه: مئةُ لعبةٍ سابقة لا تنقص شهره
-  assert.equal(quota.quotaOf({ gamesBuilt: 100, gamesMonth: 0, gamesMonthKey: now }, PREMIUM).remaining, 20);
+  assert.equal(quota.quotaOf({ gamesBuilt: 100, gamesMonth: 0, gamesMonthKey: now }, PREMIUM).remaining, 15);
 });
 
 test('المشترك: الحصّة لا تصير سالبة مهما تجاوز العدّاد', () => {
-  assert.equal(quota.quotaOf({ gamesMonth: 25, gamesMonthKey: now }, PREMIUM).remaining, 0);
+  assert.equal(quota.quotaOf({ gamesMonth: 40, gamesMonthKey: now }, PREMIUM).remaining, 0);
 });
 
 test('المالك بلا حدّ — يجرّب الميزة ولا يمنح نفسه حصّة', () => {
@@ -64,7 +64,7 @@ test('المالك بلا حدّ — يجرّب الميزة ولا يمنح ن�
 test('حسابٌ جديد بلا عدّادات يُقرأ صفراً لا NaN', () => {
   assert.equal(quota.quotaOf({}, FREE).remaining, 2);
   assert.equal(quota.quotaOf(null, FREE).remaining, 2);
-  assert.equal(quota.quotaOf({ gamesMonth: undefined, gamesMonthKey: undefined }, PREMIUM).remaining, 20);
+  assert.equal(quota.quotaOf({ gamesMonth: undefined, gamesMonthKey: undefined }, PREMIUM).remaining, 15);
 });
 
 test('رسالةُ النفاد تقول ماذا يفعل لا «ممنوع» وحدها', () => {
@@ -72,7 +72,7 @@ test('رسالةُ النفاد تقول ماذا يفعل لا «ممنوع» �
   const free = quota.exhaustedMessage(quota.quotaOf({ gamesBuilt: 2 }, FREE), plan);
   assert.match(free, /اشترك/);
   assert.match(free, /970000000/);
-  const paid = quota.exhaustedMessage(quota.quotaOf({ gamesMonth: 20, gamesMonthKey: now }, PREMIUM), plan);
+  const paid = quota.exhaustedMessage(quota.quotaOf({ gamesMonth: 15, gamesMonthKey: now }, PREMIUM), plan);
   assert.match(paid, /الشهر القادم/);
   // المشترك لا يُساق إلى اشتراكٍ هو فيه: حصّته تعود مع الشهر
   assert.equal(/واتساب/.test(paid), false);

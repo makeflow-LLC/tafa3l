@@ -145,7 +145,11 @@ function gameAiRoutes() {
     const status = premium.summary(req.user);
     const left = quota.quotaOf(req.user, status);
     if (!left.unlimited && left.remaining <= 0) {
-      return res.status(402).json({ error: quota.exhaustedMessage(left, premium.PLAN), quota: quota.summary(req.user, status), upgrade: premium.PLAN });
+      return res.status(402).json({
+        error: quota.exhaustedMessage(left, premium.PLAN, premium.localPayFor(req.user)),
+        quota: quota.summary(req.user, status),
+        upgrade: premium.PLAN,
+      });
     }
 
     /*

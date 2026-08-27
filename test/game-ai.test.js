@@ -188,7 +188,7 @@ test('حصّة المجاني في العمر لا في الشهر — لا تت
   }
 });
 
-test('المشترك يبني عشرين في الشهر، والعدّاد شهريٌّ يُصفَّر بانقلابه', async () => {
+test('المشترك يبني خمس عشرة في الشهر، والعدّاد شهريٌّ يُصفَّر بانقلابه', async () => {
   const email = 'premium-gb@example.com';
   const mock = mockUpstream({ email, evolink: () => modelReply('تفضّل\n```html\n' + GAME + '\n```') });
   try {
@@ -199,18 +199,18 @@ test('المشترك يبني عشرين في الشهر، والعدّاد شه
     const before = await c.request('GET', '/api/game-ai/status');
     assert.deepEqual(
       { plan: before.data.quota.plan, limit: before.data.quota.limit, remaining: before.data.quota.remaining, period: before.data.quota.period },
-      { plan: 'premium', limit: 20, remaining: 20, period: 'month' }
+      { plan: 'premium', limit: 15, remaining: 15, period: 'month' }
     );
 
     const started = await c.request('POST', '/api/game-ai/chat', { message: 'ابنِ لعبة' });
     const done = await awaitJob(c, started.data.jobId);
-    assert.equal(done.data.quota.remaining, 19);
+    assert.equal(done.data.quota.remaining, 14);
 
-    // شهرٌ مضى بعشرين لعبة: لا يُحسب على الشهر الجديد
+    // شهرٌ مضى بحصّته كاملة: لا يُحسب على الشهر الجديد
     const { monthKey } = require('../server/game-quota');
     await storage.get().bumpGameBuilds(user.id, '2000-01');
     const stale = await c.request('GET', '/api/game-ai/status');
-    assert.equal(stale.data.quota.remaining, 20, 'مفتاحُ شهرٍ ماضٍ يعني حصّةً كاملة');
+    assert.equal(stale.data.quota.remaining, 15, 'مفتاحُ شهرٍ ماضٍ يعني حصّةً كاملة');
     assert.equal(typeof monthKey(), 'string');
   } finally {
     mock.restore();
