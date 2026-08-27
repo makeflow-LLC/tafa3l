@@ -94,6 +94,7 @@
     if (hash === '/game-ai') return openGameBuilder();
     if (hash === '/new') return openBuilder();
     if (hash === '/upgrade') return openUpgrade();
+    if (hash === '/pay') return openPayment();
     if (hash === '/admin') return openAdmin();
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
     if (edit) return openSavedActivity(edit[1]);
@@ -815,7 +816,9 @@
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
         toast(t('profSaved'), 'ok');
-        state.user = { ...state.user, name: res.profile.publicName };
+        // البلد في الذاكرة يُحدَّث مع الحفظ: صفحة الباقات تقرؤه لتقرّر طريق
+        // الدفع، ومن غيّر بلده ثم فتحها في الجلسة نفسها كان يرى طريق بلده القديم
+        state.user = { ...state.user, name: res.profile.publicName, country: res.profile.country ?? country.value };
         openProfile();
       } catch (err) {
         toast(err.message, 'bad');
@@ -1777,10 +1780,48 @@
     draw();
   }
 
+  /**
+   * باقةٌ احتياطية إن تعذّر بلوغ الخادم: بطاقة اشتراكٍ بلا سعرٍ ولا رقم أسوأ
+   * من قيمةٍ افتراضية. وهي نسخةٌ من القيم في `server/premium.js`.
+   */
+  const DEFAULT_PLAN = {
+    whatsapp: '970597034066',
+    priceUsd: 5,
+    perks: [],
+    signupTrialDays: 10,
+    games: { free: 2, premiumMonthly: 15 },
+    localPay: {},
+  };
+
   /** رابط واتساب جاهز برسالة مكتوبة — أقصر طريق من رغبة الاشتراك إلى محادثة */
   function whatsappLink(plan, note) {
     const text = t('hWhatsappMsg', { price: plan.priceUsd }) + (note ? ' ' + note : '');
     return `https://wa.me/${plan.whatsapp}?text=${encodeURIComponent(text)}`;
+  }
+
+  /**
+   * طريقة الدفع المحلّية لهذا المعلّم — أو `null` فيبقى الطريق الدوليّ.
+   *
+   * البلد يأتي من حساب المعلّم لا من موقعه ولا من لغته: من سجّل بلده فلسطين
+   * يدفع بالشيكل ولو فتح المنصّة من مطار. والخريطة تأتي من الخادم كي يُضاف
+   * بلدٌ ثانٍ يوماً بلا تعديل هنا.
+   */
+  function localPay(plan) {
+    const code = String(state.user?.country || '').toUpperCase();
+    return (code && plan?.localPay?.[code]) || null;
+  }
+
+  /**
+   * زرّ «اشترك» كما يليق ببلد المعلّم: من له طريق دفعٍ محليّ يُساق إلى صفحة
+   * الدفع، ومن سواه إلى محادثة واتساب. وواحدةٌ من الاثنتين تُستدعى في كل
+   * موضعٍ فيه دعوة اشتراك — فلا يبقى زرٌّ يرسل الفلسطينيّ إلى حوالةٍ بالدولار.
+   */
+  function subscribeBtn(plan, opts = {}) {
+    const cls = opts.class || 'btn primary';
+    const pay = localPay(plan);
+    if (pay) return el('a', { class: cls, href: '#/pay' }, opts.label || t('payCta', { amount: pay.amount }));
+    return el('a', { class: cls, href: whatsappLink(plan, opts.note), target: '_blank', rel: 'noopener' },
+      opts.label || t('hWhatsappBtn', { phone: plan.whatsapp }));
   }
 
   /**
@@ -1812,9 +1853,16 @@
     ]);
   }
 
+  /** السعر بعملة المعلّم: الشيكل لمن له طريق دفعٍ محليّ، والدولار لسواه */
+  function priceLine(plan) {
+    const pay = localPay(plan);
+    return pay ? t('payPriceMonthly', { amount: pay.amount }) : t('hPriceMonthly', { price: plan.priceUsd });
+  }
+
   /** بطاقة «هذه ميزة بريميوم» — تُستخدم في المساعد الذكي وفي التصدير */
   function upgradeCard(plan, title) {
-    const p = plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], signupTrialDays: 10 };
+    const p = plan || DEFAULT_PLAN;
+    const monthly = p.games?.premiumMonthly ?? 15;
     return el('div', { class: 'card stack' }, [
       el('h2', { style: { margin: 0 }, text: title || t('hpremiumFeature') }),
       // من لم يسجّل بعد يُدعى للتسجيل لا للدفع، ومن يعيش تجربته يرى ما بقي منها
@@ -1822,11 +1870,12 @@
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('haPremiumSubscriptionUnlocks') }),
       el('div', { class: 'stack tight' }, [
         el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '🤖' }), el('span', { class: 'grow', text: t('hdesignTheActivityWith') })]),
+        el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '🎮' }), el('span', { class: 'grow', text: t('upGamesPro', { count: monthly }) })]),
         el('div', { class: 'q-preview' }, [el('span', { class: 'badge', text: '📊' }), el('span', { class: 'grow', text: t('hexportResultsToExcel') })]),
       ]),
       el('div', { class: 'row between' }, [
-        el('strong', { text: t('hPriceMonthly', { price: p.priceUsd }) }),
-        el('a', { class: 'btn primary', href: whatsappLink(p), target: '_blank', rel: 'noopener' }, t('hWhatsappBtn', { phone: p.whatsapp })),
+        el('strong', { text: priceLine(p) }),
+        subscribeBtn(p),
       ]),
       // «وماذا أدفع مقابله؟» سؤالٌ يجب أن يُجاب في الشاشة نفسها لا في رسالة واتساب
       el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upCompareLink')),
@@ -1842,28 +1891,39 @@
     ]);
   }
 
-  /** خلية «متاح / غير متاح» في جدول المقارنة */
-  function planCell(on) {
+  /**
+   * خلية المقارنة: `true`/`false` تُرسم علامة، والنصّ يُكتب كما هو.
+   * حصّة الألعاب ليست «متاح» ولا «غير متاح» — كلتا العلامتين تكذب على المعلّم،
+   * والصادق أن يُكتب العدد.
+   */
+  function planCell(value) {
+    if (typeof value === 'string') return el('td', { class: 'plan-cell', text: value });
     return el('td', { class: 'plan-cell' }, [
-      el('span', { 'aria-hidden': 'true', text: on ? '✅' : '✖' }),
-      el('span', { class: 'sr-only', text: on ? t('upYes') : t('upNo') }),
+      el('span', { 'aria-hidden': 'true', text: value ? '✅' : '✖' }),
+      el('span', { class: 'sr-only', text: value ? t('upYes') : t('upNo') }),
     ]);
   }
 
-  /** [مفتاح النصّ، هل هي في المجّاني؟] — بريميوم يشمل الكلّ */
-  const PLAN_ROWS = [
-    ['upRow1', true],
-    ['upRow2', true],
-    ['upRow3', true],
-    ['upRow4', true],
-    ['upRow5', true],
-    ['upRow6', true],
-    ['upRow7', true],
-    ['upRow8', true],
-    ['upRow9', false],
-    ['upRow10', false],
-    ['upRow11', false],
-  ];
+  /** [نصّ الميزة، خلية المجّاني، خلية المشترك] — بريميوم يشمل الكلّ إلا ما صُرّح */
+  function planRows(plan) {
+    const free = plan.games?.free ?? 2;
+    const monthly = plan.games?.premiumMonthly ?? 15;
+    return [
+      [t('upRow1'), true, true],
+      [t('upRow2'), true, true],
+      [t('upRow3'), true, true],
+      [t('upRow4'), true, true],
+      [t('upRow5'), true, true],
+      [t('upRow6'), true, true],
+      [t('upRow7'), true, true],
+      [t('upRow8'), true, true],
+      [t('upRow9'), false, true],
+      [t('upRow10'), false, true],
+      [t('upRow11'), false, true],
+      // العدد لا العلامة: المجّاني يبني لعبتين فعلاً، فـ«غير متاح» كذبٌ عليه
+      [t('upRowGames'), t('upGamesFreeCell', { count: free }), t('upGamesProCell', { count: monthly })],
+    ];
+  }
 
   /**
    * صفحة الباقات: ما يأخذه المجّاني مقابل ما يفتحه الاشتراك، مكتوبةً بصدق.
@@ -1882,8 +1942,11 @@
     // يتغيّر بلا نشرٍ جديد، وأسوأ ما في صفحة سعرٍ أن تطبع سعراً قديماً.
     let info = state.premium?.plan ? state.premium : null;
     if (!info) info = await api('/api/ai/status').catch(() => null);
-    const plan = info?.plan || { whatsapp: '970597034066', priceUsd: 5, perks: [], signupTrialDays: 10 };
+    const plan = info?.plan || DEFAULT_PLAN;
     const paid = Boolean(info?.isPremium);
+    const pay = localPay(plan);
+    const freeGames = plan.games?.free ?? 2;
+    const monthlyGames = plan.games?.premiumMonthly ?? 15;
 
     app.innerHTML = '';
     app.append(
@@ -1910,7 +1973,10 @@
         el('span', { class: 'muted small', text: t('upFreeForever') }),
       ]),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('upFreeTag') }),
-      el('ul', { class: 'plan-list' }, ['upFree1', 'upFree2', 'upFree3', 'upFree4', 'upFree5', 'upFree6'].map((k) => planPerk(t(k)))),
+      el('ul', { class: 'plan-list' }, [
+        ...['upFree1', 'upFree2', 'upFree3', 'upFree4', 'upFree5', 'upFree6'].map((k) => planPerk(t(k))),
+        planPerk(t('upGamesFree', { count: freeGames })),
+      ]),
     ]);
 
     // المشترك لا يُعرض عليه زرّ شراءٍ اشتراه: يرى مدّته وزرّ تجديد لا أكثر
@@ -1919,10 +1985,10 @@
       ? el('div', { class: 'stack tight' }, [
           el('span', { class: 'badge ok', text: t('upSubscribed') }),
           until,
-          el('a', { class: 'btn ghost sm', href: whatsappLink(plan), target: '_blank', rel: 'noopener' }, t('upRenewBtn')),
+          subscribeBtn(plan, { class: 'btn ghost sm', label: t('upRenewBtn') }),
         ])
       : state.user
-        ? el('a', { class: 'btn primary', href: whatsappLink(plan), target: '_blank', rel: 'noopener' }, t('hWhatsappBtn', { phone: plan.whatsapp }))
+        ? subscribeBtn(plan)
         : el('div', { class: 'stack tight' }, [
             el('span', { class: 'muted small', text: t('upSignInFirst') }),
             el('a', { class: 'btn primary', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/upgrade') }, t('upSignInBtn')),
@@ -1934,7 +2000,9 @@
         paid ? el('span', { class: 'badge ok', text: t('upCurrent') }) : null,
       ]),
       el('div', { class: 'plan-price' }, [
-        el('strong', { dir: 'ltr', text: `$${plan.priceUsd}` }),
+        // سعرٌ بعملةٍ لا يستطيع المعلّم أن يدفع بها ليس سعراً: الشيكل لمن له
+        // طريق دفعٍ محليّ، والدولار لسواه
+        el('strong', { dir: pay ? 'auto' : 'ltr', text: pay ? t('payAmount', { amount: pay.amount }) : `$${plan.priceUsd}` }),
         el('span', { class: 'muted small', text: t('upPerMonth') }),
       ]),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('upProTag') }),
@@ -1943,6 +2011,7 @@
         planPerk(t('upPro1')),
         planPerk(t('upPro2')),
         planPerk(t('upPro3')),
+        planPerk(t('upGamesPro', { count: monthlyGames })),
       ]),
       cta,
     ]);
@@ -1962,11 +2031,110 @@
               el('th', { class: 'plan-cell' }, t('upFreeName')),
               el('th', { class: 'plan-cell' }, t('upProName')),
             ])),
-            el('tbody', {}, PLAN_ROWS.map(([key, free]) => el('tr', {}, [el('td', {}, t(key)), planCell(free), planCell(true)]))),
+            el('tbody', {}, planRows(plan).map(([label, free, pro]) => el('tr', {}, [el('td', {}, label), planCell(free), planCell(pro)]))),
           ]),
         ]),
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('upHonest') }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: t('upManual') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: pay ? t('payManual') : t('upManual') }),
+      ])
+    );
+  }
+
+  /**
+   * صفحة الدفع المحلّي — «جوال باي» اليوم، وغيرها غداً بالبيانات نفسها.
+   *
+   * الحوالة يدوية من طرفين: المعلّم يحوّل من محفظته، ونحن نفعّل حسابه يدوياً.
+   * فالصفحة كلها خطواتٌ ثلاث بلا نموذجٍ يُملأ ولا بطاقةٍ تُدخل — والرقم الذي
+   * يُحوّل إليه يُنسخ بضغطة لأنه يُكتب في تطبيقٍ آخر، ورقمٌ يُنقل بالنظر خطأٌ
+   * ينتظر أن يقع.
+   *
+   * ولا نطلب صورة الإيصال هنا: رفعها إلينا يعني تخزين صورةٍ لا نحتاجها،
+   * وواتساب في يد المعلّم أصلاً وفيه يرى ردّنا.
+   */
+  async function openPayment() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    let info = state.premium?.plan ? state.premium : null;
+    if (!info) info = await api('/api/ai/status').catch(() => null);
+    const plan = info?.plan || DEFAULT_PLAN;
+    const pay = localPay(plan);
+
+    // من لا طريق دفعٍ محليّ لبلده لا صفحة له هنا: يعود إلى الباقات لا إلى فراغ
+    if (!pay) {
+      location.hash = '#/upgrade';
+      return;
+    }
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('hback')),
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hhome')),
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('payTitle') }));
+    app.append(el('p', { class: 'muted small', style: { marginTop: 0 }, text: t('payIntro') }));
+
+    /** خطوة مرقّمة: الرقم في دائرة، والعمل إلى جانبه */
+    const step = (n, title, body, action) =>
+      el('div', { class: 'pay-step' }, [
+        el('span', { class: 'pay-step__no', 'aria-hidden': 'true', text: String(n) }),
+        el('div', { class: 'stack tight grow' }, [
+          el('strong', { text: title }),
+          body ? el('span', { class: 'muted small', text: body }) : null,
+          action || null,
+        ]),
+      ]);
+
+    const walletRow = el('div', { class: 'pay-wallet' }, [
+      el('span', { class: 'pay-wallet__no', dir: 'ltr', text: pay.wallet }),
+      el('button', { class: 'btn ghost sm', type: 'button' }, t('payCopyWallet')),
+    ]);
+    walletRow.lastChild.addEventListener('click', async () => {
+      const done = await window.T.copyLink(pay.wallet);
+      toast(done ? t('payCopied') : pay.wallet, done ? 'ok' : '');
+    });
+
+    // الرسالة تحمل بريد الحساب: بها يعرف المفعّل أيّ حساب يفتح بلا أن يسأل
+    const note = t('payWaMsg', { amount: pay.amount, wallet: pay.wallet, email: state.user?.email || '—' });
+    const waHref = `https://wa.me/${pay.whatsapp}?text=${encodeURIComponent(note)}`;
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'pay-head' }, [
+          el('span', { class: 'pay-head__badge', 'aria-hidden': 'true', text: '📱' }),
+          el('div', { class: 'stack tight grow' }, [
+            el('strong', { text: t('payMethodJawwal') }),
+            el('span', { class: 'muted small', text: t('payAmountLine', { amount: pay.amount }) }),
+          ]),
+        ]),
+        step(1, t('payStep1Title', { amount: pay.amount }), t('payStep1Body'), walletRow),
+        step(2, t('payStep2Title'), t('payStep2Body')),
+        step(
+          3,
+          t('payStep3Title'),
+          t('payStep3Body', { phone: '+' + pay.whatsapp }),
+          el('a', { class: 'btn primary', href: waHref, target: '_blank', rel: 'noopener' }, t('payWaBtn'))
+        ),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('payManual') }),
+        state.user ? null : el('p', { class: 'muted small', style: { margin: 0 }, text: t('paySignInNote') }),
+      ])
+    );
+
+    app.append(
+      el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
+        el('h2', { style: { margin: 0 }, text: t('payWhatYouGet') }),
+        el('ul', { class: 'plan-list' }, [
+          planPerk(t('upPro1')),
+          planPerk(t('upPro2')),
+          planPerk(t('upPro3')),
+          planPerk(t('upGamesPro', { count: plan.games?.premiumMonthly ?? 15 })),
+        ]),
+        el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upCompareLink')),
       ])
     );
   }
@@ -2005,7 +2173,7 @@
    *     الدخول لا إلى صفحة باقاتٍ لا يستطيع الاشتراك فيها أصلاً.
    *
    *  ٢) **حصّة باقية** — لا اشتراكٌ صريح. الحساب المجاني يبني لعبتين مرّةً
-   *     واحدة في عمره، والمشترك عشرين كل شهر. فمن معه حصّةٌ يدخل ويبني وإن
+   *     واحدة في عمره، والمشترك خمس عشرة كل شهر. فمن معه حصّةٌ يدخل ويبني وإن
    *     كان مجانياً، ومن نفدت حصّته يرى ما نفد ولماذا وكيف يزيده — لا باباً
    *     مغلقاً بلا سبب.
    *

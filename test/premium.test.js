@@ -348,3 +348,48 @@ test('الترحيل يجري مرّةً واحدة: القدماء فلسطين
   assert.equal((await find('after.migration@example.com')).country || '', '', 'الجديد بلا بلد فيُسأل');
   assert.equal((await fresh.request('GET', '/api/auth/me')).data.user.country || '', '', 'والواجهة ترى ذلك فتسأله');
 });
+
+/*
+ * الدفع المحلّي: من بلده فلسطين يدفع بالشيكل عبر «جوال باي»، وغيره يبقى على
+ * الطريق الدوليّ. والاختبار على `localPayFor` لا على الواجهة: هي التي تقرّر،
+ * والواجهة تعرض ما تقرّره.
+ */
+test('الدفع المحلّي يتبع بلد الحساب لا لغته ولا موقعه', () => {
+  const pay = premium.localPayFor({ country: 'PS' });
+  assert.ok(pay, 'الفلسطيني له طريق دفعٍ محليّ');
+  assert.equal(pay.method, 'jawwal-pay');
+  assert.equal(pay.currency, 'ILS');
+  assert.equal(pay.wallet, '0597750343');
+  assert.equal(pay.amount, 15);
+  assert.equal(pay.whatsapp, '970597750343');
+
+  // ورمز البلد يصل من مصادر شتّى، فلا يُشترط شكلٌ واحد
+  assert.ok(premium.localPayFor({ country: 'ps' }), 'الحرف الصغير يصيب أيضاً');
+
+  assert.equal(premium.localPayFor({ country: 'MA' }), null, 'وغير فلسطين على الطريق الدولي');
+  assert.equal(premium.localPayFor({ country: '' }), null);
+  assert.equal(premium.localPayFor(null), null);
+});
+
+test('الباقة المرسلة للمتصفّح تحمل حصّة الألعاب وطرق الدفع المحلّية', () => {
+  const quota = require('../server/game-quota');
+  assert.equal(premium.PLAN.games.free, quota.FREE_TOTAL);
+  assert.equal(premium.PLAN.games.premiumMonthly, quota.PREMIUM_MONTHLY);
+  assert.equal(quota.PREMIUM_MONTHLY, 15, 'المشترك: خمس عشرة لعبة في الشهر');
+  assert.equal(quota.FREE_TOTAL, 2, 'والمجاني: لعبتان في عمر الحساب');
+  assert.equal(premium.PLAN.localPay.PS.wallet, '0597750343');
+});
+
+test('رسالةُ نفاد الحصّة تقول للفلسطيني مبلغه بعملته لا سعراً بالدولار', () => {
+  const quota = require('../server/game-quota');
+  const q = quota.quotaOf({ gamesBuilt: 2 }, { isPremium: false, isAdmin: false });
+  const local = quota.exhaustedMessage(q, premium.PLAN, premium.localPayFor({ country: 'PS' }));
+  assert.match(local, /شيكل/);
+  assert.match(local, /0597750343/);
+  assert.match(local, /970597750343/);
+  assert.equal(/\$/.test(local), false, 'ولا دولارَ في رسالةٍ لا يدفع بها');
+
+  const global = quota.exhaustedMessage(q, premium.PLAN, premium.localPayFor({ country: 'MA' }));
+  assert.match(global, /\$/);
+  assert.match(global, new RegExp(premium.PLAN.whatsapp));
+});

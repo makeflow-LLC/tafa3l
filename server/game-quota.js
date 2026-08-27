@@ -9,7 +9,7 @@
  *
  *  - المجاني: لعبتان **مرّةً واحدة في عمر الحساب**، لا تتجدّدان. من أراد
  *    الثالثة اشترك.
- *  - المشترك: عشرون لعبة **كل شهر**، تتجدّد مع الشهر الميلادي.
+ *  - المشترك: خمس عشرة لعبة **كل شهر**، تتجدّد مع الشهر الميلادي.
  *  - المالك: بلا حدّ — يجرّب الميزة ولا يمنح نفسه حصّة.
  *
  * والمحسوب **كل ملفّ لعبةٍ يُنتجه النموذج**، بما فيه التعديلات: هي النداء
@@ -20,7 +20,7 @@
  */
 
 const FREE_TOTAL = Number(process.env.GAME_FREE_TOTAL ?? 2);
-const PREMIUM_MONTHLY = Number(process.env.GAME_PREMIUM_MONTHLY ?? 20);
+const PREMIUM_MONTHLY = Number(process.env.GAME_PREMIUM_MONTHLY ?? 15);
 
 /** مفتاح الشهر الميلادي بتوقيت UTC — YYYY-MM */
 function monthKey(at = Date.now()) {
@@ -78,17 +78,27 @@ function summary(user, status) {
 
 /**
  * رسالةُ من نفدت حصّته — تقول كم كانت، ومتى تعود، وماذا يفعل.
+ *
+ * وطريقُ الاشتراك بحسب بلده: من له دفعٌ محليّ يُقال له مبلغه بعملته ورقمه،
+ * لا سعرٌ بالدولار وحوالةٌ لا يستطيعها.
+ *
  * @param {object} q ناتج `quotaOf`
  * @param {object} plan باقة الاشتراك (رقم واتساب وسعرها)
+ * @param {object|null} pay طريقة الدفع المحلّية إن وُجدت (`premium.localPayFor`)
  */
-function exhaustedMessage(q, plan) {
+function exhaustedMessage(q, plan, pay) {
   if (q.plan === 'premium') {
     return `بلغت حصّتك الشهرية من بناء الألعاب (${q.limit} لعبة). تتجدّد مع بداية الشهر القادم.`;
   }
-  return (
-    `الحساب المجاني يبني ${q.limit} لعبة فقط، وقد استعملتهما. ` +
-    `اشترك في بريميوم لتبني ${PREMIUM_MONTHLY} لعبة كل شهر — واتساب ${plan?.whatsapp} (${plan?.priceUsd}$ شهرياً).`
-  );
+  const head = `الحساب المجاني يبني ${q.limit} لعبة فقط، وقد استعملتهما. `;
+  if (pay) {
+    return (
+      head +
+      `اشترك في بريميوم لتبني ${PREMIUM_MONTHLY} لعبة كل شهر — ` +
+      `${pay.amount} شيكل شهرياً عبر جوال باي على المحفظة ${pay.wallet}، ثم أرسل الإيصال على واتساب ${pay.whatsapp}.`
+    );
+  }
+  return head + `اشترك في بريميوم لتبني ${PREMIUM_MONTHLY} لعبة كل شهر — واتساب ${plan?.whatsapp} (${plan?.priceUsd}$ شهرياً).`;
 }
 
 module.exports = { quotaOf, summary, exhaustedMessage, monthKey, FREE_TOTAL, PREMIUM_MONTHLY };

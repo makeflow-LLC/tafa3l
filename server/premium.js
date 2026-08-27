@@ -6,6 +6,8 @@
  * لوحة المالك. لذا كل ما نحتاجه هنا تاريخ انتهاء واحد لكل حساب.
  */
 
+const gameQuota = require('./game-quota');
+
 // بريد المالك — يُضبط من متغيّر البيئة، ويبقى بريد صاحب المنصة افتراضاً
 // حتى تعمل اللوحة فور النشر بلا إعداد إضافي.
 const DEFAULT_ADMIN = 'jihad@makeflow.tech';
@@ -18,12 +20,44 @@ const DEFAULT_ADMIN = 'jihad@makeflow.tech';
  */
 const SIGNUP_TRIAL_DAYS = process.env.PREMIUM_SIGNUP_TRIAL_DAYS === undefined ? 10 : Number(process.env.PREMIUM_SIGNUP_TRIAL_DAYS) || 0;
 
+/**
+ * الدفع المحلّي: طريقة دفعٍ لبلدٍ بعينه، مفتاحها رمز البلد.
+ *
+ * الحوالة الدولية بالدولار ليست خياراً لمعلّمٍ في فلسطين: لا بطاقة ولا حساب
+ * بنكيّ يقبلها غالباً، وما بيده محفظةٌ على هاتفه. فمن بلده فلسطين يُساق إلى
+ * «جوال باي» بمبلغٍ بالشيكل، ثم يرسل الإيصال على واتساب فيُفعَّل حسابه —
+ * وغيره يبقى على الطريق الأصلي بلا تغيير.
+ *
+ * والأرقام كلها متغيّرات بيئة: رقم محفظةٍ يتغيّر ولا ننشر نسخةً جديدة لأجله.
+ */
+const LOCAL_PAY = {
+  PS: {
+    country: 'PS',
+    method: 'jawwal-pay',
+    wallet: process.env.PS_PAY_WALLET || '0597750343',
+    amount: Number(process.env.PS_PAY_AMOUNT_ILS) || 15,
+    currency: 'ILS',
+    // الإيصال يذهب إلى رقمٍ قد يختلف عن رقم صاحب المحفظة، فحقلٌ مستقلّ
+    whatsapp: process.env.PS_PAY_WHATSAPP || '970597750343',
+  },
+};
+
 const PLAN = {
   whatsapp: process.env.PREMIUM_WHATSAPP || '970597034066',
   priceUsd: Number(process.env.PREMIUM_PRICE_USD) || 5,
   perks: ['تصميم النشاط بالذكاء الاصطناعي', 'تصدير النتائج PDF و Excel'],
   signupTrialDays: SIGNUP_TRIAL_DAYS,
+  // حصّة بناء الألعاب معروضةً في صفحة الباقات — رقمٌ واحد في الخادم لا رقمان
+  // في نصّي ترجمة يفترقان يوم يتغيّر الإعداد
+  games: { free: gameQuota.FREE_TOTAL, premiumMonthly: gameQuota.PREMIUM_MONTHLY },
+  localPay: LOCAL_PAY,
 };
+
+/** طريقة الدفع المحلّية لهذا الحساب — أو `null` فيبقى الدفع الدوليّ */
+function localPayFor(user) {
+  const code = String(user?.country || '').toUpperCase();
+  return LOCAL_PAY[code] || null;
+}
 
 /** مدّة منحة التسجيل بالمللي ثانية — صفرٌ يعني: لا منحة */
 function signupTrialMs() {
@@ -115,4 +149,18 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { PLAN, isAdmin, isPremium, summary, daysLeft, onSignupTrial, signupTrialMs, requirePremium, requireAdmin, adminEmails, assertImagesAllowed };
+module.exports = {
+  PLAN,
+  LOCAL_PAY,
+  localPayFor,
+  isAdmin,
+  isPremium,
+  summary,
+  daysLeft,
+  onSignupTrial,
+  signupTrialMs,
+  requirePremium,
+  requireAdmin,
+  adminEmails,
+  assertImagesAllowed,
+};

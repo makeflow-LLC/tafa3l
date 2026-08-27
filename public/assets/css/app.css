@@ -3445,6 +3445,67 @@ body.screen-body .q-image {
   white-space: nowrap;
 }
 
+/* --------------------------------------------------- صفحة الدفع المحلّي */
+
+.pay-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pay-head__badge {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+/* خطوةٌ مرقّمة: الرقم دائرةٌ ثابتة العرض كي تصطفّ الخطوات تحت بعضها */
+.pay-step {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.pay-step__no {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 99px;
+  background: var(--brand-soft);
+  border: 1px solid var(--brand);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * رقم المحفظة: يُقرأ ليُكتب في تطبيقٍ آخر، فهو أكبر ما في الصفحة بعد العنوان،
+ * وبخطٍّ أحاديّ العرض كي لا يلتبس ٠ بحرفٍ ولا ٦ بـ٨. و`dir: ltr` عليه في
+ * الترميز لأنه رقم هاتفٍ لا نصّ عربي.
+ */
+.pay-wallet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--brand);
+  background: var(--brand-soft);
+}
+
+.pay-wallet__no {
+  flex: 1;
+  min-width: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* نصّ للقارئ الصوتي وحده: العلامة ✅/✖ تُرى، ومعناها يُقرأ */
 .sr-only {
   position: absolute;
