@@ -141,18 +141,45 @@ test('الخلط ثابتٌ لبذرةٍ واحدة ومختلفٌ لغيرها 
   assert.deepEqual([...contest.shuffled(list, 'س')].sort(), [...list].sort(), 'لا عنصر يُفقد ولا يتكرّر');
 });
 
-test('ما لا يُصحَّح آلياً يُردّ عند الإنشاء لا يُحذف بصمت', () => {
+test('ما لا يُصحَّح آلياً يُسقَط ويُذكر — ولا تُردّ المسابقة كلّها', () => {
   for (const bad of [
     { type: 'open', text: 'اشرح بأسلوبك', points: 5 },
     { type: 'poll', text: 'ما رأيك؟', options: ['أ', 'ب'] },
     { type: 'word', text: 'صف الدرس بكلمة' },
     { type: 'mc', text: 'بلا إجابة صحيحة', options: ['أ', 'ب'] },
   ]) {
-    assert.throws(() => contest.build({ title: 'ت', questions: [...QUESTIONS, bad] }, 'u1'), /المسابقة المفتوحة تُصحَّح وحدها/, bad.type);
+    const built = contest.build({ title: 'ت', questions: [...QUESTIONS, bad] }, 'u1');
+    assert.equal(built.questions.length, 3, `الثلاثة الصالحة تبقى مع ${bad.type}`);
+    assert.equal(built.dropped.length, 1, 'والمُسقَط يُذكر لا يُبتلع');
+    assert.match(built.dropped[0], new RegExp(bad.text.slice(0, 8)));
   }
-  // وشريحة العرض تُحذف بلا شكوى: ليست سؤالاً أصلاً
+  // وشريحة العرض تُحذف بلا أن تُحسب إسقاطاً: ليست سؤالاً أصلاً
   const withSlide = contest.build({ title: 'ت', questions: [...QUESTIONS, { type: 'slide', text: 'مقدّمة', body: 'أهلاً' }] }, 'u1');
   assert.equal(withSlide.questions.length, 3);
+  assert.equal(withSlide.dropped.length, 0);
+});
+
+test('ولا تُمنع إلا إن لم يبقَ سؤالٌ واحد يصلح', () => {
+  assert.throws(
+    () => contest.build({ title: 'ت', questions: [{ type: 'open', text: 'اشرح', points: 5 }, { type: 'word', text: 'كلمة' }] }, 'u1'),
+    /سؤالاً واحداً على الأقل/
+  );
+  // وسؤالٌ واحدٌ صالح يكفي: لا حدَّ أدنى مصطنع
+  const one = contest.build({ title: 'ت', questions: [QUESTIONS[1], { type: 'open', text: 'اشرح', points: 5 }] }, 'u1');
+  assert.equal(one.questions.length, 1);
+});
+
+test('المسار يُعيد ما أُسقط مع البطاقة، فتقوله الواجهة للمعلّم', async () => {
+  const c = client();
+  await login(c, 'dropped@example.com');
+  const res = await c.request('POST', '/api/contests', {
+    title: 'مسابقة',
+    questions: [...QUESTIONS, { type: 'open', text: 'اشرح بأسلوبك سبب التبخّر', points: 5 }],
+    days: 7,
+  });
+  assert.equal(res.status, 201, 'لا تُردّ لأجل سؤالٍ واحد');
+  assert.equal(res.data.contest.questions, 3);
+  assert.equal(res.data.dropped.length, 1);
 });
 
 test('حالُ المسابقة: مفتوحةٌ ثم منتهية، والإغلاق اليدويّ يعلو على الموعد', () => {

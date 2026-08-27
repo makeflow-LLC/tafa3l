@@ -61,12 +61,22 @@ function build(payload, ownerId) {
   if (!questions.length) throw fail('المسابقة بلا أسئلة');
   if (questions.length > MAX_QUESTIONS) throw fail(`لا تتجاوز ${MAX_QUESTIONS} سؤالاً في المسابقة الواحدة`);
 
-  const rejected = questions.filter((q) => !RANKABLE.has(q.type) || (SCORED_TYPES.has(q.type) && !q.correct.length));
-  if (rejected.length) {
+  /*
+   * ما لا يُصحَّح آلياً يُسقَط ويُذكر — لا تُردّ المسابقة كلّها.
+   *
+   * كان الرفض شاملاً: سؤالٌ مفتوحٌ واحدٌ في نشاطٍ من عشرين يمنع المسابقة،
+   * فيخرج المعلّم إلى المحرّر ليحذفه ثم يعود. وهذه ضريبةٌ يدفعها على خطأٍ
+   * لم يرتكبه — النشاط بُني لجلسةٍ حيّة تقبل الجميع. فنأخذ ما يصلح، ونقول
+   * له ما تركناه ولماذا، ولا نمنعه إلا إن لم يبقَ شيء.
+   *
+   * والإسقاط ليس صمتاً: `dropped` تعود إلى الواجهة فتُعرض بأسمائها.
+   */
+  const keep = questions.filter((q) => RANKABLE.has(q.type) && !(SCORED_TYPES.has(q.type) && !q.correct.length));
+  const dropped = questions.filter((q) => !keep.includes(q)).map((q) => String(q.text || '').slice(0, 60));
+  if (!keep.length) {
     throw fail(
-      `المسابقة المفتوحة تُصحَّح وحدها، فلا تقبل ${rejected.length} من أسئلتك ` +
-        '(جواب حرّ، أو أكمل الفراغ، أو استطلاع، أو سحابة كلمات، أو مقياس، أو سؤال اختيارٍ بلا إجابة صحيحة). ' +
-        'احذفها أو استبدلها بأسئلةٍ لها إجابةٌ واحدة صحيحة.'
+      'المسابقة المفتوحة تُصحَّح وحدها، فلا يصلح لها سؤالٌ واحد من هذا النشاط. ' +
+        'تحتاج سؤالاً واحداً على الأقل من: اختيار من متعدّد، أو صح/خطأ، أو ترتيب، أو مطابقة.'
     );
   }
 
@@ -78,7 +88,8 @@ function build(payload, ownerId) {
     description: clean(payload?.description, 300),
     subject: clean(payload?.subject, 40),
     grades: Array.isArray(payload?.grades) ? [...new Set(payload.grades.map((g) => clean(g, 40)).filter(Boolean))].slice(0, 12) : [],
-    questions,
+    questions: keep,
+    dropped,
     // خلطُ الأسئلة والخيارات افتراضيّاً: المسابقة تُلعب على مدى أيام، وأول
     // من يلعبها يستطيع أن يُملي الترتيب على من بعده
     shuffleQuestions: payload?.shuffleQuestions !== false,

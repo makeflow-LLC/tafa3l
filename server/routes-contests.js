@@ -77,10 +77,11 @@ function contestRoutes() {
       if (existing.length >= MAX_PER_TEACHER) {
         return res.status(409).json({ error: `بلغت الحدّ الأقصى (${MAX_PER_TEACHER} مسابقة) — احذف مسابقةً قديمة` });
       }
-      const built = contest.build(req.body, req.user.id);
+      const { dropped, ...built } = contest.build(req.body, req.user.id);
       const saved = { id: storage.newId('ct_'), ...built };
       await storage.get().saveContest(saved);
-      res.status(201).json({ contest: contest.card(saved) });
+      // ما أُسقط يعود مع البطاقة: الواجهة تقوله للمعلّم بدل أن يعدّ أسئلته
+      res.status(201).json({ contest: contest.card(saved), dropped });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر إنشاء المسابقة' });
     }

@@ -2081,8 +2081,8 @@
             retries: retries.checked,
           },
         });
-        toast(t('ctCreated'), 'ok');
-        void res;
+        if (res.dropped?.length) toast(t('ctDroppedNote', { n: res.dropped.length }), 'warn');
+        else toast(t('ctCreated'), 'ok');
         openMyContests();
       } catch (err) {
         // رسالة الخادم تسمّي الأسئلة المرفوضة، فهي أنفع من نصٍّ عامّ
@@ -2107,7 +2107,18 @@
             el('div', { class: 'row' }, [create]),
             note,
           ])
-        : el('p', { class: 'muted small', style: { margin: 0 }, text: t('ctNoActivities') }),
+        : /*
+           * لا نشاط محفوظ: طريقان لا جملةُ اعتذار. من لا نشاط له اليوم
+           * كان يقف أمام سطرٍ يقول «احفظ نشاطاً أولاً» ولا يقول أين — وهو
+           * أسوأ ما تفعله شاشةٌ بمن جاءها ليعمل.
+           */
+          el('div', { class: 'stack' }, [
+            el('p', { class: 'muted small', style: { margin: 0 }, text: t('ctNoActivities') }),
+            el('div', { class: 'row', style: { gap: '6px' } }, [
+              el('a', { class: 'btn accent grow', href: '#/ai' }, t('ctBuildWithAi')),
+              el('a', { class: 'btn ghost grow', href: '#/new' }, t('ctBuildByHand')),
+            ]),
+          ]),
     ]);
   }
 
@@ -2377,7 +2388,7 @@
     try {
       const startStage = state.builderStage;
       state.builderStage = null;
-      window.Builder.mount(root, onLaunch, saveAction, {
+      window.Builder.mount(root, onLaunch, builderActions, {
         startStage,
         teacherName: state.user?.name || '',
         // محفوظٌ في «نشاطاتي» أم في المتصفّح وحده — يقرّر تحذير المصمّم
@@ -2398,7 +2409,7 @@
       root.innerHTML = '';
       try {
         // مسار التعافي بعد إعادة تعيين المسودة: يبدأ من أوّل المعالج دائماً
-        window.Builder.mount(root, onLaunch, saveAction);
+        window.Builder.mount(root, onLaunch, builderActions);
         toast(t('htheDraftWasReset'), 'ok');
         return;
       } catch (err2) {
@@ -2411,6 +2422,56 @@
    * زر «حفظ في حسابي» داخل المحرّر.
    * بلا حساب يدعو لتسجيل الدخول بدل إخفاء الميزة، ومع نشاط مفتوح يحدّثه بدل تكراره.
    */
+  /**
+   * أفعالُ ما بعد الأسئلة: الحفظ في الحساب، وإطلاقُ مسابقةٍ مفتوحة.
+   *
+   * والمسابقة هنا لا في صفحةٍ أخرى: كان على المعلّم أن يحفظ نشاطاً، ثم
+   * يفتح «مسابقاتي»، ثم يختاره من قائمة — ثلاث شاشاتٍ لفعلٍ واحد. وهذه
+   * هي اللحظة نفسها التي يقرّر فيها كيف يُشغّل أسئلته: جلسةً حيّة الآن،
+   * أو مسابقةً تبقى أياماً. فالقراران جنباً إلى جنب.
+   */
+  function builderActions(draft, validate) {
+    return el('div', { class: 'row', style: { gap: '8px', justifyContent: 'center' } }, [
+      saveAction(draft, validate),
+      contestAction(draft, validate),
+    ]);
+  }
+
+  /** «🏆 مسابقة مفتوحة» — تبني المسابقة من مسودة المحرّر مباشرةً */
+  function contestAction(draft, validate) {
+    if (!state.user) return null;
+    const button = el('button', { class: 'btn ghost', type: 'button' }, t('ctLaunchBtn'));
+    button.addEventListener('click', async () => {
+      const problem = validate(draft);
+      if (problem) return toast(problem, 'bad');
+      const days = Number(prompt(t('ctAskDays'), '7'));
+      if (!days) return;
+      button.disabled = true;
+      button.textContent = t('hsaving');
+      try {
+        const res = await api('/api/contests', {
+          method: 'POST',
+          body: {
+            title: draft.title,
+            settings: draft.settings,
+            questions: draft.questions.map((q) => ({ ...q, options: (q.options || []).filter((o) => o.text.trim()) })),
+            days,
+          },
+        });
+        // ما أُسقط من الأسئلة يُقال صراحةً: مسابقةٌ أقصر مما بنى بلا سببٍ
+        // ظاهر تُفقده الثقة في العدد كلّه
+        if (res.dropped?.length) toast(t('ctDroppedNote', { n: res.dropped.length }), 'warn');
+        else toast(t('ctCreated'), 'ok');
+        location.hash = '#/contests';
+      } catch (err) {
+        toast(err.message, 'bad');
+        button.disabled = false;
+        button.textContent = t('ctLaunchBtn');
+      }
+    });
+    return button;
+  }
+
   function saveAction(draft, validate) {
     if (!state.user) {
       return el(
