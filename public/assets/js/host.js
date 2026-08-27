@@ -87,7 +87,6 @@
     if (hash === '/mine') return openMyActivities();
     if (hash === '/library') return openLibrary();
     if (hash === '/games') return openMyGames();
-    if (hash === '/contests') return openMyContests();
     if (hash === '/profile') return openProfile();
     const lib = hash.match(/^\/library\/([\w-]+)$/);
     if (lib) return openLibraryItem(lib[1]);
@@ -168,7 +167,6 @@
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
     menu.append(UI.MenuRow({ label: t('gbNav'), href: '#/game-ai' }));
-    menu.append(UI.MenuRow({ label: t('ctNav'), href: '#/contests' }));
     menu.append(UI.MenuRow({ label: t('hteacherGuide'), href: '/help.html', title: t('hteacherGuideTip') }));
 
     // إعدادات — السِمَة ليست هنا بل في الشريط بجوار EN، فلا يُبنى مبدّلان
@@ -315,7 +313,6 @@
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
-        UI.NavChip({ label: t('ctNav'), href: '#/contests' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
       ])
@@ -1304,7 +1301,6 @@
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
-        UI.NavChip({ label: t('ctNav'), href: '#/contests' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
         UI.NavChip({ label: t('hteacherGuide'), href: '/help.html' }),
@@ -1999,190 +1995,6 @@
     ]);
   }
 
-  // ------------------------------------------------ المسابقات المفتوحة
-
-  /**
-   * صفحة مسابقات المعلّم.
-   *
-   * المسابقة تُبنى من نشاطٍ محفوظ لا من الصفر: أسئلته جاهزةٌ ومجرَّبة،
-   * وبناءُ محرّرٍ ثانٍ لها يعني قاعدتَي تحقّقٍ تنحرف إحداهما عن الأخرى.
-   * والخادم يردّ ما لا يُصحَّح آلياً برسالةٍ تقول أيَّ أسئلةٍ يستبدل.
-   */
-  async function openMyContests() {
-    teardown();
-    codeBadge.classList.add('hidden');
-    connBadge.classList.add('hidden');
-    bar.innerHTML = '';
-    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
-
-    const user = state.user || (await loadAccount());
-    if (!user) {
-      location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/contests');
-      return;
-    }
-
-    let items = [];
-    let activities = [];
-    try {
-      [items, activities] = await Promise.all([
-        api('/api/contests').then((d) => d.items),
-        api('/api/activities').then((d) => d.activities).catch(() => []),
-      ]);
-    } catch (err) {
-      app.innerHTML = '';
-      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('ctMine') }), el('p', { class: 'muted small', text: err.message })]));
-      return;
-    }
-
-    app.innerHTML = '';
-    app.append(
-      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '#/' }, t('hDashboard')),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
-          el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
-        ]),
-      ])
-    );
-    app.append(el('h1', { style: { marginBottom: '4px' } }, [t('ctMine'), ' ', window.T.hintDot(t('ctIntro'))]));
-
-    app.append(newContestCard(activities));
-
-    if (!items.length) {
-      app.append(el('div', { class: 'card stack center' }, [el('div', { style: { fontSize: '2.2rem' }, text: '🏆' }), el('p', { class: 'muted', text: t('ctNoneYet') })]));
-      return;
-    }
-    app.append(el('div', { class: 'stack' }, items.map(contestCard)));
-  }
-
-  function newContestCard(activities) {
-    const pick = el('select', {}, [
-      el('option', { value: '', text: t('ctPickActivity') }),
-      ...activities.map((a) => el('option', { value: a.id, text: `${a.title} (${a.questionCount || 0})` })),
-    ]);
-    const days = el('input', { type: 'number', min: '1', max: '30', step: '1', value: '7', inputmode: 'numeric' });
-    const retries = el('input', { type: 'checkbox' });
-    const note = el('div', { class: 'muted small' });
-    const create = el('button', { class: 'btn accent', type: 'button' }, t('ctCreate'));
-
-    create.addEventListener('click', async () => {
-      if (!pick.value) return toast(t('ctPickActivity'), 'bad');
-      create.disabled = true;
-      note.textContent = '';
-      try {
-        /*
-         * النشاط يُجلب كاملاً هنا لا يُؤخذ من القائمة.
-         *
-         * `GET /api/activities` تُرجع **عدد** الأسئلة لا نصوصها — وهو
-         * الصواب لقائمةٍ قد تحمل عشرات الأنشطة. وكان هذا الزرّ يقرأ
-         * `source.questions` منها فيجدها `undefined`، فيصل الخادمَ طلبٌ
-         * بلا سؤال واحد فيردّ «أضف سؤالاً واحداً على الأقل». أي أن الإنشاء
-         * من هذه البطاقة لم يكن يعمل أصلاً.
-         */
-        const { activity } = await api('/api/activities/' + pick.value);
-        const res = await api('/api/contests', {
-          method: 'POST',
-          body: {
-            title: activity.title,
-            questions: activity.questions,
-            settings: activity.settings || {},
-            days: Number(days.value) || 7,
-            retries: retries.checked,
-          },
-        });
-        if (res.dropped?.length) toast(t('ctDroppedNote', { n: res.dropped.length }), 'warn');
-        else toast(t('ctCreated'), 'ok');
-        openMyContests();
-      } catch (err) {
-        // رسالة الخادم تسمّي الأسئلة المرفوضة، فهي أنفع من نصٍّ عامّ
-        note.textContent = err.message;
-        create.disabled = false;
-      }
-    });
-
-    return el('div', { class: 'card stack' }, [
-      el('h2', { style: { margin: 0 } }, [t('ctNewTitle'), ' ', window.T.hintDot(t('ctOnlyAuto'))]),
-      activities.length
-        ? el('div', { class: 'stack' }, [
-            el('label', {}, [el('span', { class: 'small', text: t('ctFromActivity') }), pick]),
-            el('label', {}, [el('span', { class: 'small', text: t('ctDays') }), days]),
-            el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
-              retries,
-              el('span', { class: 'small grow' }, [
-                el('strong', { text: t('ctRetriesLabel') }),
-                el('span', { class: 'muted small', style: { display: 'block' }, text: t('ctRetriesHint') }),
-              ]),
-            ]),
-            el('div', { class: 'row' }, [create]),
-            note,
-          ])
-        : /*
-           * لا نشاط محفوظ: طريقان لا جملةُ اعتذار. من لا نشاط له اليوم
-           * كان يقف أمام سطرٍ يقول «احفظ نشاطاً أولاً» ولا يقول أين — وهو
-           * أسوأ ما تفعله شاشةٌ بمن جاءها ليعمل.
-           */
-          el('div', { class: 'stack' }, [
-            el('p', { class: 'muted small', style: { margin: 0 }, text: t('ctNoActivities') }),
-            el('div', { class: 'row', style: { gap: '6px' } }, [
-              el('a', { class: 'btn accent grow', href: '#/ai' }, t('ctBuildWithAi')),
-              el('a', { class: 'btn ghost grow', href: '#/new' }, t('ctBuildByHand')),
-            ]),
-          ]),
-    ]);
-  }
-
-  function contestCard(c) {
-    const link = location.origin + '/contest.html#/c/' + c.id;
-    const statusLabel = { open: t('ctStatusOpen'), ended: t('ctStatusEnded'), closed: t('ctStatusClosed'), soon: t('ctStatusSoon') }[c.status] || c.status;
-
-    const toggle = el('button', { class: 'btn ghost sm', type: 'button' }, c.status === 'open' ? t('ctClose') : t('ctReopen'));
-    toggle.addEventListener('click', async () => {
-      toggle.disabled = true;
-      try {
-        // المفتوحة تُغلق، وما انتهى أو أُغلق يُمدَّد أسبوعاً بالرابط نفسه
-        await api('/api/contests/' + c.id, { method: 'PATCH', body: c.status === 'open' ? { closed: true } : { days: 7 } });
-        openMyContests();
-      } catch (err) {
-        toast(err.message, 'bad');
-        toggle.disabled = false;
-      }
-    });
-
-    const remove = el('button', { class: 'btn ghost sm danger', type: 'button' }, t('ctDelete'));
-    remove.addEventListener('click', async () => {
-      if (!confirm(t('ctDeleteConfirm', { title: c.title }))) return;
-      try {
-        await api('/api/contests/' + c.id, { method: 'DELETE' });
-        toast(t('ctDeleted'), 'ok');
-        openMyContests();
-      } catch (err) {
-        toast(err.message, 'bad');
-      }
-    });
-
-    return el('div', { class: 'card stack tight' }, [
-      el('div', { class: 'row between' }, [
-        el('strong', { text: c.title }),
-        el('span', { class: 'badge' + (c.status === 'open' ? '' : ' warn'), text: statusLabel }),
-      ]),
-      el('div', { class: 'row wrap', style: { gap: '6px' } }, [
-        el('span', { class: 'badge', text: t('ctQuestions', { n: c.questions }) }),
-        el('span', { class: 'badge', text: t('ctEntries', { n: c.entries }) }),
-      ]),
-      el('div', { class: 'row', style: { gap: '6px' } }, [
-        el('code', { class: 'grow link-box', text: link }),
-        shareButton(link, t('ctCopyLink')),
-      ]),
-      el('div', { class: 'row', style: { gap: '6px' } }, [
-        el('a', { class: 'btn primary sm', href: '/contest.html#/c/' + c.id + '/board', target: '_blank', rel: 'noopener' }, t('ctBoard')),
-        el('a', { class: 'btn ghost sm', href: '/contest.html#/c/' + c.id, target: '_blank', rel: 'noopener' }, t('ctOpenLink')),
-        toggle,
-        el('span', { class: 'grow' }),
-        remove,
-      ]),
-    ]);
-  }
-
   /**
    * صفحة «منشئ الألعاب التفاعلية» — تنتهي بلعبةٍ تُلعب هنا وتُنشر في قسم
    * ألعاب المعلّم.
@@ -2397,7 +2209,7 @@
     try {
       const startStage = state.builderStage;
       state.builderStage = null;
-      window.Builder.mount(root, onLaunch, builderActions, {
+      window.Builder.mount(root, onLaunch, saveAction, {
         startStage,
         teacherName: state.user?.name || '',
         // محفوظٌ في «نشاطاتي» أم في المتصفّح وحده — يقرّر تحذير المصمّم
@@ -2418,7 +2230,7 @@
       root.innerHTML = '';
       try {
         // مسار التعافي بعد إعادة تعيين المسودة: يبدأ من أوّل المعالج دائماً
-        window.Builder.mount(root, onLaunch, builderActions);
+        window.Builder.mount(root, onLaunch, saveAction);
         toast(t('htheDraftWasReset'), 'ok');
         return;
       } catch (err2) {
@@ -2431,56 +2243,6 @@
    * زر «حفظ في حسابي» داخل المحرّر.
    * بلا حساب يدعو لتسجيل الدخول بدل إخفاء الميزة، ومع نشاط مفتوح يحدّثه بدل تكراره.
    */
-  /**
-   * أفعالُ ما بعد الأسئلة: الحفظ في الحساب، وإطلاقُ مسابقةٍ مفتوحة.
-   *
-   * والمسابقة هنا لا في صفحةٍ أخرى: كان على المعلّم أن يحفظ نشاطاً، ثم
-   * يفتح «مسابقاتي»، ثم يختاره من قائمة — ثلاث شاشاتٍ لفعلٍ واحد. وهذه
-   * هي اللحظة نفسها التي يقرّر فيها كيف يُشغّل أسئلته: جلسةً حيّة الآن،
-   * أو مسابقةً تبقى أياماً. فالقراران جنباً إلى جنب.
-   */
-  function builderActions(draft, validate) {
-    return el('div', { class: 'row', style: { gap: '8px', justifyContent: 'center' } }, [
-      saveAction(draft, validate),
-      contestAction(draft, validate),
-    ]);
-  }
-
-  /** «🏆 مسابقة مفتوحة» — تبني المسابقة من مسودة المحرّر مباشرةً */
-  function contestAction(draft, validate) {
-    if (!state.user) return null;
-    const button = el('button', { class: 'btn ghost', type: 'button' }, t('ctLaunchBtn'));
-    button.addEventListener('click', async () => {
-      const problem = validate(draft);
-      if (problem) return toast(problem, 'bad');
-      const days = Number(prompt(t('ctAskDays'), '7'));
-      if (!days) return;
-      button.disabled = true;
-      button.textContent = t('hsaving');
-      try {
-        const res = await api('/api/contests', {
-          method: 'POST',
-          body: {
-            title: draft.title,
-            settings: draft.settings,
-            questions: draft.questions.map((q) => ({ ...q, options: (q.options || []).filter((o) => o.text.trim()) })),
-            days,
-          },
-        });
-        // ما أُسقط من الأسئلة يُقال صراحةً: مسابقةٌ أقصر مما بنى بلا سببٍ
-        // ظاهر تُفقده الثقة في العدد كلّه
-        if (res.dropped?.length) toast(t('ctDroppedNote', { n: res.dropped.length }), 'warn');
-        else toast(t('ctCreated'), 'ok');
-        location.hash = '#/contests';
-      } catch (err) {
-        toast(err.message, 'bad');
-        button.disabled = false;
-        button.textContent = t('ctLaunchBtn');
-      }
-    });
-    return button;
-  }
-
   function saveAction(draft, validate) {
     if (!state.user) {
       return el(

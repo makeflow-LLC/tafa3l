@@ -51,7 +51,7 @@ function sortGames(sort) {
 
 function fileDriver() {
   /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
-  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, contests: {}, contestEntries: {}, liveSessions: {}, classes: {}, meta: {} };
+  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, liveSessions: {}, classes: {}, meta: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -116,8 +116,6 @@ function fileDriver() {
           users: parsed.users || {},
           activities: parsed.activities || {},
           games: parsed.games || {},
-          contests: parsed.contests || {},
-          contestEntries: parsed.contestEntries || {},
           authSessions: parsed.authSessions || {},
           bankQuestions: parsed.bankQuestions || {},
           liveSessions: parsed.liveSessions || {},
@@ -390,41 +388,6 @@ function fileDriver() {
       g.ratingCount = (g.ratingCount || 0) + 1;
       schedule();
       return g;
-    },
-
-    /* ------------------------------------------------ المسابقات المفتوحة */
-
-    async listContests(ownerId) {
-      return Object.values(db.contests)
-        .filter((c) => c.ownerId === ownerId)
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map((c) => ({ ...c, entryCount: this.countEntriesSync(c.id) }));
-    },
-    /** عدّاد التسليمات — يُحسب من الجدول لا يُخزَّن، فلا ينحرف عن الحقيقة */
-    countEntriesSync(contestId) {
-      return Object.values(db.contestEntries).filter((e) => e.contestId === contestId).length;
-    },
-    async getContest(id) {
-      const c = db.contests[id];
-      return c ? { ...c, entryCount: this.countEntriesSync(id), ownerName: db.users[c.ownerId]?.name || '' } : null;
-    },
-    async saveContest(contest) {
-      db.contests[contest.id] = contest;
-      schedule();
-      return contest;
-    },
-    async deleteContest(id) {
-      delete db.contests[id];
-      for (const [key, entry] of Object.entries(db.contestEntries)) if (entry.contestId === id) delete db.contestEntries[key];
-      schedule();
-    },
-    async listContestEntries(contestId) {
-      return Object.values(db.contestEntries).filter((e) => e.contestId === contestId);
-    },
-    async addContestEntry(entry) {
-      db.contestEntries[entry.id] = entry;
-      schedule();
-      return entry;
     },
 
     async listBankQuestions(ownerId) {
@@ -719,26 +682,6 @@ function postgresDriver(connectionString) {
       // الترقية يصير فلسطينياً — فأولئك هم عملاء المنصة اليوم وكلهم من فلسطين.
       // والعلامة ضرورية لا زينة: بدونها يجري الترحيل عند كل إقلاع، فيختم
       // بفلسطين على حسابٍ سجّل قبل دقائق ولم يُسأل بعد — فلا يُسأل أبداً.
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS contests (
-          id TEXT PRIMARY KEY,
-          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          data JSONB NOT NULL,
-          created_at BIGINT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS contests_owner_idx ON contests (owner_id, created_at DESC);
-
-        -- التسليمات جدولٌ مستقلّ لا مصفوفةٌ داخل المسابقة: مسابقةٌ يدخلها
-        -- ثلاثمئة طالب لا يصحّ أن تُقرأ كاملةً وتُكتب كاملةً مع كل تسليم.
-        CREATE TABLE IF NOT EXISTS contest_entries (
-          id TEXT PRIMARY KEY,
-          contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
-          data JSONB NOT NULL,
-          at BIGINT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS contest_entries_contest_idx ON contest_entries (contest_id);
-      `);
-
       const done = await pool.query('SELECT 1 FROM app_meta WHERE key = $1', ['country_backfill_at']);
       if (!done.rowCount) {
         await pool.query("UPDATE users SET country = $1 WHERE country IS NULL OR country = ''", [countries.DEFAULT_COUNTRY]);
@@ -1023,52 +966,6 @@ function postgresDriver(connectionString) {
         [id, stars]
       );
       return rowToGame(rows[0]);
-    },
-
-    /* ------------------------------------------------ المسابقات المفتوحة */
-
-    async listContests(ownerId) {
-      const { rows } = await pool.query(
-        `SELECT c.id, c.data, c.created_at, COUNT(e.id) AS entry_count
-           FROM contests c LEFT JOIN contest_entries e ON e.contest_id = c.id
-          WHERE c.owner_id = $1
-       GROUP BY c.id ORDER BY c.created_at DESC`,
-        [ownerId]
-      );
-      return rows.map((r) => ({ ...r.data, id: r.id, entryCount: Number(r.entry_count) || 0 }));
-    },
-    async getContest(id) {
-      const { rows } = await pool.query(
-        `SELECT c.id, c.data, u.name AS owner_name,
-                (SELECT COUNT(*) FROM contest_entries e WHERE e.contest_id = c.id) AS entry_count
-           FROM contests c LEFT JOIN users u ON u.id = c.owner_id
-          WHERE c.id = $1`,
-        [id]
-      );
-      const r = rows[0];
-      return r ? { ...r.data, id: r.id, ownerName: r.owner_name || '', entryCount: Number(r.entry_count) || 0 } : null;
-    },
-    async saveContest(contest) {
-      const { id, ownerId, createdAt, entryCount, ownerName, ...data } = contest;
-      await pool.query(
-        `INSERT INTO contests (id, owner_id, data, created_at) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET data = $3`,
-        [id, ownerId, { ...data, ownerId }, createdAt]
-      );
-      return contest;
-    },
-    async deleteContest(id) {
-      // التسليمات تسقط معها بـON DELETE CASCADE
-      await pool.query('DELETE FROM contests WHERE id = $1', [id]);
-    },
-    async listContestEntries(contestId) {
-      const { rows } = await pool.query('SELECT id, data FROM contest_entries WHERE contest_id = $1', [contestId]);
-      return rows.map((r) => ({ ...r.data, id: r.id }));
-    },
-    async addContestEntry(entry) {
-      const { id, contestId, at, ...data } = entry;
-      await pool.query('INSERT INTO contest_entries (id, contest_id, data, at) VALUES ($1, $2, $3, $4)', [id, contestId, { ...data, contestId, at }, at]);
-      return entry;
     },
 
     async listBankQuestions(ownerId) {

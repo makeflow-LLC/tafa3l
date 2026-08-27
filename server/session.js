@@ -2288,20 +2288,4 @@ function normalizeAvatar(avatar) {
   };
 }
 
-module.exports = {
-  Session,
-  normalizeQuiz,
-  normalizeQuestion,
-  QUESTION_TYPES,
-  LIMITS,
-  REACTIONS,
-  READY_MS,
-  publicQuestion,
-  withoutVoters,
-  // تُصدَّر للمسابقات المفتوحة: العلامة الجزئية لـ«رتّب» و«طابِق» تُحسب
-  // بالقاعدة نفسها في الجلسة الحيّة وفي المسابقة، فلا نسختان تنحرفان
-  ratioCorrect,
-  SCORED_TYPES,
-  PARTIAL_TYPES,
-  CONTENT_TYPES,
-};
+module.exports = { Session, normalizeQuiz, normalizeQuestion, QUESTION_TYPES, LIMITS, REACTIONS, READY_MS, publicQuestion, withoutVoters };
