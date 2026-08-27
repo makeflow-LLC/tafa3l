@@ -40,6 +40,10 @@ const MAX_NAME = 40;
 const MAX_DAYS = 30;
 const DAY_MS = 86400000;
 
+/** ما يُقال حين تصل مسابقةٌ بلا سؤالٍ صالح — بلغة المسابقة لا الجلسة */
+const EMPTY_MESSAGE =
+  'هذه المسابقة بلا أسئلة. اختر نشاطاً فيه أسئلة، أو ابنِ أسئلتك في المحرّر ثم اضغط «🏆 مسابقة مفتوحة».';
+
 function fail(message, status = 400) {
   const err = new Error(message);
   err.status = status;
@@ -55,10 +59,22 @@ const clean = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().sl
  * شكلان للسؤال الواحد في المنصّة، ولا قاعدةُ تحقّقٍ تنحرف عن أختها.
  */
 function build(payload, ownerId) {
-  const quiz = normalizeQuiz({ title: payload?.title, settings: payload?.settings || {}, questions: payload?.questions });
+  /*
+   * `normalizeQuiz` تتكلّم بلغة الجلسة الحيّة: «أضف سؤالاً واحداً على
+   * الأقل» — وهي جملةٌ صحيحةٌ في المحرّر حيث يُضاف السؤال، وبلا معنى في
+   * شاشةٍ يختار فيها المعلّم نشاطاً جاهزاً. فنمسك عطلها ونقول ما ينقص
+   * بلغة المسابقات، ونترك ما عداه كما هو.
+   */
+  let quiz;
+  try {
+    quiz = normalizeQuiz({ title: payload?.title, settings: payload?.settings || {}, questions: payload?.questions });
+  } catch (err) {
+    if (!Array.isArray(payload?.questions) || !payload.questions.length) throw fail(EMPTY_MESSAGE);
+    throw err;
+  }
   const questions = (quiz.questions || []).filter((q) => !CONTENT_TYPES.has(q.type));
 
-  if (!questions.length) throw fail('المسابقة بلا أسئلة');
+  if (!questions.length) throw fail(EMPTY_MESSAGE);
   if (questions.length > MAX_QUESTIONS) throw fail(`لا تتجاوز ${MAX_QUESTIONS} سؤالاً في المسابقة الواحدة`);
 
   /*
