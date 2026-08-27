@@ -173,9 +173,11 @@ function fileDriver() {
       const u = db.users[userId];
       if (!u) return null;
       // undefined = «لم يُرسَل هذا الحقل»؛ السلسلة الفارغة = «امسحه»
-      for (const key of ['displayName', 'phone', 'photo', 'country']) {
+      for (const key of ['displayName', 'phone', 'photo', 'country', 'bio']) {
         if (patch[key] !== undefined) u[key] = patch[key] || '';
       }
+      // رايةٌ لا نصّ: الفارغُ فيها اختيارٌ صريح («لا تُظهر رقمي») لا حقلٌ لم يُملأ
+      if (patch.phonePublic !== undefined) u.phonePublic = Boolean(patch.phonePublic);
       schedule();
       const { photo, ...rest } = u;
       return { ...rest, hasPhoto: Boolean(photo) };
@@ -467,7 +469,7 @@ function postgresDriver(connectionString) {
    */
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
                         premium_until, trial_granted_at, created_at,
-                        games_built, games_month, games_month_key,
+                        games_built, games_month, games_month_key, bio, phone_public,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
 
   const userRow = (r) => ({
@@ -481,6 +483,9 @@ function postgresDriver(connectionString) {
     premiumUntil: r.premium_until == null ? null : Number(r.premium_until),
     trialGrantedAt: r.trial_granted_at == null ? null : Number(r.trial_granted_at),
     country: r.country || '',
+    bio: r.bio || '',
+    // غيرُ مضبوطةٍ = أظهره: حساباتٌ كتبت رقمها قبل وجود الراية لا يختفي رقمها فجأة
+    phonePublic: r.phone_public === null || r.phone_public === undefined ? true : Boolean(r.phone_public),
     gamesBuilt: Number(r.games_built) || 0,
     gamesMonth: Number(r.games_month) || 0,
     gamesMonthKey: r.games_month_key || '',
@@ -583,6 +588,11 @@ function postgresDriver(connectionString) {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS games_built BIGINT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS games_month BIGINT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS games_month_key TEXT;
+        -- بروفايل المعلّم: نبذةٌ يكتبها بنفسه، ورايةُ إظهار رقمه للعموم.
+        -- الرقم كان يظهر لمن كتبه بلا استئذان؛ والراية غيرُ مضبوطةٍ تعني
+        -- «أظهره» حفاظاً على سلوك الحسابات القائمة (NULL يُقرأ true أدناه).
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_public BOOLEAN;
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -726,10 +736,14 @@ function postgresDriver(connectionString) {
     async updateProfile(userId, patch) {
       const sets = [];
       const params = [userId];
-      for (const [key, col] of [['displayName', 'display_name'], ['phone', 'phone'], ['photo', 'photo'], ['country', 'country']]) {
+      for (const [key, col] of [['displayName', 'display_name'], ['phone', 'phone'], ['photo', 'photo'], ['country', 'country'], ['bio', 'bio']]) {
         if (patch[key] === undefined) continue;
         params.push(patch[key] || null);
         sets.push(`${col} = $${params.length}`);
+      }
+      if (patch.phonePublic !== undefined) {
+        params.push(Boolean(patch.phonePublic));
+        sets.push(`phone_public = $${params.length}`);
       }
       if (!sets.length) return this.findUserById(userId);
       const { rows } = await pool.query(

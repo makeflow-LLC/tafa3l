@@ -593,3 +593,58 @@ test('البلد يبقى بعد إعادة تحميل الصفحة — لا ي�
   assert.equal(me.data.premium.onSignupTrial, true, 'ومنحة التسجيل معروفةٌ بعد إعادة القراءة');
   assert.equal(me.data.user.country, 'PS', 'والبلد يصل مع المستخدم في كل طلب');
 });
+
+// ------------------------------------------------- نبذة المعلّم ورقمه
+
+test('النبذة تُحفظ وتظهر في البروفايل العلني', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: 'bio@example.com' });
+  {
+    const saved = await c.request('PUT', '/api/profile', { bio: '  معلّم علوم منذ عشر سنوات  ' });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.data.profile.bio, 'معلّم علوم منذ عشر سنوات');
+    const me = await c.request('GET', '/api/auth/me');
+    const pub = await c.request('GET', '/api/teachers/' + me.data.user.id);
+    assert.equal(pub.data.teacher.bio, 'معلّم علوم منذ عشر سنوات');
+  }
+});
+
+test('الرقم لا يخرج للعموم إلا بإذن المعلّم — والحجب على الخادم', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: 'phone-vis@example.com' });
+  {
+    const me = await c.request('GET', '/api/auth/me');
+    const id = me.data.user.id;
+
+    // حسابٌ كتب رقمه ولم يمسّ الراية: يبقى ظاهراً كما كان قبل وجودها
+    await c.request('PUT', '/api/profile', { phone: '+970591234567' });
+    let pub = await c.request('GET', '/api/teachers/' + id);
+    assert.equal(pub.data.teacher.phone, '+970591234567');
+
+    // أطفأها: لا يخرج الرقم من الخادم أصلاً
+    const off = await c.request('PUT', '/api/profile', { phonePublic: false });
+    assert.equal(off.data.profile.phonePublic, false);
+    assert.equal(off.data.profile.phone, '+970591234567', 'ويبقى محفوظاً لصاحبه');
+    pub = await c.request('GET', '/api/teachers/' + id);
+    assert.equal(pub.data.teacher.phone, '', 'ولا يُرسل إلى العموم');
+
+    // وأعادها
+    await c.request('PUT', '/api/profile', { phonePublic: true });
+    pub = await c.request('GET', '/api/teachers/' + id);
+    assert.equal(pub.data.teacher.phone, '+970591234567');
+  }
+});
+
+test('«ما ينقص البروفايل» دعوةٌ محسوبة لا رسالةٌ ثابتة', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: 'missing@example.com' });
+  {
+    const fresh = await c.request('GET', '/api/profile');
+    // حسابٌ جديد: أربعتها فارغة — والبلد يُسأل عنه في بوّابته لا هنا
+    assert.deepEqual([...fresh.data.profile.missing].sort(), ['bio', 'country', 'displayName', 'photo']);
+
+    await c.request('PUT', '/api/profile', { displayName: 'أ. سلمى', bio: 'نبذة', country: 'ps' });
+    const after = await c.request('GET', '/api/profile');
+    assert.deepEqual(after.data.profile.missing, ['photo'], 'ما مُلئ يخرج من القائمة');
+  }
+});

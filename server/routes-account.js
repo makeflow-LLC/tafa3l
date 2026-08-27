@@ -704,6 +704,8 @@ function accountRoutes(store) {
    */
   const MAX_GAME_BYTES = 2 * 1024 * 1024; // ٢ ميغابايت: تكفي لعبةً مكتفيةً بذاتها
   const MAX_GAMES_PER_USER = 60;
+  // نبذةٌ لا سيرة: فقرةٌ تُقرأ في بطاقةٍ لا صفحةٌ تُطوى
+  const MAX_BIO_CHARS = 300;
 
   /**
    * عدّادات الزيارة والتقييم بلا حساب: نمنع التكرار بالعنوان في الذاكرة.
@@ -805,14 +807,28 @@ function accountRoutes(store) {
   const MAX_PHOTO_BYTES = 200 * 1024;
 
   /** ما يراه صاحب الحساب عن نفسه */
+  /**
+   * إظهار الرقم اختيارٌ لا نتيجةَ ملئه.
+   *
+   * وغيابُ الراية يعني «أظهره»: حساباتٌ كتبت رقمها قبل وجودها كان رقمها
+   * ظاهراً، فلا يختفي بنشرةٍ لم يطلبوها.
+   */
+  const phoneIsPublic = (u) => u?.phonePublic !== false;
+
   const myProfile = (u) => ({
     id: u.id,
     name: u.name,
     displayName: u.displayName || '',
     phone: u.phone || '',
+    phonePublic: phoneIsPublic(u),
+    bio: u.bio || '',
     photo: Boolean(u.hasPhoto),
     country: u.country || '',
     publicName: publicNameOf(u),
+    // ما ينقص البروفايل — تسألُه الواجهة لتدعو المعلّم إلى إكماله بلا إلزام
+    missing: ['displayName', 'photo', 'bio', 'country'].filter((key) =>
+      key === 'photo' ? !u.hasPhoto : !String(u[key] || '').trim()
+    ),
   });
 
   /**
@@ -847,6 +863,8 @@ function accountRoutes(store) {
       const body = req.body || {};
       if (body.displayName !== undefined) patch.displayName = clean(body.displayName, 60);
       if (body.phone !== undefined) patch.phone = cleanPhone(body.phone);
+      if (body.phonePublic !== undefined) patch.phonePublic = body.phonePublic !== false;
+      if (body.bio !== undefined) patch.bio = clean(body.bio, MAX_BIO_CHARS);
       if (body.photo !== undefined) patch.photo = body.photo ? readCover(body.photo, MAX_PHOTO_BYTES) : '';
       // البلد يُقارَن بقائمة الخادم لا يُصدَّق كما وصل: رمزٌ خارجها يُرفض بلا
       // مساومة — الواجهة تقترح، والخادم يقرّر
@@ -871,7 +889,16 @@ function accountRoutes(store) {
     try {
       const u = await storage.get().findUserById(req.params.id);
       if (!u) return res.status(404).json({ error: 'المعلّم غير موجود' });
-      res.json({ teacher: { id: u.id, name: publicNameOf(u), photo: Boolean(u.hasPhoto), phone: u.phone || '' } });
+      res.json({
+        teacher: {
+          id: u.id,
+          name: publicNameOf(u),
+          photo: Boolean(u.hasPhoto),
+          bio: u.bio || '',
+          // الرقم يُحجب على الخادم لا في الواجهة: ما لا يُرسل لا يُكشف بفتح الأدوات
+          phone: phoneIsPublic(u) ? u.phone || '' : '',
+        },
+      });
     } catch (err) {
       res.status(500).json({ error: 'تعذّر جلب البروفايل' });
     }

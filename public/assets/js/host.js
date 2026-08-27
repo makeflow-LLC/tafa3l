@@ -154,7 +154,15 @@
 
     // تنقّل — الألعاب منها: الصفحات الداخلية لا تعرض شريط الشرائح، فبلا
     // سطرٍ هنا لا يبقى للمعلّم طريقٌ إلى قسم الألعاب من بروفايله أو باقاته
-    menu.append(UI.MenuRow({ label: t('hhome'), href: '#/' }));
+    /*
+     * «الرئيسية» تعني الصفحة الرئيسية للموقع، لا رئيسية اللوحة.
+     *
+     * كانت تذهب إلى ‎#/‎ — أي إلى داخل اللوحة نفسها — فمن أراد الخروج إلى
+     * الموقع لم يجد سطراً يخرجه، ومن ضغطها ظنّاً أنها تُخرجه بقي مكانه.
+     * فصارت سطرين: «الرئيسية» إلى الموقع، و«لوحتي» إلى ما كانت تذهب إليه.
+     */
+    menu.append(UI.MenuRow({ label: t('hhome'), href: '/' }));
+    menu.append(UI.MenuRow({ label: t('hDashboard'), href: '#/' }));
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
@@ -721,8 +729,41 @@
     );
     app.append(el('h1', { style: { marginBottom: '4px' } }, [t('profTitle'), ' ', window.T.hintDot(t('profIntro'))]));
 
+    /*
+     * دعوةٌ لا بوّابة: البروفايل كلّه اختياري، ومن تركه فارغاً يعمل حسابه
+     * كما هو. لكنّ من لا يعرف أن له صفحةً يراها طلابه لا يملؤها — فتُذكر
+     * مرّةً هنا، وتُسمّى الحقول الناقصة بالاسم بدل «أكمل بروفايلك».
+     */
+    if (profile.missing?.length) {
+      const names = profile.missing.map((key) => t('profMissing' + key.charAt(0).toUpperCase() + key.slice(1)));
+      app.append(
+        el('div', { class: 'note small stack tight', style: { marginBottom: '10px' } }, [
+          el('strong', { text: t('profCompleteTitle') }),
+          el('span', { text: t('profCompleteBody', { fields: names.join(t('listSep')) }) }),
+        ])
+      );
+    }
+
     const displayName = el('input', { maxlength: 60, placeholder: t('profNamePlaceholder'), value: profile.displayName });
     const phone = el('input', { type: 'tel', dir: 'ltr', maxlength: 24, placeholder: t('profPhonePlaceholder'), value: profile.phone });
+    const bio = el('textarea', { rows: 3, maxlength: 300, placeholder: t('profBioPlaceholder') });
+    bio.value = profile.bio || '';
+    /*
+     * إظهار الرقم رايةٌ مستقلّة عن كتابته.
+     *
+     * كان مَن يكتب رقمه للتواصل يجده منشوراً على صفحته للعموم بلا أن يُسأل.
+     * الآن يكتبه ويقرّر: يظهر أو لا يظهر. والحجب على الخادم لا في الواجهة —
+     * ما لا يُرسل لا يُكشف بفتح أدوات المتصفّح.
+     */
+    const phonePublic = el('input', { type: 'checkbox' });
+    phonePublic.checked = profile.phonePublic !== false;
+    const phoneRow = el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
+      phonePublic,
+      el('span', { class: 'small grow' }, [
+        el('strong', { text: t('profPhonePublic') }),
+        el('span', { class: 'muted small', style: { display: 'block' }, text: t('profPhonePublicHint') }),
+      ]),
+    ]);
     const country = window.T.countrySelect(profile.country || '');
     const face = el('div', { class: 'profile-face' });
     const photoInput = el('input', { type: 'file', accept: 'image/*' });
@@ -764,7 +805,13 @@
     save.addEventListener('click', async () => {
       save.disabled = true;
       try {
-        const body = { displayName: displayName.value, phone: phone.value, country: country.value };
+        const body = {
+          displayName: displayName.value,
+          phone: phone.value,
+          phonePublic: phonePublic.checked,
+          bio: bio.value,
+          country: country.value,
+        };
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
         toast(t('profSaved'), 'ok');
@@ -792,9 +839,14 @@
           displayName,
         ]),
         el('label', {}, [
+          el('span', { class: 'small' }, [t('profBio'), ' ', window.T.hintDot(t('profBioHint'))]),
+          bio,
+        ]),
+        el('label', {}, [
           el('span', { class: 'small' }, [t('profPhone'), ' ', window.T.hintDot(t('profPhoneHint'))]),
           phone,
         ]),
+        phoneRow,
         el('label', {}, [
           el('span', { class: 'small' }, [t('cnLabel'), ' ', window.T.hintDot(t('cnWhy'))]),
           country,
