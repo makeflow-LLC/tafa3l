@@ -232,6 +232,8 @@
     const side = el('div', { class: 'stack tight grow' }, [
       el('h1', { style: { margin: 0, fontSize: '1.45rem' } }, [t('gByTeacher', { name }), ' ', window.T.hintDot(t('gTeacherIntro'))]),
     ]);
+    // النبذة بخطّ المعلّم نفسه: سطرٌ يعرّف به قبل أن يفتح الطالب أول لعبة
+    if (who?.bio) side.append(el('p', { class: 'muted small', style: { margin: 0, whiteSpace: 'pre-wrap' }, text: who.bio }));
     if (who?.phone) {
       side.append(
         el('div', { class: 'row', style: { gap: '6px' } }, [

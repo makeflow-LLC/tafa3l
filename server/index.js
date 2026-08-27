@@ -17,6 +17,7 @@ const googleAuth = require('./google-auth');
 const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 const { aiRoutes } = require('./routes-ai');
 const { gameAiRoutes } = require('./routes-game-ai');
+const { contestRoutes } = require('./routes-contests');
 const ai = require('./ai');
 const premium = require('./premium');
 
@@ -58,7 +59,7 @@ app.use((_req, res, next) => {
  */
 const jsonLarge = express.json({ limit: '12mb' });
 const jsonSmall = express.json({ limit: '256kb' });
-const CARRIES_IMAGES = [/^\/api\/sessions(\/[^/]+)?$/, /^\/api\/activities(\/[^/]+)?$/, /^\/api\/bank(\/[^/]+)?$/, /^\/api\/games(\/[^/]+)?$/];
+const CARRIES_IMAGES = [/^\/api\/sessions(\/[^/]+)?$/, /^\/api\/activities(\/[^/]+)?$/, /^\/api\/bank(\/[^/]+)?$/, /^\/api\/games(\/[^/]+)?$/, /^\/api\/contests(\/[^/]+)?$/];
 app.use((req, res, next) => {
   const large = (req.method === 'POST' || req.method === 'PUT') && CARRIES_IMAGES.some((re) => re.test(req.path));
   return (large ? jsonLarge : jsonSmall)(req, res, next);
@@ -106,6 +107,7 @@ app.use('/api', auth.attachUser);
 app.use('/api', accountRoutes(store));
 app.use('/api', aiRoutes());
 app.use('/api', gameAiRoutes());
+app.use('/api', contestRoutes());
 
 // ------------------------------------------------------------------ واجهة REST
 

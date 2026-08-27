@@ -87,6 +87,7 @@
     if (hash === '/mine') return openMyActivities();
     if (hash === '/library') return openLibrary();
     if (hash === '/games') return openMyGames();
+    if (hash === '/contests') return openMyContests();
     if (hash === '/profile') return openProfile();
     const lib = hash.match(/^\/library\/([\w-]+)$/);
     if (lib) return openLibraryItem(lib[1]);
@@ -154,11 +155,20 @@
 
     // تنقّل — الألعاب منها: الصفحات الداخلية لا تعرض شريط الشرائح، فبلا
     // سطرٍ هنا لا يبقى للمعلّم طريقٌ إلى قسم الألعاب من بروفايله أو باقاته
-    menu.append(UI.MenuRow({ label: t('hhome'), href: '#/' }));
+    /*
+     * «الرئيسية» تعني الصفحة الرئيسية للموقع، لا رئيسية اللوحة.
+     *
+     * كانت تذهب إلى ‎#/‎ — أي إلى داخل اللوحة نفسها — فمن أراد الخروج إلى
+     * الموقع لم يجد سطراً يخرجه، ومن ضغطها ظنّاً أنها تُخرجه بقي مكانه.
+     * فصارت سطرين: «الرئيسية» إلى الموقع، و«لوحتي» إلى ما كانت تذهب إليه.
+     */
+    menu.append(UI.MenuRow({ label: t('hhome'), href: '/' }));
+    menu.append(UI.MenuRow({ label: t('hDashboard'), href: '#/' }));
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
     menu.append(UI.MenuRow({ label: t('gbNav'), href: '#/game-ai' }));
+    menu.append(UI.MenuRow({ label: t('ctNav'), href: '#/contests' }));
     menu.append(UI.MenuRow({ label: t('hteacherGuide'), href: '/help.html', title: t('hteacherGuideTip') }));
 
     // إعدادات — السِمَة ليست هنا بل في الشريط بجوار EN، فلا يُبنى مبدّلان
@@ -305,6 +315,7 @@
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
+        UI.NavChip({ label: t('ctNav'), href: '#/contests' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
       ])
@@ -721,8 +732,41 @@
     );
     app.append(el('h1', { style: { marginBottom: '4px' } }, [t('profTitle'), ' ', window.T.hintDot(t('profIntro'))]));
 
+    /*
+     * دعوةٌ لا بوّابة: البروفايل كلّه اختياري، ومن تركه فارغاً يعمل حسابه
+     * كما هو. لكنّ من لا يعرف أن له صفحةً يراها طلابه لا يملؤها — فتُذكر
+     * مرّةً هنا، وتُسمّى الحقول الناقصة بالاسم بدل «أكمل بروفايلك».
+     */
+    if (profile.missing?.length) {
+      const names = profile.missing.map((key) => t('profMissing' + key.charAt(0).toUpperCase() + key.slice(1)));
+      app.append(
+        el('div', { class: 'note small stack tight', style: { marginBottom: '10px' } }, [
+          el('strong', { text: t('profCompleteTitle') }),
+          el('span', { text: t('profCompleteBody', { fields: names.join(t('listSep')) }) }),
+        ])
+      );
+    }
+
     const displayName = el('input', { maxlength: 60, placeholder: t('profNamePlaceholder'), value: profile.displayName });
     const phone = el('input', { type: 'tel', dir: 'ltr', maxlength: 24, placeholder: t('profPhonePlaceholder'), value: profile.phone });
+    const bio = el('textarea', { rows: 3, maxlength: 300, placeholder: t('profBioPlaceholder') });
+    bio.value = profile.bio || '';
+    /*
+     * إظهار الرقم رايةٌ مستقلّة عن كتابته.
+     *
+     * كان مَن يكتب رقمه للتواصل يجده منشوراً على صفحته للعموم بلا أن يُسأل.
+     * الآن يكتبه ويقرّر: يظهر أو لا يظهر. والحجب على الخادم لا في الواجهة —
+     * ما لا يُرسل لا يُكشف بفتح أدوات المتصفّح.
+     */
+    const phonePublic = el('input', { type: 'checkbox' });
+    phonePublic.checked = profile.phonePublic !== false;
+    const phoneRow = el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
+      phonePublic,
+      el('span', { class: 'small grow' }, [
+        el('strong', { text: t('profPhonePublic') }),
+        el('span', { class: 'muted small', style: { display: 'block' }, text: t('profPhonePublicHint') }),
+      ]),
+    ]);
     const country = window.T.countrySelect(profile.country || '');
     const face = el('div', { class: 'profile-face' });
     const photoInput = el('input', { type: 'file', accept: 'image/*' });
@@ -764,7 +808,13 @@
     save.addEventListener('click', async () => {
       save.disabled = true;
       try {
-        const body = { displayName: displayName.value, phone: phone.value, country: country.value };
+        const body = {
+          displayName: displayName.value,
+          phone: phone.value,
+          phonePublic: phonePublic.checked,
+          bio: bio.value,
+          country: country.value,
+        };
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
         toast(t('profSaved'), 'ok');
@@ -792,9 +842,14 @@
           displayName,
         ]),
         el('label', {}, [
+          el('span', { class: 'small' }, [t('profBio'), ' ', window.T.hintDot(t('profBioHint'))]),
+          bio,
+        ]),
+        el('label', {}, [
           el('span', { class: 'small' }, [t('profPhone'), ' ', window.T.hintDot(t('profPhoneHint'))]),
           phone,
         ]),
+        phoneRow,
         el('label', {}, [
           el('span', { class: 'small' }, [t('cnLabel'), ' ', window.T.hintDot(t('cnWhy'))]),
           country,
@@ -1249,6 +1304,7 @@
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
+        UI.NavChip({ label: t('ctNav'), href: '#/contests' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
         UI.NavChip({ label: t('hteacherGuide'), href: '/help.html' }),
@@ -1940,6 +1996,170 @@
         way(t('aiWay3Title'), t('aiWay3Body')),
       ]),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('aiWaysNote') }),
+    ]);
+  }
+
+  // ------------------------------------------------ المسابقات المفتوحة
+
+  /**
+   * صفحة مسابقات المعلّم.
+   *
+   * المسابقة تُبنى من نشاطٍ محفوظ لا من الصفر: أسئلته جاهزةٌ ومجرَّبة،
+   * وبناءُ محرّرٍ ثانٍ لها يعني قاعدتَي تحقّقٍ تنحرف إحداهما عن الأخرى.
+   * والخادم يردّ ما لا يُصحَّح آلياً برسالةٍ تقول أيَّ أسئلةٍ يستبدل.
+   */
+  async function openMyContests() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    const user = state.user || (await loadAccount());
+    if (!user) {
+      location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/contests');
+      return;
+    }
+
+    let items = [];
+    let activities = [];
+    try {
+      [items, activities] = await Promise.all([
+        api('/api/contests').then((d) => d.items),
+        api('/api/activities').then((d) => d.activities).catch(() => []),
+      ]);
+    } catch (err) {
+      app.innerHTML = '';
+      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('ctMine') }), el('p', { class: 'muted small', text: err.message })]));
+      return;
+    }
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hDashboard')),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hmyActivities')),
+          el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
+        ]),
+      ])
+    );
+    app.append(el('h1', { style: { marginBottom: '4px' } }, [t('ctMine'), ' ', window.T.hintDot(t('ctIntro'))]));
+
+    app.append(newContestCard(activities));
+
+    if (!items.length) {
+      app.append(el('div', { class: 'card stack center' }, [el('div', { style: { fontSize: '2.2rem' }, text: '🏆' }), el('p', { class: 'muted', text: t('ctNoneYet') })]));
+      return;
+    }
+    app.append(el('div', { class: 'stack' }, items.map(contestCard)));
+  }
+
+  function newContestCard(activities) {
+    const pick = el('select', {}, [
+      el('option', { value: '', text: t('ctPickActivity') }),
+      ...activities.map((a) => el('option', { value: a.id, text: `${a.title} (${a.questions?.length || 0})` })),
+    ]);
+    const days = el('input', { type: 'number', min: '1', max: '30', step: '1', value: '7', inputmode: 'numeric' });
+    const retries = el('input', { type: 'checkbox' });
+    const note = el('div', { class: 'muted small' });
+    const create = el('button', { class: 'btn accent', type: 'button' }, t('ctCreate'));
+
+    create.addEventListener('click', async () => {
+      if (!pick.value) return toast(t('ctPickActivity'), 'bad');
+      const source = activities.find((a) => a.id === pick.value);
+      create.disabled = true;
+      note.textContent = '';
+      try {
+        const res = await api('/api/contests', {
+          method: 'POST',
+          body: {
+            title: source.title,
+            questions: source.questions,
+            settings: source.settings || {},
+            days: Number(days.value) || 7,
+            retries: retries.checked,
+          },
+        });
+        toast(t('ctCreated'), 'ok');
+        void res;
+        openMyContests();
+      } catch (err) {
+        // رسالة الخادم تسمّي الأسئلة المرفوضة، فهي أنفع من نصٍّ عامّ
+        note.textContent = err.message;
+        create.disabled = false;
+      }
+    });
+
+    return el('div', { class: 'card stack' }, [
+      el('h2', { style: { margin: 0 } }, [t('ctNewTitle'), ' ', window.T.hintDot(t('ctOnlyAuto'))]),
+      activities.length
+        ? el('div', { class: 'stack' }, [
+            el('label', {}, [el('span', { class: 'small', text: t('ctFromActivity') }), pick]),
+            el('label', {}, [el('span', { class: 'small', text: t('ctDays') }), days]),
+            el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
+              retries,
+              el('span', { class: 'small grow' }, [
+                el('strong', { text: t('ctRetriesLabel') }),
+                el('span', { class: 'muted small', style: { display: 'block' }, text: t('ctRetriesHint') }),
+              ]),
+            ]),
+            el('div', { class: 'row' }, [create]),
+            note,
+          ])
+        : el('p', { class: 'muted small', style: { margin: 0 }, text: t('ctNoActivities') }),
+    ]);
+  }
+
+  function contestCard(c) {
+    const link = location.origin + '/contest.html#/c/' + c.id;
+    const statusLabel = { open: t('ctStatusOpen'), ended: t('ctStatusEnded'), closed: t('ctStatusClosed'), soon: t('ctStatusSoon') }[c.status] || c.status;
+
+    const toggle = el('button', { class: 'btn ghost sm', type: 'button' }, c.status === 'open' ? t('ctClose') : t('ctReopen'));
+    toggle.addEventListener('click', async () => {
+      toggle.disabled = true;
+      try {
+        // المفتوحة تُغلق، وما انتهى أو أُغلق يُمدَّد أسبوعاً بالرابط نفسه
+        await api('/api/contests/' + c.id, { method: 'PATCH', body: c.status === 'open' ? { closed: true } : { days: 7 } });
+        openMyContests();
+      } catch (err) {
+        toast(err.message, 'bad');
+        toggle.disabled = false;
+      }
+    });
+
+    const remove = el('button', { class: 'btn ghost sm danger', type: 'button' }, t('ctDelete'));
+    remove.addEventListener('click', async () => {
+      if (!confirm(t('ctDeleteConfirm', { title: c.title }))) return;
+      try {
+        await api('/api/contests/' + c.id, { method: 'DELETE' });
+        toast(t('ctDeleted'), 'ok');
+        openMyContests();
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    });
+
+    return el('div', { class: 'card stack tight' }, [
+      el('div', { class: 'row between' }, [
+        el('strong', { text: c.title }),
+        el('span', { class: 'badge' + (c.status === 'open' ? '' : ' warn'), text: statusLabel }),
+      ]),
+      el('div', { class: 'row wrap', style: { gap: '6px' } }, [
+        el('span', { class: 'badge', text: t('ctQuestions', { n: c.questions }) }),
+        el('span', { class: 'badge', text: t('ctEntries', { n: c.entries }) }),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('code', { class: 'grow link-box', text: link }),
+        shareButton(link, t('ctCopyLink')),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('a', { class: 'btn primary sm', href: '/contest.html#/c/' + c.id + '/board', target: '_blank', rel: 'noopener' }, t('ctBoard')),
+        el('a', { class: 'btn ghost sm', href: '/contest.html#/c/' + c.id, target: '_blank', rel: 'noopener' }, t('ctOpenLink')),
+        toggle,
+        el('span', { class: 'grow' }),
+        remove,
+      ]),
     ]);
   }
 
