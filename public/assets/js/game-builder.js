@@ -135,7 +135,9 @@
 
     const thread = el('div', { class: 'chat-thread' });
     const stage = el('div', { class: 'stack' }); // المعاينة ثم النشر
-    const input = el('textarea', { class: 'chat-input', rows: 2, placeholder: t('gbPlaceholder'), maxlength: 6000 });
+    // `enterkeyhint` صريحة: بعض لوحات الجوال تكتب «إرسال» على المفتاح من تلقائها،
+    // فيضغطه المعلّم ظانّاً أنه يرسل ثم يجده نزل سطراً — أو العكس
+    const input = el('textarea', { class: 'chat-input', rows: 2, placeholder: t('gbPlaceholder'), maxlength: 6000, enterkeyhint: 'enter' });
     const sendBtn = el('button', { class: 'btn primary', type: 'button' }, t('gbSend'));
     const resetBtn = el('button', { class: 'btn ghost sm', type: 'button' }, t('gbNewChat'));
 
@@ -588,14 +590,16 @@
       }
     }
 
+    /*
+     * الإرسال بالزرّ وحده.
+     *
+     * كان Enter يرسل وShift+Enter ينزل سطراً — وهي عادة الحواسيب لا الهواتف:
+     * لوحةُ الجوال ليس فيها Shift+Enter أصلاً، فمن أراد سطراً ثانياً في وصف
+     * درسه أرسل رسالةً ناقصة. ووصف اللعبة نصٌّ طويل يُكتب على أسطر، لا سطرٌ
+     * واحد يُرسل بضغطة. فـEnter ينزل سطراً كما في أي محرّر نصّ، والإرسال
+     * بالزرّ — وهو ظاهرٌ دائماً إلى جانب الحقل.
+     */
     sendBtn.addEventListener('click', send);
-    input.addEventListener('keydown', (event) => {
-      // Enter يرسل، وShift+Enter سطر جديد
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        send();
-      }
-    });
     resetBtn.addEventListener('click', () => {
       if (state.busy) return;
       if (state.chatId) api('/api/game-ai/chat/' + state.chatId, { method: 'DELETE' }).catch(() => {});
