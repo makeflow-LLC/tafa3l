@@ -88,6 +88,9 @@ async function attachUser(req, _res, next) {
             gamesBuilt: user.gamesBuilt ?? 0,
             gamesMonth: user.gamesMonth ?? 0,
             gamesMonthKey: user.gamesMonthKey || '',
+            // معرّف الزبون عند Stripe: منه يُعرف أن لهذا الحساب اشتراكاً
+            // بالبطاقة يستطيع إدارته وإلغاءه بنفسه
+            stripeCustomerId: user.stripeCustomerId || '',
             // وجودُ الصورة فقط لا بايتاتها — كي يرسمها الشريط العلوي من مسارها
             hasPhoto: Boolean(user.hasPhoto),
             createdAt: user.createdAt,
