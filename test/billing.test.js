@@ -184,6 +184,8 @@ test('جلسة الدفع تحمل هوية المعلّم في ثلاثة مو�
     // بلا `STRIPE_PRICE_ID` يُرسل السعر صراحةً: ٥ دولارات شهرياً
     assert.equal(sent.get('line_items[0][price_data][unit_amount]'), '500');
     assert.equal(sent.get('line_items[0][price_data][recurring][interval]'), 'month');
+    // خانةُ كود الخصم: بدونها لا تُجرَّب المنصّة بكوبونٍ ولا تُطلق حملةُ خصم
+    assert.equal(sent.get('allow_promotion_codes'), 'true');
   } finally {
     mock.restore();
   }
@@ -344,4 +346,54 @@ test('فحصُ الصحة يفصل أعطال الدفع الثلاثة — بل
   const body = JSON.stringify(res.data);
   assert.equal(body.includes('sk_test_do_not_use'), false);
   assert.equal(body.includes('whsec_test_secret'), false);
+});
+
+
+/*
+ * كوبون ١٠٠٪ — وهو أوّل ما يُجرَّب به الدفع الحقيقي.
+ *
+ * الجلسة حينها لا تحمل `payment_status: 'paid'` بل `no_payment_required`،
+ * والفاتورة تُصدر بصفر. فمنطقٌ يشترط «مدفوعة» يترك أوّل مجرّبٍ للمنصّة بلا
+ * اشتراكٍ ويوهم صاحبها أن التفعيل معطوب — وهو يعمل.
+ */
+test('كوبون ١٠٠٪: جلسةٌ بلا دفعٍ مطلوب تفتح الاشتراك كالمدفوعة', async () => {
+  const email = 'coupon@example.com';
+  const mock = mockUpstream({ email });
+  try {
+    const c = client();
+    await login(c);
+    const user = await userOf(email);
+
+    const res = await sendEvent({
+      id: 'evt_free',
+      type: 'checkout.session.completed',
+      data: { object: { client_reference_id: user.id, customer: 'cus_free', payment_status: 'no_payment_required', mode: 'subscription' } },
+    });
+    assert.equal(res.status, 200);
+    assert.equal(premium.isPremium(await storage.get().findUserById(user.id)), true);
+  } finally {
+    mock.restore();
+  }
+});
+
+test('كوبون ١٠٠٪: فاتورةٌ بصفر تمدّد المدة كفاتورةٍ مدفوعة', async () => {
+  const email = 'coupon-inv@example.com';
+  const mock = mockUpstream({ email });
+  try {
+    const c = client();
+    await login(c);
+    const user = await userOf(email);
+    await storage.get().setStripeCustomer(user.id, 'cus_zero');
+
+    const end = Math.floor((Date.now() + 30 * DAY) / 1000);
+    const out = await billing.applyEvent({
+      type: 'invoice.paid',
+      // فاتورةُ الكوبون: صفرٌ مدفوع، ومدّةٌ كاملة
+      data: { object: { customer: 'cus_zero', amount_paid: 0, total: 0, lines: { data: [{ period: { end } }] } } },
+    });
+    assert.equal(out.handled, true);
+    assert.equal((await storage.get().findUserById(user.id)).premiumUntil, end * 1000 + billing.GRACE_MS);
+  } finally {
+    mock.restore();
+  }
 });
