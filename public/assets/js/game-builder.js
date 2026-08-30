@@ -27,6 +27,15 @@
   const SUBJECTS = (global.I18n && global.I18n.SUBJECTS) || [];
 
   const SETTINGS_KEY = 'tapio:gameAi:config';
+  /**
+   * نسخة الإعدادات المحفوظة.
+   *
+   * تغييرُ مبدأٍ لا يبلغ من حفظ إعداداته قبله: من فتح الشاشة يوماً كُتب في
+   * متصفّحه `timer: true` لأنه كان المبدأ، فيبقى مؤقّته يعمل ولو غيّرنا
+   * المبدأ عشر مرّات. فترقيةٌ واحدة تُنزل عليه المبدأ الجديد مرّةً، ثم يبقى
+   * اختياره بعدها اختياره.
+   */
+  const SETTINGS_VERSION = 2;
   const POLL_MS = 2500;
   /** بعدها لم يعد الأمر تفكيراً بل بناءً — فيتغيّر ما يقرأه المعلّم */
   const BUILDING_AFTER_S = 20;
@@ -57,7 +66,8 @@
    */
   const SWITCHES = [
     { name: 'hints', label: 'gbSwitchHints', hint: 'gbSwitchHintsHint' },
-    { name: 'timer', label: 'gbSwitchTimer', hint: 'gbSwitchTimerHint' },
+    // المؤقّت وحده مطفأٌ ابتداءً — انظر `server/game-builder.js` لسببه
+    { name: 'timer', label: 'gbSwitchTimer', hint: 'gbSwitchTimerHint', def: false },
     { name: 'sound', label: 'gbSwitchSound', hint: 'gbSwitchSoundHint' },
     { name: 'character', label: 'gbSwitchCharacter', hint: 'gbSwitchCharacterHint' },
     { name: 'celebrations', label: 'gbSwitchCelebrations', hint: 'gbSwitchCelebrationsHint' },
@@ -70,8 +80,9 @@
 
   const defaults = () => ({
     ...Object.fromEntries(KNOBS.map((k) => [k.name, k.def])),
-    // كل الميزات مُشغَّلة ابتداءً: من لم يمسّ الإعدادات يجد اللعبة كاملة
-    ...Object.fromEntries(SWITCHES.map((sw) => [sw.name, true])),
+    // الميزات مُشغَّلة ابتداءً إلا ما نُصّ على خلافه: من لم يمسّ الإعدادات
+    // يجد اللعبة كاملة، وبلا مؤقّت
+    ...Object.fromEntries(SWITCHES.map((sw) => [sw.name, sw.def !== false])),
   });
 
   function readSettings() {
@@ -85,6 +96,16 @@
       SWITCHES.forEach((sw) => {
         if (typeof saved[sw.name] === 'boolean') out[sw.name] = saved[sw.name];
       });
+      /*
+       * إعداداتٌ حُفظت قبل أن يصير المؤقّت مطفأً: تأخذ المبدأ الجديد مرّةً
+       * واحدة، وتحتفظ بكل ما ضبطه المعلّم من أرقامٍ وميزاتٍ أخرى.
+       *
+       * و`|| 0` ليست زينة: النسخة غائبةٌ في كل إعدادٍ قديم، و`Number(undefined)`
+       * هي `NaN`، و`NaN < 2` **خطأ** — فكانت الترقية لا تعمل على أحدٍ إطلاقاً،
+       * وهم كلُّ من تعنيهم.
+       */
+      const savedVersion = Number(saved.v) || 0;
+      if (savedVersion < SETTINGS_VERSION) out.timer = false;
     } catch {
       /* تخزين معطّل — الافتراضات تكفي */
     }
@@ -93,7 +114,7 @@
 
   function writeSettings(config) {
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(config));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...config, v: SETTINGS_VERSION }));
     } catch {
       /* تخزين معطّل */
     }
@@ -202,7 +223,9 @@
         state.config = defaults();
         writeSettings(state.config);
         KNOBS.forEach((knob) => (knobRows[knob.name].box.value = String(state.config[knob.name])));
-        SWITCHES.forEach((sw) => (boxes[sw.name].checked = true));
+        // من الحال لا من `true`: ليست كل الميزات مُشغَّلةً افتراضاً، وزرّ
+        // «استعادة الافتراضي» الذي يُشعل ما مبدؤه الإطفاء يكذب على المعلّم
+        SWITCHES.forEach((sw) => (boxes[sw.name].checked = state.config[sw.name] !== false));
         paintDependants();
         toast(t('gbKnobResetDone'), 'ok');
       });
