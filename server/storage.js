@@ -194,6 +194,8 @@ function fileDriver() {
       for (const key of ['displayName', 'phone', 'photo', 'country', 'bio']) {
         if (patch[key] !== undefined) u[key] = patch[key] || '';
       }
+      // الروابط قائمةٌ لا نصّ: الفارغةُ منها «امسح روابطي» لا «لم تُرسل»
+      if (patch.links !== undefined) u.links = Array.isArray(patch.links) ? patch.links : [];
       // رايةٌ لا نصّ: الفارغُ فيها اختيارٌ صريح («لا تُظهر رقمي») لا حقلٌ لم يُملأ
       if (patch.phonePublic !== undefined) u.phonePublic = Boolean(patch.phonePublic);
       schedule();
@@ -488,7 +490,7 @@ function postgresDriver(connectionString) {
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
                         premium_until, trial_granted_at, created_at,
                         games_built, games_month, games_month_key, bio, phone_public,
-                        stripe_customer_id,
+                        stripe_customer_id, links,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
 
   const userRow = (r) => ({
@@ -509,6 +511,7 @@ function postgresDriver(connectionString) {
     gamesMonth: Number(r.games_month) || 0,
     gamesMonthKey: r.games_month_key || '',
     stripeCustomerId: r.stripe_customer_id || '',
+    links: Array.isArray(r.links) ? r.links : [],
     createdAt: Number(r.created_at),
   });
 
@@ -617,6 +620,9 @@ function postgresDriver(connectionString) {
         -- حسابها، فهي لا تحمل شيئاً من معرّفاتنا. وفهرسٌ عليه لأنه يُبحث به
         -- في كل خطّاف دفع.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+        -- روابط المعلّم على وسائل التواصل: قائمةُ نصوصٍ لا عمودان، فالعدد
+        -- المسموح قرارُ منتجٍ يتغيّر ولا يصحّ أن تتغيّر معه بنية الجدول.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS links JSONB;
         CREATE INDEX IF NOT EXISTS users_stripe_customer_idx ON users(stripe_customer_id);
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
@@ -776,6 +782,10 @@ function postgresDriver(connectionString) {
         if (patch[key] === undefined) continue;
         params.push(patch[key] || null);
         sets.push(`${col} = $${params.length}`);
+      }
+      if (patch.links !== undefined) {
+        params.push(JSON.stringify(Array.isArray(patch.links) ? patch.links : []));
+        sets.push(`links = $${params.length}::jsonb`);
       }
       if (patch.phonePublic !== undefined) {
         params.push(Boolean(patch.phonePublic));

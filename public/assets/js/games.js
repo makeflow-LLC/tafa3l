@@ -234,6 +234,25 @@
     ]);
     // النبذة بخطّ المعلّم نفسه: سطرٌ يعرّف به قبل أن يفتح الطالب أول لعبة
     if (who?.bio) side.append(el('p', { class: 'muted small', style: { margin: 0, whiteSpace: 'pre-wrap' }, text: who.bio }));
+    /*
+     * روابط المعلّم — والوسم فيها ليس تفصيلاً:
+     *
+     * `rel="noopener"` يمنع الصفحة المفتوحة من التحكّم بصفحتنا، و`nofollow`
+     * و`ugc` يقولان لمحرّكات البحث إن هذا رابطٌ كتبه مستخدمٌ لا تزكيةٌ منّا —
+     * وبدونهما تصير صفحات معلّمينا مزرعةَ روابطَ يستغلّها أول من ينتبه.
+     * والبروتوكول محسومٌ في الخادم: ما ليس http(s) لا يصل إلى هنا أصلاً.
+     */
+    if (who?.links?.length) {
+      side.append(
+        el(
+          'div',
+          { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } },
+          who.links.map((link) =>
+            el('a', { class: 'btn ghost sm', href: link.url, target: '_blank', rel: 'noopener noreferrer nofollow ugc' }, `${link.icon} ${link.label}`)
+          )
+        )
+      );
+    }
     if (who?.phone) {
       side.append(
         el('div', { class: 'row', style: { gap: '6px' } }, [

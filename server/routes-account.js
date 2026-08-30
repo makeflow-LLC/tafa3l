@@ -11,6 +11,7 @@ const auth = require('./auth');
 const google = require('./google-auth');
 const premium = require('./premium');
 const countries = require('./countries');
+const social = require('./social-links');
 const { normalizeQuiz } = require('./session');
 const gameCover = require('./game-cover');
 const { sendGameFrame } = require('./game-frame');
@@ -824,6 +825,7 @@ function accountRoutes(store) {
     bio: u.bio || '',
     photo: Boolean(u.hasPhoto),
     country: u.country || '',
+    links: Array.isArray(u.links) ? u.links : [],
     publicName: publicNameOf(u),
     // ما ينقص البروفايل — تسألُه الواجهة لتدعو المعلّم إلى إكماله بلا إلزام
     missing: ['displayName', 'photo', 'bio', 'country'].filter((key) =>
@@ -873,6 +875,8 @@ function accountRoutes(store) {
         if (body.country && !code) return res.status(400).json({ error: 'اختر بلداً من القائمة' });
         patch.country = code;
       }
+      // الروابط تُنشر على صفحةٍ يفتحها طلاب: `http(s)` وحدهما يمرّان (social-links.js)
+      if (body.links !== undefined) patch.links = social.cleanList(body.links);
       const updated = await storage.get().updateProfile(req.user.id, patch);
       if (!updated) return res.status(404).json({ error: 'الحساب غير موجود' });
       res.json({ profile: myProfile(updated) });
@@ -895,6 +899,8 @@ function accountRoutes(store) {
           name: publicNameOf(u),
           photo: Boolean(u.hasPhoto),
           bio: u.bio || '',
+          // ومعها منصّةُ كل رابط مستنتجةً من نطاقه — الواجهة تعرض ولا تخمّن
+          links: social.publicList(u.links),
           // الرقم يُحجب على الخادم لا في الواجهة: ما لا يُرسل لا يُكشف بفتح الأدوات
           phone: phoneIsPublic(u) ? u.phone || '' : '',
         },

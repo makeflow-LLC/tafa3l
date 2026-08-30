@@ -648,3 +648,76 @@ test('«ما ينقص البروفايل» دعوةٌ محسوبة لا رسال
     assert.deepEqual(after.data.profile.missing, ['photo'], 'ما مُلئ يخرج من القائمة');
   }
 });
+
+// -------------------------------------------- روابط المعلّم على التواصل
+
+/*
+ * هذه الروابط تُنشر على صفحةٍ يفتحها **طلاب**، فالتحقّق منها أمنٌ لا ترتيب:
+ * `javascript:` في حقلٍ يُعرض بوسم `a` شفرةٌ تعمل بنقرة طالب. والقاعدة قائمةٌ
+ * بيضاء للبروتوكول لا سوداء لما يُمنع — فما لا يُعرف يُرفض لا يُصحَّح.
+ */
+test('الروابط تُحفظ وتظهر في الصفحة العامّة ومعها منصّاتها', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: 'links@example.com' });
+
+  const saved = await c.request('PUT', '/api/profile', {
+    links: ['https://www.facebook.com/teacher.page', 'instagram.com/teacher'],
+  });
+  assert.equal(saved.status, 200);
+  // من كتب النطاق وحده قصد رابطاً: `https` تُضاف له بدل أن يُرفض
+  assert.deepEqual(saved.data.profile.links, ['https://www.facebook.com/teacher.page', 'https://instagram.com/teacher']);
+
+  const me = await c.request('GET', '/api/auth/me');
+  const pub = await c.request('GET', '/api/teachers/' + me.data.user.id);
+  assert.deepEqual(
+    pub.data.teacher.links.map((l) => l.platform),
+    ['facebook', 'instagram'],
+    'المنصّة تُستنتج من النطاق — لا يكتبها المعلّم'
+  );
+  assert.equal(pub.data.teacher.links[0].url, 'https://www.facebook.com/teacher.page');
+  assert.ok(pub.data.teacher.links[0].label);
+});
+
+test('رابطٌ ببروتوكولٍ آخر يُرفض — ولا يُنقذه أن يبدأ بنطاقٍ معروف', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: 'evil-link@example.com' });
+
+  for (const bad of [
+    'javascript:alert(1)',
+    'JaVaScRiPt:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    // ومن كتب بروتوكولاً لا نعرفه لا نضيف له `https` أمامه فنمرّره
+    'javascript:void(0)//facebook.com',
+    'file:///etc/passwd',
+  ]) {
+    const res = await c.request('PUT', '/api/profile', { links: [bad] });
+    assert.equal(res.status, 400, `مرفوض: ${bad}`);
+  }
+
+  const me = await c.request('GET', '/api/auth/me');
+  const pub = await c.request('GET', '/api/teachers/' + me.data.user.id);
+  assert.deepEqual(pub.data.teacher.links, [], 'ولم يُكتب شيءٌ منها');
+});
+
+test('رابطان لا أكثر، بلا تكرار، والفارغُ يمسح', async () => {
+  const c = client();
+  await loginViaGoogle(c, { email: 'many-links@example.com' });
+
+  const many = await c.request('PUT', '/api/profile', {
+    links: ['https://x.com/a', 'https://t.me/b', 'https://youtube.com/@c', 'https://x.com/a'],
+  });
+  assert.equal(many.data.profile.links.length, 2, 'رابطان على الأكثر');
+  assert.deepEqual(many.data.profile.links, ['https://x.com/a', 'https://t.me/b']);
+
+  const dedupe = await c.request('PUT', '/api/profile', { links: ['https://t.me/b', 'https://t.me/b'] });
+  assert.deepEqual(dedupe.data.profile.links, ['https://t.me/b'], 'ولا يُكتب رابطٌ مرّتين');
+
+  const cleared = await c.request('PUT', '/api/profile', { links: [] });
+  assert.deepEqual(cleared.data.profile.links, [], 'والقائمة الفارغة تمسح');
+
+  // وحقلٌ لم يُرسل لا يمسح شيئاً — البروفايل يُحفظ حقلاً حقلاً
+  await c.request('PUT', '/api/profile', { links: ['https://t.me/again'] });
+  const untouched = await c.request('PUT', '/api/profile', { bio: 'نبذة' });
+  assert.deepEqual(untouched.data.profile.links, ['https://t.me/again']);
+});

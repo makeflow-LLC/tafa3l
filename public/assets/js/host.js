@@ -766,6 +766,16 @@
         el('span', { class: 'muted small', style: { display: 'block' }, text: t('profPhonePublicHint') }),
       ]),
     ]);
+    /*
+     * رابطان لا حقلٌ واحد بفواصل: المعلّم يلصق رابطاً في خانةٍ فارغة ويرى
+     * أين وضعه. والمنصّة تُستنتج من النطاق في الخادم، فلا يُسأل «أيّ منصّة
+     * هذه؟» — من ألصق رابط إنستغرام أجاب عن السؤال بإلصاقه.
+     */
+    const savedLinks = Array.isArray(profile.links) ? profile.links : [];
+    const linkInputs = [0, 1].map((i) =>
+      el('input', { type: 'url', dir: 'ltr', maxlength: 200, placeholder: t(i ? 'profLink2Placeholder' : 'profLink1Placeholder'), value: savedLinks[i] || '' })
+    );
+
     const country = window.T.countrySelect(profile.country || '');
     const face = el('div', { class: 'profile-face' });
     const photoInput = el('input', { type: 'file', accept: 'image/*' });
@@ -813,6 +823,7 @@
           phonePublic: phonePublic.checked,
           bio: bio.value,
           country: country.value,
+          links: linkInputs.map((box) => box.value.trim()).filter(Boolean),
         };
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
@@ -851,6 +862,10 @@
           phone,
         ]),
         phoneRow,
+        el('div', { class: 'stack tight' }, [
+          el('span', { class: 'small' }, [t('profLinks'), ' ', window.T.hintDot(t('profLinksHint'))]),
+          ...linkInputs,
+        ]),
         el('label', {}, [
           el('span', { class: 'small' }, [t('cnLabel'), ' ', window.T.hintDot(t('cnWhy'))]),
           country,
