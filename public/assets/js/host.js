@@ -919,6 +919,14 @@
         toast(err.message, 'bad');
       }
     });
+    /*
+     * المشاركة مطويّةٌ خلف زرّ: خمسة أزرارٍ لكل لعبة في قائمةٍ فيها عشرون
+     * لعبة جدارٌ لا واجهة. ومن أرادها فتحها، ومن يعدّل ألعابه لا تزاحمه.
+     */
+    const shareRow = el('div', { class: 'hidden' }, window.T.shareBox(window.T.gameShareUrl(game.id), game.title));
+    const shareBtn = el('button', { class: 'btn ghost sm', type: 'button' }, t('gShareBtn'));
+    shareBtn.addEventListener('click', () => shareRow.classList.toggle('hidden'));
+
     return el('div', { class: 'card stack tight' }, [
       picker,
       el('div', { class: 'row', style: { gap: '10px', alignItems: 'flex-start' } }, [
@@ -943,10 +951,11 @@
       el('div', { class: 'row', style: { gap: '6px' } }, [
         el('a', { class: 'btn primary sm', href: '/games.html#/g/' + game.id }, t('gOpen')),
         changeCover,
-        shareButton(location.origin + '/games.html#/g/' + game.id, t('gCopyLink')),
+        shareBtn,
         el('span', { class: 'grow' }),
         remove,
       ]),
+      shareRow,
     ]);
   }
 

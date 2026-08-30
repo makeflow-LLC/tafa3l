@@ -19,13 +19,14 @@ const { aiRoutes } = require('./routes-ai');
 const { gameAiRoutes } = require('./routes-game-ai');
 const billing = require('./routes-billing');
 const stripeApi = require('./stripe');
+const sharePage = require('./share-page');
 const ai = require('./ai');
 const premium = require('./premium');
 
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun', 'homeworkDueDate', 'classRosters', 'darkModeEverywhere', 'cardPayments'],
+  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun', 'homeworkDueDate', 'classRosters', 'darkModeEverywhere', 'cardPayments', 'gameSocialShare'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -357,6 +358,26 @@ app.get('/j/:code', (req, res) => {
  */
 app.get('/c', (_req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'join.html'));
+});
+
+/**
+ * رابطُ مشاركة اللعبة — قصيرٌ يُلصق في واتساب فتظهر معه صورةُ اللعبة واسمها.
+ * التفصيل في `server/share-page.js`، وخلاصته أن ما بعد `#` لا يصل الخادم
+ * فلا يستطيع زاحفُ التواصل أن يعرف أي لعبةٍ يصف.
+ */
+app.get('/g/:id', async (req, res) => {
+  try {
+    const game = await storage.get().getGame(String(req.params.id));
+    if (!game) return res.status(404).sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+    const host = String(req.get('host') || '');
+    const origin = /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `${req.secure ? 'https' : req.protocol || 'http'}://${host}` : '';
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // خمسُ دقائق: الزواحف تعيد الطلب كثيراً، وعنوانُ اللعبة قد يُعدَّل
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(sharePage.gameSharePage(game, origin, BUILD.version));
+  } catch (err) {
+    res.status(404).sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  }
 });
 
 app.get('/c/:code', (req, res) => {
