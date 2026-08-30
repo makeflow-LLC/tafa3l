@@ -168,7 +168,7 @@ test('جلسة الدفع تحمل هوية المعلّم في ثلاثة مو�
     const user = await userOf(email);
     await storage.get().updateProfile(user.id, { country: 'JO' });
 
-    const res = await c.request('POST', '/api/billing/checkout', { lang: 'ar' });
+    const res = await c.request('POST', '/api/billing/checkout', {});
     assert.equal(res.status, 200);
     assert.match(res.data.url, /^https:\/\/checkout\.stripe\.com\//);
 
@@ -186,6 +186,12 @@ test('جلسة الدفع تحمل هوية المعلّم في ثلاثة مو�
     assert.equal(sent.get('line_items[0][price_data][recurring][interval]'), 'month');
     // خانةُ كود الخصم: بدونها لا تُجرَّب المنصّة بكوبونٍ ولا تُطلق حملةُ خصم
     assert.equal(sent.get('allow_promotion_codes'), 'true');
+    /*
+     * `auto` لا `ar`: العربية ليست في لغات Stripe Checkout، وإرسالها كان
+     * يردّ ٤٠٠ على الجلسة كلّها — أي أن الدفع كان مقطوعاً على كل قارئٍ
+     * بالعربية، وهم جمهور المنصّة. فلا يُرسَل من هنا رمزُ لغةٍ أبداً.
+     */
+    assert.equal(sent.get('locale'), 'auto');
   } finally {
     mock.restore();
   }

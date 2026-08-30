@@ -108,9 +108,9 @@ async function call(pathname, body, opts = {}) {
  * ومعرّفٌ في `metadata` ومثلُه في بيانات الاشتراك. فالخطّاف الذي يصل بعد
  * شهرٍ (فاتورةُ تجديد) لا يحمل الجلسة أصلاً، ووسمُ الاشتراك هو ما يبقى معه.
  *
- * @param {{user:object, origin:string, priceUsd:number, lang?:string}} opts
+ * @param {{user:object, origin:string, priceUsd:number}} opts
  */
-async function createCheckout({ user, origin, priceUsd, lang }) {
+async function createCheckout({ user, origin, priceUsd }) {
   const price = priceId();
   const item = price
     ? { price, quantity: 1 }
@@ -134,7 +134,16 @@ async function createCheckout({ user, origin, priceUsd, lang }) {
       cancel_url: `${origin}/host.html?paid=0#/pay`,
       client_reference_id: user.id,
       customer_email: user.email,
-      locale: lang === 'en' ? 'en' : 'ar',
+      /*
+       * `auto` لا لغةَ نختارها.
+       *
+       * كنّا نرسل `ar` لكل معلّمٍ يقرأ بالعربية، و**Stripe Checkout لا يدعم
+       * العربية أصلاً**: ليست في قائمة لغاته، فيردّ ٤٠٠ على الجلسة كلّها.
+       * أي أن الدفع كان مقطوعاً على كل من واجهته بالعربية — وهم جمهور
+       * المنصّة كلّه تقريباً. و`auto` تجعل Stripe يقرأ لغة المتصفّح ويختار
+       * منها ما يدعمه، فلا تُرفض جلسةٌ بسبب لغةٍ مهما كانت لغة القارئ.
+       */
+      locale: 'auto',
       metadata: { userId: user.id },
       subscription_data: { metadata: { userId: user.id } },
       allow_promotion_codes: 'true',

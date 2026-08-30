@@ -41,6 +41,22 @@ function originOf(req) {
   return `${proto}://${req.get('host')}`;
 }
 
+/**
+ * سببُ العطل كما قاله Stripe — للمالك وحده.
+ *
+ * رسالة Stripe إنجليزية موجّهة للمطوّر («Invalid locale»، «No such price»)
+ * فلا تُعرض لمعلّم. لكن إخفاءها عن **المالك** يعني أن كل عطلٍ في الدفع رحلةٌ
+ * إلى سجلّات الاستضافة، وقد لا يكون فيها سجلّ. فيراها هو في ردّ الطلب نفسه،
+ * ومعها وضعُ المفتاح. ولا سرّ فيها: Stripe لا يُعيد المفتاح في رسائل خطئه.
+ *
+ * ويُسجَّل الخطأ للجميع على أي حال — المالك قد لا يكون هو المتعثّر.
+ */
+function stripeDetail(err, user) {
+  if (!err?.detail) return {};
+  console.error(`Stripe (${stripe.mode()}):`, err.detail);
+  return premium.isAdmin(user) ? { detail: err.detail, mode: stripe.mode() } : {};
+}
+
 function billingRoutes() {
   const router = express.Router();
 
@@ -71,14 +87,10 @@ function billingRoutes() {
         user: req.user,
         origin: originOf(req),
         priceUsd: premium.PLAN.priceUsd,
-        lang: req.body?.lang === 'en' ? 'en' : 'ar',
       });
       res.json({ url: session.url });
     } catch (err) {
-      // وضعُ المفتاح مع الخطأ: «No such price» وحدها لا تدلّ على أن المفتاح
-      // تجريبيّ والسعر حقيقيّ — وهو أشيع سببٍ لها
-      if (err.detail) console.error(`Stripe (${stripe.mode()}):`, err.detail);
-      res.status(err.status || 500).json({ error: err.message || 'تعذّر بدء الدفع' });
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر بدء الدفع', ...stripeDetail(err, req.user) });
     }
   });
 
@@ -90,8 +102,7 @@ function billingRoutes() {
       const session = await stripe.createPortal({ customerId: customer, origin: originOf(req) });
       res.json({ url: session.url });
     } catch (err) {
-      if (err.detail) console.error(`Stripe (${stripe.mode()}):`, err.detail);
-      res.status(err.status || 500).json({ error: err.message || 'تعذّر فتح بوّابة الاشتراك' });
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر فتح بوّابة الاشتراك', ...stripeDetail(err, req.user) });
     }
   });
 
