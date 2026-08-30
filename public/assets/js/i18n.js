@@ -1187,6 +1187,7 @@
       payCardDone: '🎉 اشتراكك مفعّل الآن',
       payCardDoneBody: 'كل ميزات بريميوم مفتوحة أمامك — ابدأ بما شئت.',
       payCardSlow: 'وصلَنا دفعُك وسيُفعَّل حسابك خلال دقائق. حدّث الصفحة بعد قليل، وإن تأخّر راسلنا على واتساب.',
+      payCardSignedOut: 'دفعُك محفوظ ولم يضع — لكن هذه الصفحة لا ترى جلستك. سجّل الدخول بالحساب نفسه لترى اشتراكك مفعّلاً.',
       payCardCancelled: 'أُلغيت عملية الدفع ولم يُخصم منك شيء — تستطيع المحاولة متى شئت.',
 
       hbackToTheEditor: '⟩ العودة للمحرّر',
@@ -2663,6 +2664,7 @@
       payCardDone: '🎉 Your subscription is live',
       payCardDoneBody: 'Every premium feature is open to you — start wherever you like.',
       payCardSlow: 'Your payment reached us and the account will be switched on within minutes. Refresh shortly, and message us on WhatsApp if it takes longer.',
+      payCardSignedOut: 'Your payment is safe and nothing was lost — but this page cannot see your session. Sign in with the same account to see your subscription.',
       payCardCancelled: 'The payment was cancelled and nothing was charged — you can try again whenever you like.',
 
       hbackToTheEditor: '⟩ Back to the editor',
