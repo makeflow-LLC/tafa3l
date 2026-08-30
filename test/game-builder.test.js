@@ -234,13 +234,23 @@ test('خادمٌ بلا مفتاح يقول ذلك صراحةً بدل أن ين
 
 const prompt = (over) => builder.systemPrompt(builder.readConfig(over));
 
-test('المبدأ: كل الميزات مُشغَّلة، فمن لم يمسّ الإعدادات يجد اللعبة كاملة', () => {
+test('المبدأ: الميزات مُشغَّلة إلا المؤقّت، فمن لم يمسّ الإعدادات يجد لعبةً كاملة بلا سباق', () => {
   const cfg = builder.readConfig({});
-  for (const name of Object.keys(builder.SWITCHES)) assert.equal(cfg[name], true, name);
+  for (const [name, spec] of Object.entries(builder.SWITCHES)) assert.equal(cfg[name], spec.def, name);
+  assert.equal(cfg.timer, false, 'المؤقّت وحده مطفأٌ ابتداءً');
   const p = prompt({});
   assert.match(p, /Hint button suited to the activity, costing 5 points/);
   assert.match(p, /CHARACTER: one simple animated SVG companion/);
+  // ومن لم يطلب مؤقّتاً لا يُبنى له: التوتّر من الأرواح والسلاسل لا من عدّاد
+  assert.match(p, /THE TIMER IS OFF/);
+  assert.equal(/countdown \/ limited lives/.test(p), false, 'ولا يُعرض العدّاد حتى في مجموعة أنظمة التوتّر');
+});
+
+test('من طلب المؤقّت صراحةً بُني له — الإطفاء مبدأٌ لا منع', () => {
+  assert.equal(builder.readConfig({ timer: true }).timer, true);
+  const p = prompt({ timer: true });
   assert.match(p, /countdown \/ limited lives/);
+  assert.equal(/THE TIMER IS OFF/.test(p), false);
 });
 
 test('إطفاء التلميحات ينزع الأمر بالزرّ ويضع مكانه نهياً صريحاً', () => {
@@ -316,7 +326,7 @@ test('إطفاء كتلة تعديل المعلّم يحذف سطرها بلا �
 test('المفتاح الغائب يأخذ مبدأه — فطلبٌ قديم بلا مفاتيح يعمل كما كان', () => {
   const cfg = builder.readConfig({ correctPoints: 15 });
   assert.equal(cfg.hints, true);
-  assert.equal(cfg.timer, true);
+  assert.equal(cfg.timer, false, 'ومبدأ المؤقّت الإطفاء');
   // والصريح وحده يُطفئ: أيّ قيمةٍ غير false تُقرأ تشغيلاً
   assert.equal(builder.readConfig({ hints: false }).hints, false);
   assert.equal(builder.readConfig({ hints: 'نعم' }).hints, true);
@@ -324,9 +334,10 @@ test('المفتاح الغائب يأخذ مبدأه — فطلبٌ قديم ب
 });
 
 test('كتلة CONFIG تعلن حال كل ميزة on/off — والمفاتيح كلّها فيها', () => {
-  const block = builder.configBlock(builder.readConfig({ hints: false, sound: false }));
+  const block = builder.configBlock(builder.readConfig({ hints: false, sound: false, timer: true }));
   assert.match(block, /HINTS\s+= off/);
   assert.match(block, /SOUND\s+= off/);
   assert.match(block, /TIMER\s+= on/);
+  assert.match(builder.configBlock(builder.readConfig({})), /TIMER\s+= off/, 'وبلا طلبٍ: مطفأ');
   for (const spec of Object.values(builder.SWITCHES)) assert.match(block, new RegExp(`${spec.key}\\s+= (on|off)`));
 });

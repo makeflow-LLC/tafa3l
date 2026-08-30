@@ -65,9 +65,17 @@ const KNOBS = {
  * مفتاحٍ هنا له فرعٌ في `systemPrompt` يحذف ما يخصّه ويضع مكانه نهياً
  * صريحاً عنه.
  */
+/*
+ * والمؤقّت **مطفأٌ ابتداءً** وحده من بينها.
+ *
+ * لأنه الميزة الوحيدة هنا التي تؤذي بعض المتعلّمين بوجودها لا بغيابها:
+ * عدّادٌ يهبط يشلّ الطفل البطيء والقلِق ومن يقرأ بصعوبة، ويحوّل درساً إلى
+ * سباق. ومن أرادها سباقاً أشعله بضغطة، ومن لم ينتبه للإعداد أصلاً — وهم
+ * الأكثر — خرجت لعبته يلعبها كل طلابه لا أسرعهم.
+ */
 const SWITCHES = {
   hints: { key: 'HINTS', def: true },
-  timer: { key: 'TIMER', def: true },
+  timer: { key: 'TIMER', def: false },
   sound: { key: 'SOUND', def: true },
   character: { key: 'CHARACTER', def: true },
   celebrations: { key: 'CELEBRATIONS', def: true },
