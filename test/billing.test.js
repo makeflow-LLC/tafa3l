@@ -336,3 +336,12 @@ test('المنح لا ينقص اشتراكاً قائماً مهما تأخّر
     mock.restore();
   }
 });
+
+test('فحصُ الصحة يفصل أعطال الدفع الثلاثة — بلا كشف قيمةٍ من أي مفتاح', async () => {
+  const res = await client().request('GET', '/api/health');
+  assert.deepEqual(res.data.payments, { card: true, mode: 'test', webhookReady: true, pricePinned: false, priceUsd: 5 });
+  // المفاتيح نفسها لا تظهر في الردّ مهما كانت الراية
+  const body = JSON.stringify(res.data);
+  assert.equal(body.includes('sk_test_do_not_use'), false);
+  assert.equal(body.includes('whsec_test_secret'), false);
+});

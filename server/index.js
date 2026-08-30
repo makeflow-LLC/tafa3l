@@ -18,6 +18,7 @@ const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 const { aiRoutes } = require('./routes-ai');
 const { gameAiRoutes } = require('./routes-game-ai');
 const billing = require('./routes-billing');
+const stripeApi = require('./stripe');
 const ai = require('./ai');
 const premium = require('./premium');
 
@@ -141,6 +142,21 @@ app.get('/api/health', (_req, res) => {
     googleLoginConfigured: googleAuth.isConfigured(),
     // هل رُبط مفتاح أزور؟ بدونه لا يعمل «صمّم بالذكاء الاصطناعي»
     aiConfigured: ai.isConfigured(),
+    /*
+     * حالة الدفع بالبطاقة — ثلاث رايات لا واحدة.
+     *
+     * الأعطال الثلاثة المحتملة بعد ضبط المفاتيح يستحيل تمييزها من الواجهة:
+     * مفتاحٌ لم يصل الخادم (الزرّ يختفي)، وسرُّ توقيعٍ ناقص (الدفع ينجح ولا
+     * يُفعَّل شيء أبداً)، ومعرّفُ سعرٍ لم يُضبط (يُرسل السعر مع كل جلسة).
+     * فراياتٌ ثلاث تفصلها في نظرة، **بلا كشف قيمةٍ من أي منها**.
+     */
+    payments: {
+      card: stripeApi.configured(),
+      mode: stripeApi.mode(),
+      webhookReady: Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || '').trim()),
+      pricePinned: Boolean(String(process.env.STRIPE_PRICE_ID || '').trim()),
+      priceUsd: premium.PLAN.priceUsd,
+    },
   });
 });
 

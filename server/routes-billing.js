@@ -75,7 +75,9 @@ function billingRoutes() {
       });
       res.json({ url: session.url });
     } catch (err) {
-      if (err.detail) console.error('Stripe:', err.detail);
+      // وضعُ المفتاح مع الخطأ: «No such price» وحدها لا تدلّ على أن المفتاح
+      // تجريبيّ والسعر حقيقيّ — وهو أشيع سببٍ لها
+      if (err.detail) console.error(`Stripe (${stripe.mode()}):`, err.detail);
       res.status(err.status || 500).json({ error: err.message || 'تعذّر بدء الدفع' });
     }
   });
@@ -88,7 +90,7 @@ function billingRoutes() {
       const session = await stripe.createPortal({ customerId: customer, origin: originOf(req) });
       res.json({ url: session.url });
     } catch (err) {
-      if (err.detail) console.error('Stripe:', err.detail);
+      if (err.detail) console.error(`Stripe (${stripe.mode()}):`, err.detail);
       res.status(err.status || 500).json({ error: err.message || 'تعذّر فتح بوّابة الاشتراك' });
     }
   });

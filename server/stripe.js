@@ -31,6 +31,20 @@ function configured() {
 }
 
 /**
+ * وضعُ المفتاح: `live` أو `test` أو فراغ.
+ *
+ * ليس سرّاً، وهو أوّل ما يُسأل عنه حين «لا يعمل الدفع»: مفتاحٌ تجريبيّ مع
+ * سعرٍ حقيقيّ (أو العكس) يعطي «No such price» وحدها، وهي رسالةٌ لا تدلّ على
+ * سببها. فنُعلن الوضع كي يُقارَن بوضع لوحة Stripe في ثانية.
+ */
+function mode() {
+  const key = secretKey();
+  if (key.startsWith('sk_live_') || key.startsWith('rk_live_')) return 'live';
+  if (key.startsWith('sk_test_') || key.startsWith('rk_test_')) return 'test';
+  return key ? 'unknown' : '';
+}
+
+/**
  * ترميز شجرةٍ من القيم إلى صيغة Stripe: `a[b][0][c]=v`.
  * الأصفار والفراغات تُحذف كي لا نُرسل حقولاً فارغة تُفسَّر قيماً.
  */
@@ -185,4 +199,4 @@ function verifyEvent(raw, header) {
   }
 }
 
-module.exports = { configured, createCheckout, createPortal, verifyEvent, form };
+module.exports = { configured, mode, createCheckout, createPortal, verifyEvent, form };
