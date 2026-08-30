@@ -108,6 +108,21 @@ services:
       #   value: "15"
       # - key: PS_PAY_WHATSAPP
       #   value: "970597750343"
+
+      # الدفع بالبطاقة (Stripe) — لغير فلسطين. بلا `STRIPE_SECRET_KEY` يختفي
+      # زرّ البطاقة ويعود طريق واتساب، فلا تنكسر الصفحة قبل ضبطها.
+      # المفتاح السرّي: من لوحة Stripe ← Developers ← API keys
+      # - key: STRIPE_SECRET_KEY
+      #   sync: false
+      # سرّ التوقيع: من Developers ← Webhooks ← نقطة النهاية
+      #   https://<موقعك>/api/billing/webhook (الأحداث: checkout.session.completed
+      #   و invoice.paid)
+      # - key: STRIPE_WEBHOOK_SECRET
+      #   sync: false
+      # اختياري: معرّف سعرٍ جاهز في Stripe. بدونه يُرسل السعر مع كل جلسة
+      # (PREMIUM_PRICE_USD دولاراً شهرياً).
+      # - key: STRIPE_PRICE_ID
+      #   value: price_xxx
       # منحة التسجيل: أيام بريميوم لكل حساب جديد (صفر = إيقافها)
       # - key: PREMIUM_SIGNUP_TRIAL_DAYS
       #   value: "10"

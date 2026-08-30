@@ -142,6 +142,24 @@ function fileDriver() {
     async listUsers() {
       return Object.values(db.users).sort((a, b) => b.createdAt - a.createdAt);
     },
+    /**
+     * صاحبُ حسابِ Stripe هذا.
+     *
+     * فاتورةُ التجديد بعد شهر لا تحمل جلسة الدفع ولا معرّف المعلّم عندنا،
+     * وإنما معرّفَ الزبون عند Stripe — فهو الرابط الوحيد الباقي بين دفعةٍ
+     * شهرية وحسابٍ في المنصّة.
+     */
+    async findUserByStripeCustomer(customerId) {
+      if (!customerId) return null;
+      return Object.values(db.users).find((u) => u.stripeCustomerId === customerId) || null;
+    },
+    async setStripeCustomer(userId, customerId) {
+      const user = db.users[userId];
+      if (!user) return null;
+      user.stripeCustomerId = customerId || '';
+      schedule();
+      return user;
+    },
     /** تاريخ انتهاء اشتراك بريميوم (ms) أو null لإلغائه */
     async setPremiumUntil(userId, until) {
       const user = db.users[userId];
@@ -470,6 +488,7 @@ function postgresDriver(connectionString) {
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
                         premium_until, trial_granted_at, created_at,
                         games_built, games_month, games_month_key, bio, phone_public,
+                        stripe_customer_id,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
 
   const userRow = (r) => ({
@@ -489,6 +508,7 @@ function postgresDriver(connectionString) {
     gamesBuilt: Number(r.games_built) || 0,
     gamesMonth: Number(r.games_month) || 0,
     gamesMonthKey: r.games_month_key || '',
+    stripeCustomerId: r.stripe_customer_id || '',
     createdAt: Number(r.created_at),
   });
 
@@ -593,6 +613,11 @@ function postgresDriver(connectionString) {
         -- «أظهره» حفاظاً على سلوك الحسابات القائمة (NULL يُقرأ true أدناه).
         ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_public BOOLEAN;
+        -- معرّف الزبون عند Stripe: به تُنسب فاتورةُ التجديد الشهرية إلى
+        -- حسابها، فهي لا تحمل شيئاً من معرّفاتنا. وفهرسٌ عليه لأنه يُبحث به
+        -- في كل خطّاف دفع.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+        CREATE INDEX IF NOT EXISTS users_stripe_customer_idx ON users(stripe_customer_id);
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -709,6 +734,17 @@ function postgresDriver(connectionString) {
     },
     async setPremiumUntil(userId, until) {
       const { rows } = await pool.query('UPDATE users SET premium_until = $2 WHERE id = $1 RETURNING *', [userId, until]);
+      return rows[0] ? userRow(rows[0]) : null;
+    },
+
+    /** صاحبُ حسابِ Stripe هذا — به تُنسب فاتورةُ التجديد إلى حسابها */
+    async findUserByStripeCustomer(customerId) {
+      if (!customerId) return null;
+      const { rows } = await pool.query(`SELECT ${USER_COLUMNS} FROM users WHERE stripe_customer_id = $1`, [customerId]);
+      return rows[0] ? userRow(rows[0]) : null;
+    },
+    async setStripeCustomer(userId, customerId) {
+      const { rows } = await pool.query('UPDATE users SET stripe_customer_id = $2 WHERE id = $1 RETURNING *', [userId, customerId || null]);
       return rows[0] ? userRow(rows[0]) : null;
     },
 

@@ -78,6 +78,14 @@ test('رسالةُ النفاد تقول ماذا يفعل لا «ممنوع» �
   assert.equal(/واتساب/.test(paid), false);
 });
 
+test('من تعمل بطاقته يُقال له «ادفع» لا «راسلنا»', () => {
+  const q = quota.quotaOf({ gamesBuilt: 2 }, FREE);
+  const withCard = quota.exhaustedMessage(q, { whatsapp: '970000000', priceUsd: 5, card: { enabled: true, priceUsd: 5 } });
+  assert.match(withCard, /بالبطاقة/);
+  // ورقمُ واتساب لا يُعرض لمن يستطيع الاشتراك في نصف دقيقة
+  assert.equal(/970000000/.test(withCard), false);
+});
+
 test('مفتاح الشهر YYYY-MM بتوقيت UTC — فلا يختلف باختلاف خادم', () => {
   assert.equal(quota.monthKey(Date.UTC(2026, 0, 1, 0, 0, 0)), '2026-01');
   assert.equal(quota.monthKey(Date.UTC(2026, 11, 31, 23, 59, 59)), '2026-12');

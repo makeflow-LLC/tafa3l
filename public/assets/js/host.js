@@ -57,6 +57,7 @@
     premium: null, // { isPremium, isAdmin, premiumUntil, plan }
     editingActivityId: store.local.get(EDITING_KEY, null), // النشاط المحفوظ الجاري تعديله — يبقى بعد تحديث الصفحة
     dashOpenQ: null, // سؤال مفتوح النتائج في جدول لوحة التحكم
+    payPoll: null, // استطلاعُ تفعيل الاشتراك بعد العودة من Stripe
     stopSchedule: null, // عدّاد موعد الفتح
     stopDeadline: null, // عدّاد انتهاء مدة الاختبار
     analyticsData: null, // ملف النتائج الكامل الذي تُبنى منه الرسوم والتوصيات
@@ -1791,6 +1792,7 @@
     signupTrialDays: 10,
     games: { free: 2, premiumMonthly: 15 },
     localPay: {},
+    card: { enabled: false, priceUsd: 5, currency: 'usd' },
   };
 
   /** رابط واتساب جاهز برسالة مكتوبة — أقصر طريق من رغبة الاشتراك إلى محادثة */
@@ -1812,16 +1814,55 @@
   }
 
   /**
-   * زرّ «اشترك» كما يليق ببلد المعلّم: من له طريق دفعٍ محليّ يُساق إلى صفحة
-   * الدفع، ومن سواه إلى محادثة واتساب. وواحدةٌ من الاثنتين تُستدعى في كل
-   * موضعٍ فيه دعوة اشتراك — فلا يبقى زرٌّ يرسل الفلسطينيّ إلى حوالةٍ بالدولار.
+   * طريقُ الاشتراك لهذا المعلّم — واحدٌ لا قائمةُ خيارات:
+   *
+   *  - `local`: بلدٌ له محفظةٌ محلّية (فلسطين) — المحفظة ثم إيصالٌ على واتساب.
+   *  - `card`: بقيةُ العالم — بطاقةٌ عبر Stripe وينتهي الأمر في نصف دقيقة.
+   *  - `contact`: حين لا يكون الدفع بالبطاقة مُفعّلاً بعد على الخادم —
+   *    واتساب كما كان. وبلا هذا الاحتياط يصير أول يومٍ قبل ضبط مفاتيح Stripe
+   *    يوماً بلا أي طريقة اشتراكٍ لغير الفلسطينيين.
+   */
+  function payMethod(plan) {
+    if (localPay(plan)) return 'local';
+    return plan?.card?.enabled ? 'card' : 'contact';
+  }
+
+  /**
+   * زرّ «اشترك» كما يليق ببلد المعلّم. يُستدعى في كل موضعٍ فيه دعوة اشتراك،
+   * فلا يبقى زرٌّ يرسل الفلسطينيّ إلى بطاقةٍ لا تعمل عنده ولا زرٌّ يرسل من
+   * تعمل بطاقته إلى انتظار ردٍّ على واتساب.
    */
   function subscribeBtn(plan, opts = {}) {
     const cls = opts.class || 'btn primary';
-    const pay = localPay(plan);
-    if (pay) return el('a', { class: cls, href: '#/pay' }, opts.label || t('payCta', { amount: pay.amount }));
+    const how = payMethod(plan);
+    if (how === 'local') {
+      return el('a', { class: cls, href: '#/pay' }, opts.label || t('payCta', { amount: localPay(plan).amount }));
+    }
+    if (how === 'card') {
+      return el('a', { class: cls, href: '#/pay' }, opts.label || t('payCardCta', { price: plan.card.priceUsd }));
+    }
     return el('a', { class: cls, href: whatsappLink(plan, opts.note), target: '_blank', rel: 'noopener' },
       opts.label || t('hWhatsappBtn', { phone: plan.whatsapp }));
+  }
+
+  /**
+   * زرّ بوّابة Stripe: الفواتير والبطاقة والإلغاء بيد المعلّم.
+   * يُعرض لمن اشترك بالبطاقة وحده — ومن لا حساب زبونٍ له لا بوّابة له.
+   */
+  function manageBtn(cls) {
+    if (!state.user?.stripeCustomerId) return null;
+    const btn = el('button', { class: cls || 'btn ghost sm', type: 'button' }, t('payManageBtn'));
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const { url } = await api('/api/billing/portal', { method: 'POST' });
+        location.href = url;
+      } catch (err) {
+        toast(err.message, 'bad');
+        btn.disabled = false;
+      }
+    });
+    return btn;
   }
 
   /**
@@ -1945,6 +1986,7 @@
     const plan = info?.plan || DEFAULT_PLAN;
     const paid = Boolean(info?.isPremium);
     const pay = localPay(plan);
+    const how = payMethod(plan);
     const freeGames = plan.games?.free ?? 2;
     const monthlyGames = plan.games?.premiumMonthly ?? 15;
 
@@ -1981,11 +2023,13 @@
 
     // المشترك لا يُعرض عليه زرّ شراءٍ اشتراه: يرى مدّته وزرّ تجديد لا أكثر
     const until = paid && info?.premiumUntil ? el('span', { class: 'muted small', text: t('upUntilDate', { date: fmtDate(info.premiumUntil) }) }) : null;
+    // المشترك بالبطاقة لا يُعرض عليه «جدّد»: اشتراكه يتجدّد وحده، وما يحتاجه
+    // زرُّ إدارةٍ يلغي منه أو يبدّل بطاقته
     const cta = paid
       ? el('div', { class: 'stack tight' }, [
           el('span', { class: 'badge ok', text: t('upSubscribed') }),
           until,
-          subscribeBtn(plan, { class: 'btn ghost sm', label: t('upRenewBtn') }),
+          manageBtn() || subscribeBtn(plan, { class: 'btn ghost sm', label: t('upRenewBtn') }),
         ])
       : state.user
         ? subscribeBtn(plan)
@@ -2035,61 +2079,41 @@
           ]),
         ]),
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('upHonest') }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: pay ? t('payManual') : t('upManual') }),
+        el('p', {
+          class: 'muted small',
+          style: { margin: 0 },
+          // كلُّ طريقٍ وصدقُه: المحفظة تفعيلٌ يدويّ، والبطاقة تفعيلٌ فوريّ،
+          // و«راسلنا» حين لا يكون للمعلّم إلا الرسالة
+          text: how === 'local' ? t('payManual') : how === 'card' ? t('payCardAuto') : t('upManual'),
+        }),
       ])
     );
   }
 
+  /** خطوة مرقّمة في صفحة الدفع: الرقم في دائرة، والعمل إلى جانبه */
+  function payStep(n, title, body, action) {
+    return el('div', { class: 'pay-step' }, [
+      el('span', { class: 'pay-step__no', 'aria-hidden': 'true', text: String(n) }),
+      el('div', { class: 'stack tight grow' }, [
+        el('strong', { text: title }),
+        body ? el('span', { class: 'muted small', text: body }) : null,
+        action || null,
+      ]),
+    ]);
+  }
+
   /**
-   * صفحة الدفع المحلّي — «جوال باي» اليوم، وغيرها غداً بالبيانات نفسها.
+   * الدفع المحلّي — «جوال باي» اليوم، وغيرها غداً بالبيانات نفسها.
    *
    * الحوالة يدوية من طرفين: المعلّم يحوّل من محفظته، ونحن نفعّل حسابه يدوياً.
-   * فالصفحة كلها خطواتٌ ثلاث بلا نموذجٍ يُملأ ولا بطاقةٍ تُدخل — والرقم الذي
+   * فالبطاقة كلها خطواتٌ ثلاث بلا نموذجٍ يُملأ ولا بطاقةٍ تُدخل — والرقم الذي
    * يُحوّل إليه يُنسخ بضغطة لأنه يُكتب في تطبيقٍ آخر، ورقمٌ يُنقل بالنظر خطأٌ
    * ينتظر أن يقع.
    *
    * ولا نطلب صورة الإيصال هنا: رفعها إلينا يعني تخزين صورةٍ لا نحتاجها،
    * وواتساب في يد المعلّم أصلاً وفيه يرى ردّنا.
    */
-  async function openPayment() {
-    teardown();
-    codeBadge.classList.add('hidden');
-    connBadge.classList.add('hidden');
-    bar.innerHTML = '';
-    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
-
-    let info = state.premium?.plan ? state.premium : null;
-    if (!info) info = await api('/api/ai/status').catch(() => null);
-    const plan = info?.plan || DEFAULT_PLAN;
-    const pay = localPay(plan);
-
-    // من لا طريق دفعٍ محليّ لبلده لا صفحة له هنا: يعود إلى الباقات لا إلى فراغ
-    if (!pay) {
-      location.hash = '#/upgrade';
-      return;
-    }
-
-    app.innerHTML = '';
-    app.append(
-      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
-        el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('hback')),
-        el('a', { class: 'btn ghost sm', href: '#/' }, t('hhome')),
-      ])
-    );
-    app.append(el('h1', { style: { marginBottom: '4px' }, text: t('payTitle') }));
-    app.append(el('p', { class: 'muted small', style: { marginTop: 0 }, text: t('payIntro') }));
-
-    /** خطوة مرقّمة: الرقم في دائرة، والعمل إلى جانبه */
-    const step = (n, title, body, action) =>
-      el('div', { class: 'pay-step' }, [
-        el('span', { class: 'pay-step__no', 'aria-hidden': 'true', text: String(n) }),
-        el('div', { class: 'stack tight grow' }, [
-          el('strong', { text: title }),
-          body ? el('span', { class: 'muted small', text: body }) : null,
-          action || null,
-        ]),
-      ]);
-
+  function walletPayCard(pay) {
     const walletRow = el('div', { class: 'pay-wallet' }, [
       el('span', { class: 'pay-wallet__no', dir: 'ltr', text: pay.wallet }),
       el('button', { class: 'btn ghost sm', type: 'button' }, t('payCopyWallet')),
@@ -2103,27 +2127,116 @@
     const note = t('payWaMsg', { amount: pay.amount, wallet: pay.wallet, email: state.user?.email || '—' });
     const waHref = `https://wa.me/${pay.whatsapp}?text=${encodeURIComponent(note)}`;
 
-    app.append(
-      el('div', { class: 'card stack' }, [
-        el('div', { class: 'pay-head' }, [
-          el('span', { class: 'pay-head__badge', 'aria-hidden': 'true', text: '📱' }),
-          el('div', { class: 'stack tight grow' }, [
-            el('strong', { text: t('payMethodJawwal') }),
-            el('span', { class: 'muted small', text: t('payAmountLine', { amount: pay.amount }) }),
-          ]),
+    return el('div', { class: 'card stack' }, [
+      el('div', { class: 'pay-head' }, [
+        el('span', { class: 'pay-head__badge', 'aria-hidden': 'true', text: '📱' }),
+        el('div', { class: 'stack tight grow' }, [
+          el('strong', { text: t('payMethodJawwal') }),
+          el('span', { class: 'muted small', text: t('payAmountLine', { amount: pay.amount }) }),
         ]),
-        step(1, t('payStep1Title', { amount: pay.amount }), t('payStep1Body'), walletRow),
-        step(2, t('payStep2Title'), t('payStep2Body')),
-        step(
-          3,
-          t('payStep3Title'),
-          t('payStep3Body', { phone: '+' + pay.whatsapp }),
-          el('a', { class: 'btn primary', href: waHref, target: '_blank', rel: 'noopener' }, t('payWaBtn'))
-        ),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: t('payManual') }),
-        state.user ? null : el('p', { class: 'muted small', style: { margin: 0 }, text: t('paySignInNote') }),
+      ]),
+      payStep(1, t('payStep1Title', { amount: pay.amount }), t('payStep1Body'), walletRow),
+      payStep(2, t('payStep2Title'), t('payStep2Body')),
+      payStep(
+        3,
+        t('payStep3Title'),
+        t('payStep3Body', { phone: '+' + pay.whatsapp }),
+        el('a', { class: 'btn primary', href: waHref, target: '_blank', rel: 'noopener' }, t('payWaBtn'))
+      ),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('payManual') }),
+      state.user ? null : el('p', { class: 'muted small', style: { margin: 0 }, text: t('paySignInNote') }),
+    ]);
+  }
+
+  /**
+   * الدفع بالبطاقة عبر Stripe.
+   *
+   * لا حقلَ بطاقةٍ في صفحتنا ولا حرفاً منها يمرّ بخادمنا: نطلب من الخادم
+   * جلسةً فيعيد عنوانها عند Stripe، وهناك يُدخل المعلّم بطاقته. وذلك ليس
+   * كسلاً — رقمُ بطاقةٍ يعبر خادمنا يجرّ علينا التزامات PCI كاملة لقاء لا
+   * شيء، وSCA و3-D Secure تعملان هناك وحدهما.
+   *
+   * والتفعيل تلقائيّ بخطّاف Stripe لا بيدٍ بشرية: من دفع في الثالثة فجراً
+   * يجد حسابه مفتوحاً في الثالثة فجراً.
+   */
+  function cardPayCard(plan) {
+    const price = plan.card?.priceUsd ?? plan.priceUsd;
+    const go = el('button', { class: 'btn primary', type: 'button' }, t('payCardBtn', { price }));
+
+    go.addEventListener('click', async () => {
+      if (!state.user) {
+        location.href = '/api/auth/google?next=' + encodeURIComponent('/host.html#/pay');
+        return;
+      }
+      go.disabled = true;
+      go.textContent = t('payCardOpening');
+      try {
+        const { url } = await api('/api/billing/checkout', { method: 'POST', body: { lang: window.I18n.getLang() } });
+        location.href = url;
+      } catch (err) {
+        toast(err.message, 'bad');
+        go.disabled = false;
+        go.textContent = t('payCardBtn', { price });
+      }
+    });
+
+    return el('div', { class: 'card stack' }, [
+      el('div', { class: 'pay-head' }, [
+        el('span', { class: 'pay-head__badge', 'aria-hidden': 'true', text: '💳' }),
+        el('div', { class: 'stack tight grow' }, [
+          el('strong', { text: t('payMethodCard') }),
+          el('span', { class: 'muted small', text: t('payCardAmountLine', { price }) }),
+        ]),
+      ]),
+      payStep(1, t('payCardStep1Title'), t('payCardStep1Body')),
+      payStep(2, t('payCardStep2Title'), t('payCardStep2Body'), go),
+      payStep(3, t('payCardStep3Title'), t('payCardStep3Body')),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('payCardSecure') }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('payCardCancel') }),
+      manageBtn(),
+      state.user ? null : el('p', { class: 'muted small', style: { margin: 0 }, text: t('paySignInNote') }),
+    ]);
+  }
+
+  /**
+   * صفحة الدفع: طريقٌ واحدٌ لكل معلّم بحسب بلده — لا قائمةُ طرقٍ يختار منها.
+   *
+   * والعودة من Stripe تمرّ من هنا أيضاً (`?paid=1`): الدفع نجح عندهم، ويبقى
+   * أن يصل خطّافُهم إلى خادمنا — ثوانٍ غالباً. فننتظرها بدل أن نقول للمعلّم
+   * «لم يتغيّر شيء» في اللحظة التي دفع فيها.
+   */
+  async function openPayment() {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
+
+    let info = state.premium?.plan ? state.premium : null;
+    if (!info) info = await api('/api/ai/status').catch(() => null);
+    const plan = info?.plan || DEFAULT_PLAN;
+    const how = payMethod(plan);
+
+    // «تواصل معنا» ليست صفحةَ دفع: من لا طريق دفعٍ ذاتيّ له يعود إلى الباقات
+    if (how === 'contact') {
+      location.hash = '#/upgrade';
+      return;
+    }
+
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
+        el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('hback')),
+        el('a', { class: 'btn ghost sm', href: '#/' }, t('hhome')),
       ])
     );
+    app.append(el('h1', { style: { marginBottom: '4px' }, text: how === 'card' ? t('payCardTitle') : t('payTitle') }));
+    app.append(el('p', { class: 'muted small', style: { marginTop: 0 }, text: how === 'card' ? t('payCardIntro') : t('payIntro') }));
+
+    const back = returnFromStripe();
+    if (back) app.append(back);
+
+    app.append(how === 'card' ? cardPayCard(plan) : walletPayCard(localPay(plan)));
 
     app.append(
       el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
@@ -2137,6 +2250,52 @@
         el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upCompareLink')),
       ])
     );
+  }
+
+  /**
+   * العائد من صفحة Stripe: شريطٌ يقول ماذا جرى.
+   *
+   * ونمسح `?paid=` من العنوان فور قراءته: تحديثُ الصفحة بعد ساعة لا يصحّ أن
+   * يقول «تمّ الدفع» من جديد، ورابطٌ يُنسخ بهذه اللاحقة لا يصحّ أن يبشّر من
+   * فتحه بدفعةٍ لم يدفعها.
+   */
+  function returnFromStripe() {
+    const params = new URLSearchParams(location.search);
+    const paid = params.get('paid');
+    if (paid === null) return null;
+    history.replaceState(null, '', location.pathname + location.hash);
+    if (paid !== '1') return el('div', { class: 'note', text: t('payCardCancelled') });
+
+    const box = el('div', { class: 'trial stack' }, [
+      el('strong', { text: t('payCardThanks') }),
+      el('span', { class: 'muted small', text: t('payCardActivating') }),
+    ]);
+
+    /*
+     * الخطّاف يصل إلى خادمنا لا إلى متصفّح المعلّم، فلا حدث ننتظره هنا:
+     * نسأل الحساب كل ثانيتين حتى يصير مشتركاً — أو نقول له إن التفعيل في
+     * الطريق. والحدّ الأعلى ثلاثون ثانية: أطولُ من ذلك انتظارٌ لا فائدة منه.
+     */
+    let tries = 0;
+    const tick = setInterval(async () => {
+      tries += 1;
+      const fresh = await loadAccount().catch(() => null);
+      if (state.premium?.isPremium) {
+        clearInterval(tick);
+        state.payPoll = null;
+        box.replaceChildren(
+          el('strong', { text: t('payCardDone') }),
+          el('span', { class: 'muted small', text: t('payCardDoneBody') }),
+          el('a', { class: 'btn primary sm', href: '#/game-ai' }, t('gbNav'))
+        );
+      } else if (tries >= 15 || !fresh) {
+        clearInterval(tick);
+        state.payPoll = null;
+        box.replaceChildren(el('strong', { text: t('payCardThanks') }), el('span', { class: 'muted small', text: t('payCardSlow') }));
+      }
+    }, 2000);
+    state.payPoll = tick;
+    return box;
   }
 
   /**
@@ -2586,6 +2745,9 @@
     state.dashboard = null;
     state.lastPhaseKey = '';
     clearTick();
+    // استطلاعُ ما بعد الدفع يخصّ صفحته وحدها: من غادرها لا يُسأل عنه الخادم بعدها
+    if (state.payPoll) clearInterval(state.payPoll);
+    state.payPoll = null;
     // رسمةٌ معلّقة بعد المغادرة ترسم على شاشةٍ أخرى — تُلغى مع الاتصال
     cancelRender();
   }

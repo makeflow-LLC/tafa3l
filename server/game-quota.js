@@ -90,15 +90,13 @@ function exhaustedMessage(q, plan, pay) {
   if (q.plan === 'premium') {
     return `بلغت حصّتك الشهرية من بناء الألعاب (${q.limit} لعبة). تتجدّد مع بداية الشهر القادم.`;
   }
-  const head = `الحساب المجاني يبني ${q.limit} لعبة فقط، وقد استعملتهما. `;
+  const head = `الحساب المجاني يبني ${q.limit} لعبة فقط، وقد استعملتهما. اشترك في بريميوم لتبني ${PREMIUM_MONTHLY} لعبة كل شهر — `;
   if (pay) {
-    return (
-      head +
-      `اشترك في بريميوم لتبني ${PREMIUM_MONTHLY} لعبة كل شهر — ` +
-      `${pay.amount} شيكل شهرياً عبر جوال باي على المحفظة ${pay.wallet}، ثم أرسل الإيصال على واتساب ${pay.whatsapp}.`
-    );
+    return head + `${pay.amount} شيكل شهرياً عبر جوال باي على المحفظة ${pay.wallet}، ثم أرسل الإيصال على واتساب ${pay.whatsapp}.`;
   }
-  return head + `اشترك في بريميوم لتبني ${PREMIUM_MONTHLY} لعبة كل شهر — واتساب ${plan?.whatsapp} (${plan?.priceUsd}$ شهرياً).`;
+  // البطاقة حيث تعمل: الرقم الدوليّ لا يُعرض لمن يستطيع الدفع في ثلاثين ثانية
+  if (plan?.card?.enabled) return head + `الدفع بالبطاقة ${plan.priceUsd}$ شهرياً من صفحة الباقات.`;
+  return head + `واتساب ${plan?.whatsapp} (${plan?.priceUsd}$ شهرياً).`;
 }
 
 module.exports = { quotaOf, summary, exhaustedMessage, monthKey, FREE_TOTAL, PREMIUM_MONTHLY };

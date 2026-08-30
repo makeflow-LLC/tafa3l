@@ -7,6 +7,7 @@
  */
 
 const gameQuota = require('./game-quota');
+const stripe = require('./stripe');
 
 // بريد المالك — يُضبط من متغيّر البيئة، ويبقى بريد صاحب المنصة افتراضاً
 // حتى تعمل اللوحة فور النشر بلا إعداد إضافي.
@@ -53,10 +54,43 @@ const PLAN = {
   localPay: LOCAL_PAY,
 };
 
+/**
+ * الدفع بالبطاقة كما تراه الواجهة. خاصيّةٌ محسوبة لا ثابتة: مفتاح Stripe
+ * متغيّر بيئة قد يُضبط بعد إقلاع الوحدة (في الاختبارات، وفي أول ضبطٍ على
+ * المنصّة)، وقيمةٌ تُجمَّد لحظة `require` تكذب بعده.
+ */
+Object.defineProperty(PLAN, 'card', {
+  enumerable: true,
+  get: () => ({ enabled: stripe.configured(), priceUsd: PLAN.priceUsd, currency: 'usd' }),
+});
+
 /** طريقة الدفع المحلّية لهذا الحساب — أو `null` فيبقى الدفع الدوليّ */
 function localPayFor(user) {
   const code = String(user?.country || '').toUpperCase();
   return LOCAL_PAY[code] || null;
+}
+
+/**
+ * طريقُ الاشتراك لهذا الحساب — واحدٌ لا خيارات.
+ *
+ *  - `local`: بلدٌ له محفظةٌ محلّية (فلسطين) — المحفظة ثم إيصالٌ على واتساب.
+ *  - `card`: بقيةُ العالم حين يكون Stripe مُفعّلاً — بطاقةٌ وانتهى.
+ *  - `contact`: لا هذا ولا ذاك (Stripe غير مُفعّل بعد) — واتساب كما كان.
+ *
+ * وعرضُ الطريقين معاً كان سيبدو خياراً وهو ليس خياراً: من في فلسطين لا
+ * تعمل بطاقته غالباً، ومن خارجها لا محفظة له.
+ */
+function payMethodFor(user) {
+  if (localPayFor(user)) return 'local';
+  return stripe.configured() ? 'card' : 'contact';
+}
+
+/** جملةٌ تقول للمعلّم كيف يشترك بطريق بلده — تُذيَّل بها رسائل المنع */
+function upgradeHint(user) {
+  const pay = localPayFor(user);
+  if (pay) return `الدفع ${pay.amount} شيكل شهرياً عبر جوال باي على المحفظة ${pay.wallet}، ثم أرسل الإيصال على واتساب ${pay.whatsapp}`;
+  if (stripe.configured()) return `اشترك بالبطاقة (${PLAN.priceUsd}$ شهرياً) من صفحة الباقات`;
+  return `تواصل عبر واتساب ${PLAN.whatsapp} (${PLAN.priceUsd}$ شهرياً)`;
 }
 
 /** مدّة منحة التسجيل بالمللي ثانية — صفرٌ يعني: لا منحة */
@@ -121,7 +155,7 @@ function requirePremium(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'يجب تسجيل الدخول أولاً' });
   if (!isPremium(req.user)) {
     return res.status(402).json({
-      error: `هذه ميزة بريميوم — للاشتراك تواصل عبر واتساب ${PLAN.whatsapp} (${PLAN.priceUsd}$ شهرياً)`,
+      error: `هذه ميزة بريميوم — للاشتراك ${upgradeHint(req.user)}`,
       upgrade: PLAN,
     });
   }
@@ -135,9 +169,7 @@ function requirePremium(req, res, next) {
 function assertImagesAllowed(user, questions) {
   const hasImage = (Array.isArray(questions) ? questions : []).some((q) => typeof q?.image === 'string' && q.image.trim());
   if (!hasImage || isPremium(user)) return;
-  const err = new Error(
-    `إضافة صورة إلى السؤال ميزة بريميوم — للاشتراك تواصل عبر واتساب ${PLAN.whatsapp} (${PLAN.priceUsd}$ شهرياً)`
-  );
+  const err = new Error(`إضافة صورة إلى السؤال ميزة بريميوم — للاشتراك ${upgradeHint(user)}`);
   err.status = 402;
   throw err;
 }
@@ -153,6 +185,8 @@ module.exports = {
   PLAN,
   LOCAL_PAY,
   localPayFor,
+  payMethodFor,
+  upgradeHint,
   isAdmin,
   isPremium,
   summary,

@@ -17,13 +17,14 @@ const googleAuth = require('./google-auth');
 const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 const { aiRoutes } = require('./routes-ai');
 const { gameAiRoutes } = require('./routes-game-ai');
+const billing = require('./routes-billing');
 const ai = require('./ai');
 const premium = require('./premium');
 
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun', 'homeworkDueDate', 'classRosters', 'darkModeEverywhere'],
+  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun', 'homeworkDueDate', 'classRosters', 'darkModeEverywhere', 'cardPayments'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -50,6 +51,15 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 });
+
+/*
+ * خطّاف Stripe **قبل** محلّل JSON — وهو الترتيب الوحيد الذي يعمل.
+ *
+ * توقيع Stripe محسوبٌ على بايتات الجسم كما أُرسلت. فلو حلّله `express.json`
+ * أولاً لما بقي بين أيدينا إلا كائن، وإعادةُ تسلسله نصّاً تعطي بايتاتٍ أخرى
+ * (ترتيب مفاتيح، مسافات، هروب أحرف) فيفشل كلُّ تحقّقٍ من التوقيع.
+ */
+app.post('/api/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), billing.webhook);
 
 /**
  * حدّان للجسم لا واحد. الصور (data URL) تحتاج ١٢ ميغابايت، لكن ثلاثة مسارات
@@ -106,6 +116,7 @@ app.use('/api', auth.attachUser);
 app.use('/api', accountRoutes(store));
 app.use('/api', aiRoutes());
 app.use('/api', gameAiRoutes());
+app.use('/api', billing.billingRoutes());
 
 // ------------------------------------------------------------------ واجهة REST
 
