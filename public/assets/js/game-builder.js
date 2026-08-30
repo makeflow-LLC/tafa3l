@@ -21,7 +21,7 @@
    * والمفتاح لا يمرّ من هنا إطلاقاً — الصفحة تنادي خادمنا وحده.
    */
 
-  const { el, api, toast, copyLink, fitCover, gradeChips } = global.T;
+  const { el, api, toast, fitCover, gradeChips } = global.T;
   const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
   const tagLabel = (kind, id) => (global.I18n ? global.I18n.tagLabel(kind, id) : id);
   const SUBJECTS = (global.I18n && global.I18n.SUBJECTS) || [];
@@ -471,21 +471,23 @@
       return card;
     }
 
-    /** ما بعد النشر: الرابط، ونسخُه، وفتحُه — لا شيء غيره */
+    /**
+     * ما بعد النشر: الرابط وفتحُه — ثم مشاركتُه.
+     *
+     * هذه اللحظة هي أعلى ما يكون حماسُ المعلّم للعبته: بناها للتوّ ورآها
+     * تعمل. فإن لم يجد طريق المشاركة هنا لم يبحث عنه لاحقاً. والرابط رابطُ
+     * الخادم (`/g/<id>`) كي تظهر معه الصورة والاسم في واتساب.
+     */
     function publishedBox(game) {
-      const link = location.origin + '/games.html#/g/' + game.id;
-      const copy = el('button', { class: 'btn ghost sm', type: 'button' }, t('gCopyLink'));
-      copy.addEventListener('click', async () => {
-        await copyLink(link);
-        toast(t('gLinkCopied'), 'ok');
-      });
+      const link = window.T.gameShareUrl(game.id);
       return el('div', { class: 'note ok stack tight' }, [
         el('strong', { text: t('gbPublishedTitle', { title: game.title }) }),
         el('div', { class: 'row', style: { gap: '6px' } }, [
           el('code', { class: 'grow link-box', text: link }),
-          copy,
-          el('a', { class: 'btn primary sm', href: link, target: '_blank', rel: 'noopener' }, t('gOpen')),
+          el('a', { class: 'btn primary sm', href: '/games.html#/g/' + game.id, target: '_blank', rel: 'noopener' }, t('gOpen')),
         ]),
+        el('span', { class: 'muted small', text: t('gShareNote') }),
+        window.T.shareBox(link, game.title),
         el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
       ]);
     }

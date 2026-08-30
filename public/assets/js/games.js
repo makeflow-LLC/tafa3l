@@ -325,7 +325,6 @@
     app.append(
       el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
         el('a', { class: 'btn ghost sm', href: '#/' }, t('gBack')),
-        shareButton(location.origin + '/games.html#/g/' + game.id, t('gCopyLink')),
       ])
     );
 
@@ -349,6 +348,19 @@
 
     app.append(el('a', { class: 'btn accent block big-cta', href: '#/g/' + game.id + '/play' }, t('gPlayNow')));
     app.append(el('p', { class: 'muted small center', style: { marginTop: '6px' }, text: t('gPlayFullNote') }));
+
+    /*
+     * المشاركة تحت زرّ اللعب لا فوقه: من فتح صفحة لعبةٍ جاء ليلعب، ومن
+     * أعجبته شاركها بعد ذلك. وهي مفتوحةٌ للجميع لا للمعلّم وحده — طالبٌ
+     * يشارك لعبةً مع زملائه أكثر من معلّمٍ يشاركها مع زملائه.
+     */
+    app.append(
+      el('div', { class: 'card stack tight', style: { marginTop: '12px' } }, [
+        el('strong', { text: t('gShareTitle') }),
+        el('span', { class: 'muted small', text: t('gShareNote') }),
+        window.T.shareBox(window.T.gameShareUrl(game.id), game.title),
+      ])
+    );
 
     if (game.offlineOk) app.append(offlineCard(game));
 

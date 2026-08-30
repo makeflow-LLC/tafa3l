@@ -466,3 +466,63 @@ test('صاحب اللعبة يبدّل صورتها وحده، وبلا أن ي�
   // ولعبةٌ لا وجود لها
   assert.equal((await owner.request('PATCH', '/api/games/g_ghost/cover', { cover: JPG })).status, 404);
 });
+
+// ------------------------------------------------- بطاقة المشاركة (‎/g/id‎)
+
+/*
+ * رابط المشاركة يُبنى في الخادم لأن ما بعد `#` لا يصل إليه أصلاً.
+ *
+ * فزاحفُ واتساب وفيسبوك — وهو لا يشغّل جافاسكربت — كان يقرأ عنوان المنصّة
+ * ووصفها العامّ مهما كانت اللعبة، فتظهر كل الألعاب ببطاقةٍ واحدة بلا صورة
+ * ولا اسم. وما تثبّته هذه الاختبارات هو ما يقرؤه ذلك الزاحف بالضبط.
+ */
+test('بطاقة المشاركة تحمل اسم اللعبة وصورتها بعنوانٍ مطلق', async () => {
+  const c = client();
+  await login(c, 'رنا');
+  const { data } = await c.request('POST', '/api/games', GAME({ title: 'لعبة الكواكب', description: 'رحلة في المجموعة الشمسية' }));
+  const id = data.game.id;
+
+  const res = await fetch(`${base}/g/${id}`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /text\/html/);
+  const html = await res.text();
+
+  assert.match(html, /<meta property="og:title" content="لعبة الكواكب"/);
+  assert.match(html, /<meta property="og:description" content="رحلة في المجموعة الشمسية"/);
+  // مطلقٌ لا نسبيّ: الزاحف يقرأ الوسم خارج سياق الصفحة فلا يعرف معنى «‎/api‎»
+  assert.match(html, new RegExp(`<meta property="og:image" content="http://[^"]+/api/games/${id}/cover`));
+  assert.match(html, new RegExp(`<meta property="og:url" content="http://[^"]+/g/${id}"`));
+  assert.match(html, /<meta name="twitter:card" content="summary_large_image"/);
+  // ومن وصلته البطاقة يجد اللعبة نفسها لا صفحة تحميلٍ فارغة
+  assert.match(html, new RegExp(`/games\\.html#/g/${id}`));
+});
+
+test('عنوان اللعبة يُهرَّب في وسوم المشاركة — وهو نصٌّ كتبه معلّم', async () => {
+  const c = client();
+  await login(c, 'ماجد');
+  const evil = '<script>alert(1)</script>" onload="x';
+  const { data } = await c.request('POST', '/api/games', GAME({ title: evil, description: evil }));
+
+  const html = await (await fetch(`${base}/g/${data.game.id}`)).text();
+  assert.equal(html.includes('<script>alert(1)'), false, 'لا وسمَ نصٍّ برمجيّ من عنوان لعبة');
+  assert.equal(html.includes('" onload="'), false, 'ولا خروجَ من قيمة الوسم إلى صفةٍ جديدة');
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/, 'بل نصٌّ مهروب يُقرأ كما كُتب');
+});
+
+/*
+ * الصورة مطلوبةٌ في النشر اليوم، لكن في القاعدة ألعابٌ نُشرت قبل ذلك. ولذلك
+ * يُختبر البديل على الدالة مباشرةً: بطاقةٌ بلا صورة تمرّ في واتساب بلا أن
+ * تُرى، وأيقونةُ المنصّة أفضل من لا شيء.
+ */
+test('لعبةٌ بلا صورة تأخذ أيقونة المنصّة نقطيّةً لا SVG', () => {
+  const { gameSharePage } = require('../server/share-page');
+  const html = gameSharePage({ id: 'g_old', title: 'لعبة قديمة', hasCover: false }, 'https://tapio.fun', '1.0.0');
+  assert.match(html, /<meta property="og:image" content="https:\/\/tapio\.fun\/assets\/apple-touch-icon\.png/);
+  // SVG لا يرسمه واتساب، فلا يصحّ أن يكون هو البديل
+  assert.equal(/og:image" content="[^"]+\.svg/.test(html), false);
+});
+
+test('رابط مشاركةٍ للعبةٍ لا وجود لها لا يكسر شيئاً', async () => {
+  const res = await fetch(`${base}/g/g_ghost`);
+  assert.equal(res.status, 404);
+});

@@ -818,6 +818,61 @@
     }
   }
 
+  /**
+   * صفُّ مشاركةٍ جاهز — يُستعمل في صفحة اللعبة وفي ألعاب المعلّم.
+   *
+   * ثلاث ملاحظات تشرح شكله:
+   *
+   *  ١) **لا سكربت طرفٍ ثالث.** أزرار فيسبوك وX الرسمية تحمّل شفرتهم في
+   *     صفحتنا وتتعقّب كل من مرّ عليها. وما نحتاجه رابطُ مشاركةٍ عاديّ
+   *     يفتحه المتصفّح — فلا نضع متتبّعاً على معلّمٍ ليشارك لعبة.
+   *
+   *  ٢) **واتساب ظاهرٌ دائماً** ولو كانت مشاركة النظام متاحة: هو الطريق
+   *     الأول عند جمهور المنصّة، ولا يصحّ أن يبحث عنه داخل قائمةٍ.
+   *
+   *  ٣) **الرابط رابطُ الخادم (`/g/<id>`) لا رابط التطبيق.** ما بعد `#` لا
+   *     يصل الخادم، فرابطٌ به يظهر في واتساب بلا صورةٍ ولا اسم.
+   *
+   * @param {string} url رابط المشاركة المطلق
+   * @param {string} title عنوان اللعبة — يسبق الرابط في نصّ الرسالة
+   */
+  function shareBox(url, title) {
+    const t = (key) => (global.I18n ? global.I18n.t(key) : key);
+    const text = title ? `${title}\n${url}` : url;
+    const chip = (label, href) => el('a', { class: 'btn ghost sm', href, target: '_blank', rel: 'noopener' }, label);
+
+    const row = el('div', { class: 'share-row' });
+
+    // مشاركة النظام: على الجوال تفتح كل التطبيقات المثبّتة دفعةً واحدة
+    if (navigator.share) {
+      const native = el('button', { class: 'btn primary sm', type: 'button' }, t('shareNative'));
+      native.addEventListener('click', () => {
+        navigator.share({ title, text: title, url }).catch(() => {});
+      });
+      row.append(native);
+    }
+
+    row.append(
+      chip(t('shareWhatsapp'), `https://wa.me/?text=${encodeURIComponent(text)}`),
+      chip(t('shareFacebook'), `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`),
+      chip(t('shareTelegram'), `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title || '')}`),
+      chip(t('shareX'), `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title || '')}`)
+    );
+
+    const copy = el('button', { class: 'btn ghost sm', type: 'button' }, t('shareCopy'));
+    copy.addEventListener('click', async () => {
+      const done = await copyLink(url);
+      toast(done ? t('shareCopied') : url, done ? 'ok' : '');
+    });
+    row.append(copy);
+    return row;
+  }
+
+  /** رابط مشاركة اللعبة: من الخادم لا من التطبيق — به وحده تظهر الصورة والاسم */
+  function gameShareUrl(id) {
+    return `${location.origin}/g/${encodeURIComponent(id)}`;
+  }
+
   function vibrate(pattern) {
     try {
       navigator.vibrate?.(pattern);
@@ -938,6 +993,8 @@
     richText,
     gradeChips,
     copyLink,
+    shareBox,
+    gameShareUrl,
     vibrate,
     serverAlive,
     showOfflineBanner,
