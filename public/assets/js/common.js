@@ -262,7 +262,9 @@
         throw Object.assign(new Error(offlineHint()), { offline: true });
       }
       const fallback = global.I18n ? global.I18n.t('requestFailed', { status: response.status }) : `تعذّر تنفيذ الطلب (${response.status})`;
-      throw new Error(data?.error || fallback);
+      // جسمُ الردّ كاملاً مع الاستثناء: بعض المسارات تُلحق بالخطأ تفصيلاً
+      // (سبب Stripe مثلاً للمالك وحده)، وكان يضيع لأن `Error` لا يحمل إلا نصّاً
+      throw Object.assign(new Error(data?.error || fallback), { status: response.status, data });
     }
     return data;
   }

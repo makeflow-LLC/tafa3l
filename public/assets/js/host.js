@@ -1858,7 +1858,7 @@
         const { url } = await api('/api/billing/portal', { method: 'POST' });
         location.href = url;
       } catch (err) {
-        toast(err.message, 'bad');
+        toast(err.message + (err.data?.detail ? ` — ${err.data.detail}` : ''), 'bad');
         btn.disabled = false;
       }
     });
@@ -2171,10 +2171,11 @@
       go.disabled = true;
       go.textContent = t('payCardOpening');
       try {
-        const { url } = await api('/api/billing/checkout', { method: 'POST', body: { lang: window.I18n.getLang() } });
+        const { url } = await api('/api/billing/checkout', { method: 'POST' });
         location.href = url;
       } catch (err) {
-        toast(err.message, 'bad');
+        // تفصيلُ Stripe يصل للمالك وحده — ومعه يعرف سبب العطل بلا سجلّات
+        toast(err.message + (err.data?.detail ? ` — ${err.data.detail}` : ''), 'bad');
         go.disabled = false;
         go.textContent = t('payCardBtn', { price });
       }
