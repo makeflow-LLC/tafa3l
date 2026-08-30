@@ -30,15 +30,28 @@ const log = (...args) => !quiet && console.log(...args);
 /**
  * أصل الموقع — إليه يعود المعلّم من صفحة Stripe.
  *
- * عنوانُ المنصّة المُعلن أولاً، وترويسة `Host` بديلاً في التطوير: الترويسة
- * يكتبها العميل، ومن زوّرها وجّه عودةَ الدفع إلى موقعه. والمنحُ لا يتأثّر
- * (الخطّاف هو الذي يمنح، لا العودة) لكن المعلّم يستحقّ أن يعود إلى موقعه.
+ * **النطاق الذي جاء منه الطلب هو الجواب**، لا عنوانٌ من متغيّر بيئة.
+ *
+ * كنّا نُقدّم `RENDER_EXTERNAL_URL` عليه احتياطاً من ترويسة `Host` مزوّرة،
+ * فكانت العودة تُلقي المعلّم على نطاق المنصّة (`*.onrender.com`) بينما هو
+ * يتصفّح من `tapio.fun`. وأصلٌ آخر يعني متصفّحاً آخر عملياً: لا كوكي جلسته
+ * (فيبدو خارج حسابه لحظة عودته من الدفع)، ولا لغته المحفوظة (فتظهر الصفحة
+ * بلغةٍ لم يخترها) — وكلاهما وقع فعلاً.
+ *
+ * والاحتياط الذي دفعنا إلى ذلك لا قيمة له هنا: من زوّر `Host` في طلبه هو
+ * وجّه **عودة دفعته هو**، والمنحُ يجري في الخطّاف لا في العودة. فلا شيء
+ * يُكسَب منه. ويبقى `PUBLIC_URL` بديلاً لطلبٍ بلا ترويسة أصلاً.
  */
 function originOf(req) {
-  const declared = String(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').trim();
-  if (declared) return declared.replace(/\/+$/, '');
-  const proto = req.secure ? 'https' : req.protocol || 'http';
-  return `${proto}://${req.get('host')}`;
+  // `host` من إكسبريس هو `name:port` بلا مسار، ونتحقّق من شكله لا نثق به
+  const host = String(req.get('host') || '').trim();
+  if (/^[a-z0-9.-]+(:\d+)?$/i.test(host)) {
+    const proto = req.secure ? 'https' : req.protocol || 'http';
+    return `${proto}://${host}`;
+  }
+  return String(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '')
+    .trim()
+    .replace(/\/+$/, '');
 }
 
 /**

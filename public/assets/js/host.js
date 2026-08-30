@@ -2289,7 +2289,22 @@
           el('span', { class: 'muted small', text: t('payCardDoneBody') }),
           el('a', { class: 'btn primary sm', href: '#/game-ai' }, t('gbNav'))
         );
-      } else if (tries >= 15 || !fresh) {
+      } else if (!fresh) {
+        /*
+         * دفعَ ثم عاد بلا جلسة.
+         *
+         * دفعتُه لم تضع: الخطّاف يصل خادمنا بمعرّف حسابه لا بمتصفّحه. لكن
+         * صفحةً تقول «جاري التفعيل» وقائمتُها تقول «دخول / حساب جديد» تُفزع
+         * من دفع للتوّ. فنقول له الحقيقة ونعطيه طريق العودة.
+         */
+        clearInterval(tick);
+        state.payPoll = null;
+        box.replaceChildren(
+          el('strong', { text: t('payCardThanks') }),
+          el('span', { class: 'muted small', text: t('payCardSignedOut') }),
+          el('a', { class: 'btn primary sm', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/upgrade') }, t('upSignInBtn'))
+        );
+      } else if (tries >= 15) {
         clearInterval(tick);
         state.payPoll = null;
         box.replaceChildren(el('strong', { text: t('payCardThanks') }), el('span', { class: 'muted small', text: t('payCardSlow') }));

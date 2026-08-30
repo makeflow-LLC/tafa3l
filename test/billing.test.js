@@ -168,7 +168,15 @@ test('جلسة الدفع تحمل هوية المعلّم في ثلاثة مو�
     const user = await userOf(email);
     await storage.get().updateProfile(user.id, { country: 'JO' });
 
-    const res = await c.request('POST', '/api/billing/checkout', {});
+    // عنوانُ المنصّة مضبوطٌ على نطاقٍ آخر عمداً: النطاق الذي جاء منه الطلب
+    // هو الذي يجب أن يفوز، وإلا عاد المعلّم إلى موقعٍ ليس فيه حسابه
+    process.env.RENDER_EXTERNAL_URL = 'https://platform-domain.example';
+    let res;
+    try {
+      res = await c.request('POST', '/api/billing/checkout', {});
+    } finally {
+      delete process.env.RENDER_EXTERNAL_URL;
+    }
     assert.equal(res.status, 200);
     assert.match(res.data.url, /^https:\/\/checkout\.stripe\.com\//);
 
@@ -192,6 +200,17 @@ test('جلسة الدفع تحمل هوية المعلّم في ثلاثة مو�
      * بالعربية، وهم جمهور المنصّة. فلا يُرسَل من هنا رمزُ لغةٍ أبداً.
      */
     assert.equal(sent.get('locale'), 'auto');
+    /*
+     * العودة إلى **النطاق الذي جاء منه الطلب**.
+     *
+     * كانت تُبنى من `RENDER_EXTERNAL_URL`، فيعود من دفع على `tapio.fun` إلى
+     * نطاق المنصّة: أصلٌ آخر بلا كوكي جلسته ولا لغته المحفوظة، فيبدو خارج
+     * حسابه لحظة عودته من الدفع.
+     */
+    const returnTo = new URL(sent.get('success_url'));
+    assert.equal(returnTo.host, new URL(base).host, 'العودة إلى نطاق الطلب لا إلى نطاقٍ من متغيّر بيئة');
+    assert.equal(returnTo.searchParams.get('paid'), '1');
+    assert.equal(new URL(sent.get('cancel_url')).host, new URL(base).host);
   } finally {
     mock.restore();
   }
