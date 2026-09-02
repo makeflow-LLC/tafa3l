@@ -899,6 +899,9 @@
   /** الإجابة الصحيحة + شرحها — تظهر بعد إجابة المتدرب إن فعّل المدرب الخيار */
   function answerReveal(s, q) {
     if (!q?.scored) return null;
+    // «طابِق» و«رتّب» لا خيارات لهما: كان الطالب يرى «صحيحة جزئياً» بلا أن يعرف أين أخطأ
+    if (q.type === 'match') return matchReveal(s, q);
+    if (q.type === 'order') return orderReveal(s, q);
     const revealed = q.options?.some((option) => option.correct !== undefined);
     if (!revealed) return null;
     // لا نكرّر العرض إن كانت إجابته صحيحة وبلا شرح
@@ -917,6 +920,67 @@
             el('strong', { class: 'grow', text: correctText }),
           ])
         : null,
+      q.explanation ? el('p', { style: { margin: 0 } }, [el('span', { text: '💡 ' }), q.explanation]) : null,
+    ]);
+  }
+
+  /** «طابِق» بعد الكشف: كل طرفٍ وما يقابله فعلاً، وعلامةٌ على ما أصابه الطالب وما أخطأه */
+  function matchReveal(s, q) {
+    const pairs = (q.pairs || []).filter((pair) => pair.right !== undefined);
+    if (!pairs.length) return null;
+    const mine = s.answered?.value && typeof s.answered.value === 'object' ? s.answered.value : {};
+    const allRight = pairs.every((pair) => mine[pair.id] === pair.right);
+    if (allRight && !q.explanation) return null;
+
+    return el('div', { class: 'card stack reveal' }, [
+      el('div', { class: 'row' }, el('span', { class: 'badge ok', text: t('pMatchCorrectTitle') })),
+      el(
+        'div',
+        { class: 'reveal-list' },
+        pairs.map((pair) => {
+          const ok = mine[pair.id] === pair.right;
+          return el('div', { class: 'reveal-pair ' + (ok ? 'is-ok' : 'is-bad') }, [
+            el('span', { class: 'reveal-mark', 'aria-hidden': 'true', text: ok ? '✓' : '✕' }),
+            el('div', { class: 'grow' }, [
+              el('strong', { text: pair.left }),
+              el('div', { class: 'reveal-right', text: pair.right }),
+              !ok && mine[pair.id]
+                ? el('div', { class: 'muted small', text: t('pReviewYours') + ' ' + mine[pair.id] })
+                : null,
+            ]),
+          ]);
+        })
+      ),
+      q.explanation ? el('p', { style: { margin: 0 } }, [el('span', { text: '💡 ' }), q.explanation]) : null,
+    ]);
+  }
+
+  /** «رتّب» بعد الكشف: الترتيب الصحيح مرقّماً، وموضع الطالب حيث خالفه */
+  function orderReveal(s, q) {
+    const order = Array.isArray(q.correctOrder) ? q.correctOrder : [];
+    if (!order.length) return null;
+    const textOf = Object.fromEntries((q.items || []).map((item) => [item.id, item.text]));
+    const mine = Array.isArray(s.answered?.value) ? s.answered.value : [];
+    const allRight = order.every((id, i) => mine[i] === id);
+    if (allRight && !q.explanation) return null;
+
+    return el('div', { class: 'card stack reveal' }, [
+      el('div', { class: 'row' }, el('span', { class: 'badge ok', text: t('pOrderCorrectTitle') })),
+      el(
+        'div',
+        { class: 'reveal-list' },
+        order.map((id, i) => {
+          const at = mine.indexOf(id);
+          const ok = at === i;
+          return el('div', { class: 'reveal-pair ' + (ok ? 'is-ok' : 'is-bad') }, [
+            el('span', { class: 'reveal-mark', 'aria-hidden': 'true', text: String(i + 1) }),
+            el('div', { class: 'grow' }, [
+              el('div', { class: 'reveal-right', text: textOf[id] || '' }),
+              !ok && at >= 0 ? el('div', { class: 'muted small', text: t('pOrderYours', { n: at + 1 }) }) : null,
+            ]),
+          ]);
+        })
+      ),
       q.explanation ? el('p', { style: { margin: 0 } }, [el('span', { text: '💡 ' }), q.explanation]) : null,
     ]);
   }
@@ -1071,28 +1135,104 @@
     }
 
     if (q.type === 'match') {
-      // لكل طرف أيسر قائمة بالأطراف اليمنى مخلوطة — أوضح من السحب وأسرع
+      /*
+       * لا قائمة منسدلة أصلية. كانت كلُّ مطابقةٍ صفّاً من نصفين: الطرف في
+       * نصفٍ و`<select>` في النصف الآخر — فعلى شاشة الجوال تعرض القائمة
+       * المغلقة كلمتين من التعريف ثم تقصّه («يدخل عبر الثغ…»)، والطالب يرى
+       * خياراتٍ لا تُفهم ولا يستطيع مقارنتها. هنا كل طرفٍ بطاقةٌ بعرض
+       * الشاشة تُظهر ما اختاره كاملاً، ونقرتُها تفتح تحتها الأطرافَ المقابلة
+       * بنصّها كاملاً — النقر نفسه المستعمل في «رتّب»، بلا سحبٍ ولا قوائم.
+       */
       const chosen = {};
-      const rows = el('div', { class: 'match-list' });
-      const send = el('button', { class: 'btn primary block', disabled: true }, t('pSend'));
       const pairs = q.pairs || [];
+      const rights = q.rights || [];
+      let open = null;
+      let focusPair = null;
+      const list = el('div', { class: 'match-list' });
+      const hint = el('p', { class: 'muted small center', style: { margin: 0 }, text: t('pMatchHint') });
+      const send = el('button', { class: 'btn primary block', disabled: true }, t('pSend'));
+      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-      pairs.forEach((pair) => {
-        const select = el('select', { class: 'match-select' });
-        select.append(el('option', { value: '' }, t('pMatchPick')));
-        (q.rights || []).forEach((right) => select.append(el('option', { value: right }, right)));
-        select.addEventListener('change', () => {
-          if (select.value) chosen[pair.id] = select.value;
-          else delete chosen[pair.id];
-          send.disabled = Object.keys(chosen).length !== pairs.length;
+      function draw() {
+        list.innerHTML = '';
+        pairs.forEach((pair) => {
+          const value = chosen[pair.id] || '';
+          const isOpen = open === pair.id;
+          const head = el(
+            'button',
+            {
+              class: 'match-item' + (value ? ' has-value' : '') + (isOpen ? ' is-open' : ''),
+              type: 'button',
+              'data-pair': pair.id,
+              'aria-expanded': isOpen ? 'true' : 'false',
+            },
+            [
+              el('span', { class: 'match-term', text: pair.left }),
+              el('span', { class: 'match-value', text: value || t('pMatchPick') }),
+              el('span', { class: 'match-caret', 'aria-hidden': 'true', text: '⌄' }),
+            ]
+          );
+          head.addEventListener('click', () => {
+            open = isOpen ? null : pair.id;
+            focusPair = pair.id;
+            draw();
+          });
+          const block = el('div', { class: 'match-block' }, head);
+
+          if (isOpen) {
+            const menu = el('div', { class: 'match-menu', role: 'listbox' });
+            rights.forEach((right) => {
+              const mine = value === right;
+              const takenBy = mine ? null : pairs.find((other) => other.id !== pair.id && chosen[other.id] === right);
+              const choice = el(
+                'button',
+                {
+                  class: 'match-choice' + (mine ? ' is-mine' : '') + (takenBy ? ' is-taken' : ''),
+                  type: 'button',
+                  role: 'option',
+                  'aria-selected': mine ? 'true' : 'false',
+                },
+                [
+                  el('span', { class: 'grow', text: right }),
+                  mine
+                    ? el('span', { class: 'match-tag', text: t('pMatchMine') })
+                    : takenBy
+                      ? el('span', { class: 'match-tag', text: t('pMatchTaken', { term: takenBy.left }) })
+                      : null,
+                ]
+              );
+              choice.addEventListener('click', () => {
+                if (mine) delete chosen[pair.id];
+                else {
+                  // الطرف المقابل يُطابَق مرةً واحدة: أخذُه من عنصرٍ آخر يُفرغ ذلك العنصر
+                  if (takenBy) delete chosen[takenBy.id];
+                  chosen[pair.id] = right;
+                }
+                open = null;
+                focusPair = pair.id;
+                draw();
+              });
+              menu.append(choice);
+            });
+            block.append(menu);
+          }
+          list.append(block);
         });
-        rows.append(
-          el('div', { class: 'match-row' }, [el('span', { class: 'match-left', text: pair.left }), select])
-        );
-      });
+
+        const done = pairs.filter((pair) => chosen[pair.id]).length;
+        send.disabled = done !== pairs.length;
+        hint.textContent = done ? t('pMatchPicked', { n: done, total: pairs.length }) : t('pMatchHint');
+
+        // القائمة المفتوحة تُرى كاملةً، والتركيز يعود إلى العنصر الذي نُقر
+        const focused = focusPair && list.querySelector(`[data-pair="${focusPair}"]`);
+        if (focused) focused.focus({ preventScroll: true });
+        const menu = list.querySelector('.match-menu');
+        if (menu) menu.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+      }
 
       send.addEventListener('click', () => submit(q, chosen));
-      box.append(el('div', { class: 'card stack' }, [rows, send]));
+      draw();
+      box.append(el('div', { class: 'card stack' }, [hint, list, send]));
       return box;
     }
 
