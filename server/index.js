@@ -608,7 +608,14 @@ function handleMessage(socket, msg) {
     if (type === 'answer') {
       const result = session.submitAnswer(participant, msg.questionId, msg.value);
       if (!result.ok) return sendTo(socket, { t: 'answer:rejected', message: result.error });
-      sendTo(socket, { t: 'answer:accepted', correct: result.correct, points: result.points, multiplier: result.multiplier, pending: !!result.pending });
+      // الإقرار يحمل ما يسمح به المعلّم فقط: الصحّة مع الكشف، والنقاط مع إظهار النتيجة
+      const ack = { t: 'answer:accepted', pending: !!result.pending };
+      if (session.settings.revealAnswer) ack.correct = result.correct;
+      if (session.settings.showScore) {
+        ack.points = result.points;
+        ack.multiplier = result.multiplier;
+      }
+      sendTo(socket, ack);
       for (const s of participant.sockets) sendTo(s, session.participantState(participant));
       pushHost(session);
 

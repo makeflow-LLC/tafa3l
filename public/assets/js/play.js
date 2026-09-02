@@ -385,9 +385,18 @@
     ]);
   }
 
-  /** وضع النقاط وحده يعرض النقاط؛ وضع العلامات يُخفيها كي لا يتنافس رقمان على معنى «نتيجتي» */
+  /**
+   * وضع النقاط وحده يعرض النقاط؛ وضع العلامات يُخفيها كي لا يتنافس رقمان على
+   * معنى «نتيجتي» — و«إظهار النتيجة» المطفأ يُخفيها كلّها (والخادم لا يرسلها أصلاً).
+   */
   function showsPoints(s) {
-    return (s?.settings?.reward || 'points') === 'points';
+    return (s?.settings?.reward || 'points') === 'points' && s?.settings?.showScore !== false;
+  }
+
+  /** شارة عدد المشاركين — لا تُرسم حين يُخفي المعلّم الآخرين (الخادم يرسل null) */
+  function peopleBadge(s, text) {
+    if (s.participants == null) return null;
+    return el('span', { class: 'badge' }, text);
   }
 
   function render(force) {
@@ -466,7 +475,7 @@
   function header(s) {
     return el('div', { class: 'row between', style: { marginBottom: '10px' } }, [
       el('span', { class: 'badge' }, t('pQuestionOf', { index: s.index + 1, total: s.total })),
-      el('span', { class: 'badge' }, `👥 ${s.participants}`),
+      peopleBadge(s, `👥 ${s.participants}`),
     ]);
   }
 
@@ -499,7 +508,7 @@
             ])
           : el('p', { class: 'muted', text: waitingReason }),
         opensIn ? null : el('div', { class: 'spinner' }),
-        el('span', { class: 'badge' }, t('pParticipants', { count: s.participants })),
+        peopleBadge(s, t('pParticipants', { count: s.participants })),
         // موعد التسليم قبل أن يبدأ: الطالب يفتح رابط واجبٍ ليلاً ويريد أن
         // يعرف إن كان أمامه وقتٌ ليؤجّله إلى الغد أم عليه أن يبدأ الآن
         s.settings?.dueAt
@@ -865,7 +874,8 @@
         el('div', { class: 'msg', text: t('pPendingGrade') }),
         el('p', { class: 'muted small', text: t('pPendingHint', { max: answered.maxPoints }) }),
       ]);
-    } else if (q.manual && reveals) {
+    } else if (q.manual && reveals && answered.points !== undefined) {
+      // العلامة اليدوية لا تصل حين يُخفي المعلّم النتيجة — فتبقى «وصلت إجابتك»
       const full = answered.points >= (answered.maxPoints || q.points);
       return el('div', { class: 'card feedback' }, [
         el('div', { class: 'em', text: full ? '🎉' : answered.points > 0 ? '👍' : '💡' }),
@@ -1394,11 +1404,16 @@
           el(
             'div',
             {
+              /*
+               * «خاطئة» لا تُرسم إلا حين تصل الصحّة فعلاً (false). بلا كشفٍ لا يصل
+               * الحقل أصلاً، وكان `!undefined` يلوّن اختيار الطالب بالأحمر فيقرؤه خطأً
+               * — وهو ما وعدناه ألّا يراه.
+               */
               class:
                 `opt c${index % 8}` +
                 (q.scored && option.correct ? ' correct' : '') +
-                (q.scored && chosen && !option.correct ? ' wrong' : '') +
-                (!q.scored && chosen ? ' selected' : ''),
+                (q.scored && chosen && option.correct === false ? ' wrong' : '') +
+                (!(q.scored && option.correct !== undefined) && chosen ? ' selected' : ''),
             },
             [
               el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
@@ -1440,7 +1455,9 @@
   function renderReview() {
     const items = state.review || [];
     app.innerHTML = '';
-    const wrong = items.filter((x) => x.correct !== true);
+    // بلا كشفٍ لا تصل الصحّة أصلاً (null) — فلا نعدّ كل سؤالٍ خطأً ولا نعد بمراجعةٍ لا تُكشف
+    const graded = items.some((x) => x.correct !== null && x.correct !== undefined);
+    const wrong = graded ? items.filter((x) => x.correct !== true && !x.pending) : [];
 
     const back = el('button', { class: 'btn ghost sm', type: 'button' }, t('pReviewBack'));
     back.addEventListener('click', () => {
@@ -1455,7 +1472,7 @@
         el('p', {
           class: 'muted small',
           style: { margin: 0 },
-          text: wrong.length ? t('pReviewIntro', { n: wrong.length }) : t('pReviewPerfect'),
+          text: !graded ? t('pReviewNeutral') : wrong.length ? t('pReviewIntro', { n: wrong.length }) : t('pReviewPerfect'),
         }),
       ])
     );
@@ -1466,7 +1483,7 @@
     }
 
     // الأخطاء أولاً: هي ما يحتاج مراجعةً فعلاً
-    const ordered = [...wrong, ...items.filter((x) => x.correct === true)];
+    const ordered = [...wrong, ...items.filter((x) => !wrong.includes(x))];
     ordered.forEach((item) => {
       const answer = el('div', { class: 'review-answer', hidden: true }, [
         el('p', { class: 'small', style: { margin: 0 } }, [
@@ -1494,7 +1511,9 @@
           ? el('span', { class: 'badge ok', text: '✓' })
           : item.correct === 'partial'
             ? el('span', { class: 'badge', text: '½' })
-            : el('span', { class: 'badge bad', text: '✕' });
+            : item.correct === false
+              ? el('span', { class: 'badge bad', text: '✕' })
+              : el('span', { class: 'badge', text: '•' });
 
       app.append(
         el('div', { class: 'card stack tight review-card' }, [
@@ -1520,7 +1539,32 @@
     const revealCard = answerReveal(s, q);
     if (revealCard) app.append(revealCard);
 
-    if (results?.options) {
+    if (!results && q.options?.length) {
+      // «إظهار المشاركين الآخرين» مطفأ: لا أعمدة ولا أعداد — خياراته هو وما صحّ منها إن كُشف
+      const options = el('div', { class: 'options' });
+      const mine = s.answered ? [].concat(s.answered.value) : [];
+      q.options.forEach((option, index) => {
+        const chosen = mine.includes(option.id);
+        options.append(
+          el(
+            'div',
+            {
+              class:
+                `opt c${index % 8}` +
+                (q.scored && option.correct ? ' correct' : '') +
+                (q.scored && chosen && option.correct === false ? ' wrong' : '') +
+                (!(q.scored && option.correct !== undefined) && chosen ? ' selected' : ''),
+            },
+            [
+              el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+              el('span', { class: 'grow', text: option.text }),
+              chosen ? el('span', { class: 'badge', text: t('pYourAnswer') }) : null,
+            ]
+          )
+        );
+      });
+      app.append(options);
+    } else if (results?.options) {
       const options = el('div', { class: 'options' });
       const mine = s.answered ? [].concat(s.answered.value) : [];
       results.options.forEach((option, index) => {
@@ -1532,8 +1576,8 @@
             class:
               `opt c${index % 8}` +
               (q.scored && isCorrect ? ' correct' : '') +
-              (q.scored && chosen && !isCorrect ? ' wrong' : '') +
-              (!q.scored && chosen ? ' selected' : ''),
+              (q.scored && chosen && isCorrect === false ? ' wrong' : '') +
+              (!(q.scored && isCorrect !== undefined) && chosen ? ' selected' : ''),
           },
           [
             el('i', { class: 'bar', style: { width: option.percent + '%' } }),
@@ -1594,6 +1638,17 @@
   }
 
   function renderLeaderboard(s) {
+    // لا ترتيب ولا لوحة (أخفى المعلّم النتيجة أو الآخرين): شاشة انتظارٍ هادئة لا عنوانٌ فارغ
+    if (!s.rank && !s.leaderboard?.length && !s.teamLeaderboard?.length) {
+      app.append(
+        el('div', { class: 'card feedback' }, [
+          el('div', { class: 'em', text: '⏳' }),
+          el('div', { class: 'msg', text: t('pWaitNextQuestion') }),
+        ])
+      );
+      app.append(reactionBar());
+      return;
+    }
     app.append(el('h1', { class: 'center', text: t('pLeaderboard') }));
     if (s.rank) {
       app.append(

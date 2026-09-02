@@ -403,7 +403,16 @@ function normalizeSettings(raw, questions) {
       // عندما يكون false يدخل المشاركون دون اسم (وضع الاستطلاع المجهول)
       requireName: raw?.requireName !== false,
       allowLateJoin: raw?.allowLateJoin !== false,
-      showLeaderboard: raw?.showLeaderboard !== false,
+      /**
+       * ما يراه الطالب على جهازه — ثلاثة مفاتيح مستقلّة:
+       * revealAnswer  — الإجابة الصحيحة وشرحها وصحّة إجابته (أدناه)
+       * showScore     — نتيجته هو: نقاطه أو علامته، ترتيبه، أوسمته
+       * showOthers    — الآخرون: عددهم، لوحة الترتيب، نتائج الصف على سؤال
+       * واللوحة تابعةٌ للآخرين: من أخفى الآخرين أخفى لوحتهم.
+       */
+      showScore: raw?.showScore !== false,
+      showOthers: raw?.showOthers !== false,
+      showLeaderboard: raw?.showLeaderboard !== false && raw?.showOthers !== false,
       // عدّاد «استعد» قبل الأسئلة المؤقتة
       countdown: raw?.countdown !== false,
 
@@ -1269,6 +1278,9 @@ class Session {
    */
   reviewFor(participant) {
     const items = [];
+    // المراجعة تحترم مفاتيح المعلّم نفسها: لا إجابة صحيحة بلا كشف، ولا نقاط بلا نتيجة
+    const reveal = this.settings.revealAnswer;
+    const score = this.settings.showScore;
     this.questions.forEach((q, index) => {
       if (CONTENT_TYPES.has(q.type)) return;
       const a = participant.answers.get(q.id);
@@ -1298,17 +1310,68 @@ class Session {
         index: index + 1,
         type: q.type,
         text: q.text,
-        explanation: q.explanation || '',
+        explanation: reveal ? q.explanation || '' : '',
         mine: a ? readable(a.value) : '',
         answered: !!a,
-        correct: a ? a.correct : null,
-        points: a ? a.points || 0 : 0,
-        maxPoints: q.points || 0,
-        right: rightAnswer(),
+        correct: reveal && a ? a.correct : null,
+        points: score && a ? a.points || 0 : 0,
+        maxPoints: score ? q.points || 0 : 0,
+        right: reveal ? rightAnswer() : '',
         pending: !!a?.pending,
       });
     });
     return items;
+  }
+
+  /**
+   * ما يُرسل للطالب عن إجابته هو. صحّتها لغةُ «إظهار الإجابة الصحيحة»،
+   * ونقاطها لغةُ «إظهار النتيجة» — فما أطفأه المعلّم لا يغادر الخادم أصلاً،
+   * لا يُخفى في الواجهة وحدها حيث يقرؤه من فتح أدوات المتصفح.
+   */
+  answeredFor(answer) {
+    if (!answer) return null;
+    const out = { value: answer.value, pending: !!answer.pending };
+    if (this.settings.revealAnswer) out.correct = answer.correct;
+    if (this.settings.showScore) {
+      out.points = answer.points;
+      out.multiplier = answer.multiplier;
+      out.maxPoints = answer.maxPoints || 0;
+    }
+    return out;
+  }
+
+  /** بطاقة «أنا» على جهاز الطالب: بلا نقاطٍ ولا سلسلة حين تُخفى النتيجة */
+  meFor(participant) {
+    const show = this.settings.showScore;
+    return {
+      id: participant.id,
+      name: participant.name,
+      avatar: participant.avatar,
+      score: show ? participant.score : 0,
+      streak: show ? participant.streak : 0,
+      team: this.teamOf(participant),
+    };
+  }
+
+  /**
+   * نتائج الصف على سؤالٍ كما تصل الطالب: تُحجب كلّها حين يُخفى الآخرون،
+   * وتُنزع منها الإجابة الصحيحة حين لا تُكشف — كانت أعمدةُ «النتائج» في
+   * وضع المدرّب تحمل `correct` لكل خيار مهما كان إعداد الكشف.
+   */
+  resultsFor(qIndex) {
+    if (!this.settings.showOthers) return null;
+    const agg = this.aggregate(qIndex);
+    if (agg?.options && !this.settings.revealAnswer) {
+      agg.options = agg.options.map(({ correct, ...rest }) => rest);
+      delete agg.correctCount;
+    }
+    return agg;
+  }
+
+  /** الترتيب مقارنةٌ بالآخرين ورقمٌ عن نتيجتك معاً — فيلزمه الإذنان، ولا معنى له في استطلاع */
+  rankFor(pid) {
+    if (!this.isAssessed || !this.settings.showOthers || !this.settings.showScore) return null;
+    return this.rankOf(pid);
   }
 
   /** كم إجابة لهذا المشارك تنتظر تصحيح المدرب */
@@ -2024,21 +2087,12 @@ class Session {
       settings: this.settings,
       // هل يُقيَّم النشاط أصلاً؟ الاستطلاع لا ترتيب فيه ولا أوسمة
       assessed: this.isAssessed,
-      me: {
-        id: participant.id,
-        name: participant.name,
-        avatar: participant.avatar,
-        score: participant.score,
-        streak: participant.streak,
-        team: this.teamOf(participant),
-      },
-      participants: this.participants.size,
+      me: this.meFor(participant),
+      participants: this.settings.showOthers ? this.participants.size : null,
       scheduledAt: this.settings.opensAt,
       deadlineAt: this.deadlineAt,
       lang: this.settings.lang,
-      answered: answer
-        ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
-        : null,
+      answered: this.answeredFor(answer),
       // كم إجابة نصّية لم يصحّحها المدرب بعد — نتيجته لا تكتمل قبلها
       pendingGrades: this.pendingGradesFor(participant),
     };
@@ -2048,10 +2102,12 @@ class Session {
       return state;
     }
     if (done) {
-      // الترتيب بلا معنى في استطلاع: الجميع «أول» لأن لا إجابة صحيحة
-      if (this.isAssessed) state.rank = this.rankOf(participant.id);
-      state.badges = this.badgesFor(participant.id);
-      state.mark = this.markFor(participant);
+      const rank = this.rankFor(participant.id);
+      if (rank) state.rank = rank;
+      if (this.settings.showScore) {
+        state.badges = this.badgesFor(participant.id);
+        state.mark = this.markFor(participant);
+      }
       if (this.settings.showLeaderboard) {
         state.leaderboard = this.leaderboard(10);
         state.teamLeaderboard = this.teamLeaderboard();
@@ -2061,7 +2117,7 @@ class Session {
     if (q) {
       // نكشف الإجابة الصحيحة والشرح بعد أن يجيب، إن سمح المدرب بذلك
       state.question = publicQuestion(q, participant.phase === 'feedback' && this.settings.revealAnswer, this.code, this.viewFor(participant), this.timeFor(q));
-      if (participant.phase === 'feedback') state.results = this.aggregate(participant.index);
+      if (participant.phase === 'feedback') state.results = this.resultsFor(participant.index);
     }
     return state;
   }
@@ -2087,44 +2143,40 @@ class Session {
       settings: this.settings,
       // هل يُقيَّم النشاط أصلاً؟ الاستطلاع لا ترتيب فيه ولا أوسمة
       assessed: this.isAssessed,
-      me: {
-        id: participant.id,
-        name: participant.name,
-        avatar: participant.avatar,
-        score: participant.score,
-        streak: participant.streak,
-        team: this.teamOf(participant),
-      },
-      participants: this.participants.size,
+      me: this.meFor(participant),
+      participants: this.settings.showOthers ? this.participants.size : null,
       scheduledAt: this.settings.opensAt,
       deadlineAt: this.deadlineAt,
       lang: this.settings.lang,
-      answered: answer
-        ? { value: answer.value, correct: answer.correct, points: answer.points, multiplier: answer.multiplier, pending: !!answer.pending, maxPoints: answer.maxPoints || 0 }
-        : null,
+      answered: this.answeredFor(answer),
       pendingGrades: this.pendingGradesFor(participant),
     };
 
     if (q && (this.phase === 'question' || this.phase === 'results')) {
-      // بعد عرض النتائج تُكشف للجميع؛ وقبلها تُكشف لمن أجاب فقط إن فعّل المدرب الخيار
-      const reveal = this.phase === 'results' || (this.settings.revealAnswer && !!answer);
+      /*
+       * الكشف بإذن المعلّم وحده: بعد عرض النتائج للجميع، وقبلها لمن أجاب.
+       * كان عرضُ النتائج يكشفها على جهاز الطالب ولو أطفأ المعلّم الخيار —
+       * فالمعلّم الذي أطفأه يقصد ألّا تظهر على الجوّال أصلاً.
+       */
+      const reveal = this.settings.revealAnswer && (this.phase === 'results' || !!answer);
       state.question = publicQuestion(q, reveal, this.code, this.viewFor(participant), this.timeFor(q));
     }
     if (this.phase === 'results' && q) {
-      state.results = this.aggregate(this.currentIndex);
+      state.results = this.resultsFor(this.currentIndex);
     }
     if (this.phase === 'leaderboard' || this.phase === 'final') {
-      if (this.isAssessed) state.rank = this.rankOf(participant.id);
+      const rank = this.rankFor(participant.id);
+      if (rank) state.rank = rank;
       // كم مركزاً صعد أو هبط منذ السؤال السابق
       if (participant.prevRank && state.rank) state.rankDelta = participant.prevRank - state.rank.rank;
       if (this.settings.showLeaderboard) {
         state.leaderboard = this.leaderboard(10);
         state.teamLeaderboard = this.teamLeaderboard();
       }
-      if (this.phase === 'final') state.badges = this.badgesFor(participant.id);
+      if (this.phase === 'final' && this.settings.showScore) state.badges = this.badgesFor(participant.id);
     }
-    // العلامة تُعرض في نهاية النشاط وحده: منتصفُه ليس موضع حكم
-    if (this.phase === 'final' || this.status === 'ended') state.mark = this.markFor(participant);
+    // العلامة تُعرض في نهاية النشاط وحده: منتصفُه ليس موضع حكم — وبإذن «إظهار النتيجة»
+    if ((this.phase === 'final' || this.status === 'ended') && this.settings.showScore) state.mark = this.markFor(participant);
     return state;
   }
 
