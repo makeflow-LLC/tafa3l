@@ -75,6 +75,9 @@
         requireName: true,
         allowLateJoin: true,
         showLeaderboard: true,
+        // ما يراه الطالب: نتيجته هو، والآخرون من حوله
+        showScore: true,
+        showOthers: true,
         countdown: true,
         // الافتراضي حرّ: الطالب يدخل فيبدأ، ويجيب فينتقل
         pace: 'self',
@@ -580,7 +583,16 @@
           el('div', {}, [el('label', { text: t('bactivityTitle') }), titleInput]),
           switchRow(t('baskForAName'), 'requireName', t('bturnItOffFor')),
           switchRow(t('ballowLateJoining'), 'allowLateJoin', t('bstudentsCanJoinAfter')),
-          switchRow(t('bshowTheLeaderboard'), 'showLeaderboard', t('bparticipantRankingAppearsBetween')),
+          /*
+           * ما يراه الطالب على جهازه، مفتاحاً مفتاحاً: الآخرون (وتحتهم لوحتهم،
+           * فلا لوحةَ بلا آخرين)، ونتيجته هو. والإجابة الصحيحة مفتاحها مع
+           * التقييم أدناه لأنها تخصّ كل سؤال لا النشاط كلّه.
+           */
+          switchRow(t('bShowOthers'), 'showOthers', t('bShowOthersHint')),
+          draft.settings.showOthers !== false
+            ? switchRow(t('bshowTheLeaderboard'), 'showLeaderboard', t('bparticipantRankingAppearsBetween'))
+            : null,
+          switchRow(t('bShowScore'), 'showScore', t('bShowScoreHint')),
           switchRow(t('ba321'), 'countdown', t('beveryoneStartsTogetherOn')),
         ])
       );
