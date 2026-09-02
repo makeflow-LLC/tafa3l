@@ -480,9 +480,11 @@
     const h = Math.floor(total / 3600);
     const m = Math.floor((total % 3600) / 60);
     const s = total % 60;
-    if (h) return `${h} س ${String(m).padStart(2, '0')} د`;
-    if (m) return `${m}:${String(s).padStart(2, '0')} د`;
-    return `${s} ثانية`;
+    // الوحدات بلغة القارئ: كانت «د» و«ثانية» تظهر في واجهةٍ إنجليزية
+    const T = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
+    if (h) return T('fmtLeftHours', { h, m: String(m).padStart(2, '0') });
+    if (m) return T('fmtLeftMinutes', { m, s: String(s).padStart(2, '0') });
+    return T('fmtLeftSeconds', { s });
   }
 
   /**
@@ -512,7 +514,7 @@
    */
   function shrinkImage(file, { width = 640, height = 360, quality = 0.82 } = {}) {
     return new Promise((resolve, reject) => {
-      if (!file || !/^image\//.test(file.type)) return reject(new Error('اختر ملف صورة'));
+      if (!file || !/^image\//.test(file.type)) return reject(new Error(global.I18n ? global.I18n.t('imgPickFile') : 'اختر ملف صورة'));
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
@@ -533,7 +535,7 @@
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error('تعذّرت قراءة الصورة'));
+        reject(new Error(global.I18n ? global.I18n.t('imgReadFailed') : 'تعذّرت قراءة الصورة'));
       };
       img.src = url;
     });

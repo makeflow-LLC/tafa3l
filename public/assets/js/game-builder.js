@@ -518,16 +518,25 @@
     // ------------------------------------------------------------- الإرسال
 
     async function poll(jobId) {
+      let misses = 0;
       while (alive()) {
         await new Promise((resolve) => setTimeout(resolve, POLL_MS));
         if (!alive()) return null;
         let data;
         try {
           data = await api('/api/game-ai/chat/' + jobId);
+          misses = 0;
         } catch (err) {
-          // انقطاعٌ عابر لا ينهي مهمّةً تجري على الخادم: نُعاود الاستطلاع،
-          // إلا أن يكون الخادم قد نسي المهمّة أصلاً
-          if (/404/.test(String(err.message))) throw err;
+          /*
+           * انقطاعٌ عابر لا ينهي مهمّةً تجري على الخادم: نُعاود الاستطلاع —
+           * إلا أن يكون الخادم قد نسي المهمّة أصلاً (٤٠٤ بعد إعادة نشرٍ أو
+           * انتهاء مهلة). وكان الفحص على **نصّ** الخطأ لا حالته، ونصُّ
+           * الخادم عربيٌّ بلا رقم، فكان الاستطلاع يدور إلى الأبد والزرّ مقفلاً.
+           * وانقطاعٌ يطول دقيقتين يُنهى أيضاً — الدوران الصامت أسوأ من خطأ.
+           */
+          if (err.status === 404) throw err;
+          misses += 1;
+          if (misses >= 48) throw new Error(t('gbLostServer'));
           continue;
         }
         if (data.status === 'working') {
@@ -654,7 +663,12 @@
 
     drawThread();
     paintQuota();
-    input.focus();
+    /*
+     * التركيز على الحقل للحاسوب وحده. على الجوال يقفز التركيزُ بالصفحة إلى
+     * أسفلها ويفتح لوحة المفاتيح قبل أن يقرأ المعلّم سطراً: يهبط على حقلٍ
+     * فارغ ولا يرى الإعدادات ولا الحصّة ولا الأمثلة التي فوقه.
+     */
+    if (matchMedia('(hover: hover) and (pointer: fine)').matches) input.focus({ preventScroll: true });
   }
 
   global.GameBuilder = { render, KNOBS, defaults, readSettings, titleFromHtml };

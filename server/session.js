@@ -554,11 +554,34 @@ class Session {
     this.screenSockets = new Set();
 
     // فرق ثابتة العدد تُنشأ مرة واحدة عند إنشاء الجلسة — التوزيع يتم عند انضمام كل مشارك
+    this.rebuildTeams();
+
+    this.armSchedule();
+  }
+
+  /** الفرق من الإعدادات — تُستدعى عند الإنشاء وعند تعديل الإعدادات قبل البدء */
+  rebuildTeams() {
     this.teams = this.settings.teamMode
       ? TEAMS.slice(0, this.settings.teamCount).map((t, i) => ({ id: i, name: t.name, emoji: t.emoji }))
       : null;
+  }
 
+  /**
+   * تعديلُ النشاط قبل بدئه: العنوان والأسئلة والإعدادات معاً.
+   *
+   * كان المسار يبدّل الحقول الثلاثة ويكتفي، فيبقى مؤقّتُ الموعد القديم مسلّحاً
+   * على موعدٍ لم يعد موجوداً (أو لا يُسلَّح موعدٌ جديد أصلاً)، وتبقى الفرق
+   * بعددها القديم فتُوزَّع على فرقٍ لا وجود لها. فكلُّ ما يُشتقّ من الإعدادات
+   * يُعاد اشتقاقه هنا.
+   */
+  applyEdit(quiz) {
+    this.title = quiz.title;
+    this.questions = quiz.questions;
+    this.settings = quiz.settings;
+    this.rebuildTeams();
+    for (const p of this.participants.values()) p.teamId = this.teams ? this.smallestTeam() : null;
     this.armSchedule();
+    this.touch();
   }
 
   /** يضبط مؤقّت الفتح التلقائي إن كان للاختبار موعد */
@@ -784,12 +807,21 @@ class Session {
        */
       const waitingForSchedule = this.settings.opensAt && Date.now() < this.settings.opensAt;
       if (this.status === 'lobby' && this.settings.autoStart && !waitingForSchedule) {
-        this.status = 'live';
-        this.phase = 'self';
-        this.currentIndex = 0;
+        /*
+         * `start()` نفسها لا نسخةٌ يدوية منها.
+         *
+         * كان البدء هنا يقلب الحالة إلى `live` بثلاثة أسطر، فيبقى `startedAt`
+         * فارغاً ولا تُسلَّح مهلةُ الإقفال ولا يُطبَّق خلطُ الأسئلة: واجبٌ له
+         * موعد تسليم يقبل الإجابات بعد موعده، واختبارٌ من ثلاثين دقيقة لا
+         * يُقفل أبداً — وهذا في المبدأ نفسه (حرّ + بدءٌ تلقائي)، أي لأغلب
+         * الجلسات. وبعد إعادة النشر كانت تُسلَّح، فيختلف السلوك قبل النشر
+         * وبعده. و`start()` تفتح السؤال لكل الحاضرين ومنهم هذا الداخل.
+         */
+        this.start();
+      } else if (this.status === 'live') {
+        // من ينضم بعد البدء يجب أن يُفتح له سؤاله فوراً بمؤقّته الخاص
+        this.openFor(participant);
       }
-      // من ينضم بعد البدء يجب أن يُفتح له سؤاله فوراً بمؤقّته الخاص
-      if (this.status === 'live') this.openFor(participant);
     }
 
     this.touch();

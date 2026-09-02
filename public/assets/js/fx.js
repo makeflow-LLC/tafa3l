@@ -184,7 +184,8 @@
     num.className = 'n';
     const label = document.createElement('div');
     label.className = 'l';
-    label.textContent = 'استعد…';
+    // بلغة النشاط: هذه الشاشة يراها الطالب والبروجكتر، وكانت عربيةً في نشاطٍ إنجليزي
+    label.textContent = window.I18n ? window.I18n.t('fxGetReady') : 'استعد…';
     overlay.append(num, label);
     document.body.append(overlay);
 

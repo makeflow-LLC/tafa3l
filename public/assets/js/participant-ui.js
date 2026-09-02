@@ -304,11 +304,15 @@
     sheet.addEventListener('click', (event) => {
       if (event.target === sheet) shut();
     });
-    document.addEventListener('keydown', (event) => {
+    const onKey = (event) => {
       if (event.key === 'Escape') shut();
-    });
+    };
+    document.addEventListener('keydown', onKey);
+    // الورقة تُبنى مع كل رسمة، والمستمع على `document` لا يزول بزوالها —
+    // فكان كل سؤالٍ يترك خلفه ورقةً ميّتة معلّقة بالنافذة إلى إغلاق الصفحة
+    const destroy = () => document.removeEventListener('keydown', onKey);
 
-    return { button, sheet, open, close: shut };
+    return { button, sheet, open, close: shut, destroy };
   }
 
   // ------------------------------- قائمة الشريط العلوي (مشتركة)

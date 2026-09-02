@@ -1037,6 +1037,7 @@ function accountRoutes(store) {
   router.post('/games/cover', auth.requireUser, async (req, res) => {
     try {
       const now = Date.now();
+      if (coverUsage.size > 2000) for (const [k, v] of coverUsage) if (now >= v.resetAt) coverUsage.delete(k);
       const entry = coverUsage.get(req.user.id);
       if (!entry || now >= entry.resetAt) {
         coverUsage.set(req.user.id, { count: 1, resetAt: now + COVER_WINDOW_MS });
