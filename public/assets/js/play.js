@@ -738,6 +738,7 @@
     const host = el('div', { class: 'tp' }, sheet.sheet);
     document.body.append(host);
     state.sheetHost = host;
+    state.sheetDestroy = sheet.destroy;
     return sheet.button;
   }
 
@@ -1425,13 +1426,13 @@
   function wordCloud(words) {
     const cloud = el('div', { class: 'cloud' });
     const max = Math.max(1, ...words.map((w) => w.count));
-    const colors = ['#f472b6', '#60a5fa', '#fbbf24', '#34d399', '#a78bfa', '#fb923c', '#22d3ee'];
     words.forEach((word, index) => {
       const size = 0.95 + (word.count / max) * 1.7;
       cloud.append(
         el('span', {
           text: word.text + (word.count > 1 ? ` ×${word.count}` : ''),
-          style: { fontSize: size.toFixed(2) + 'rem', color: colors[index % colors.length] },
+          class: 'c' + (index % 7),
+          style: { fontSize: size.toFixed(2) + 'rem' },
         })
       );
     });
@@ -2093,6 +2094,8 @@
     state.sendBtn = null;
     state.sheetHost?.remove();
     state.sheetHost = null;
+    state.sheetDestroy?.();
+    state.sheetDestroy = null;
     state.cancelCountdown?.();
     state.cancelCountdown = null;
     // عدّادا الجدولة والمدة يعيشان بين الرسمات، فنوقفهما مع كل إعادة رسم

@@ -212,7 +212,7 @@
    */
   function compressImage(file) {
     return new Promise((resolve, reject) => {
-      if (!/^image\//.test(file.type)) return reject(new Error('اختر ملف صورة'));
+      if (!/^image\//.test(file.type)) return reject(new Error(t('imgPickFile')));
       const reader = new FileReader();
       reader.onerror = () => reject(new Error(t('bcouldNotReadThe')));
       reader.onload = () => {
@@ -896,7 +896,24 @@
         stage = 'review';
         draw();
       });
-      wrap.append(el('div', { class: 'tp-d-row' }, [prev, el('span', { class: 'grow' }), next]));
+      const stepNav = el('div', { class: 'tp-d-row tp-d-stepnav' }, [prev, el('span', { class: 'grow' }), next]);
+      wrap.append(stepNav);
+
+      /*
+       * الزرّ الثابت يختفي حين يظهر صفُّ «السابق / التالي»: كلاهما في زاوية
+       * الإبهام نفسها، فكان «+ سؤال جديد» يجثم فوق «التالي» عند آخر الصفحة —
+       * والمعلّم يضغط ليتقدّم فيضيف سؤالاً. ولا حاجة للزرّ الثابت وذلك الصفّ
+       * على الشاشة أصلاً: وجودُه هناك يعني أن المعلّم بلغ آخر السؤال.
+       */
+      if (typeof IntersectionObserver === 'function') {
+        const watcher = new IntersectionObserver(
+          (entries) => {
+            fab.classList.toggle('is-hidden', entries.some((e) => e.isIntersecting));
+          },
+          { threshold: 0.1 }
+        );
+        watcher.observe(stepNav);
+      }
 
       // الرقم النشط إلى النظر بعد الرسم — على الجوال قد يكون خارج الصفّ
       const activePill = pills.querySelector('.is-on');
@@ -1739,7 +1756,7 @@
           const m = /(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})|^([A-Za-z0-9_-]{11})$/.exec(raw);
           const vid = m ? m[1] || m[2] : null;
           preview.textContent = !raw ? '' : vid ? t('bVideoOk') : t('bVideoBad');
-          preview.style.color = !raw || vid ? '' : '#fca5a5';
+          preview.style.color = !raw || vid ? '' : 'var(--bad)';
         };
         input.addEventListener('input', () => {
           question.video = input.value;

@@ -51,7 +51,8 @@ function sortGames(sort) {
 
 function fileDriver() {
   /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
-  let db = { users: {}, activities: {}, authSessions: {}, bankQuestions: {}, games: {}, liveSessions: {}, classes: {}, meta: {} };
+  const empty = () => Object.create(null);
+  let db = { users: empty(), activities: empty(), authSessions: empty(), bankQuestions: empty(), games: empty(), liveSessions: empty(), classes: empty(), meta: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -112,14 +113,20 @@ function fileDriver() {
       try {
         const raw = await fsp.readFile(DATA_FILE, 'utf8');
         const parsed = JSON.parse(raw);
+        /*
+         * خرائطُ بلا سلسلة أوّليات: مفاتيحها معرّفاتٌ يرسلها المتصفّح، و
+         * `db.games['constructor']` على كائنٍ عاديّ يعيد دالّةً لا `undefined`
+         * — فكان `/api/games/__proto__` يردّ بطاقةً ولعبةً لا وجود لهما.
+         */
+        const bare = (obj) => Object.assign(Object.create(null), obj || {});
         db = {
-          users: parsed.users || {},
-          activities: parsed.activities || {},
-          games: parsed.games || {},
-          authSessions: parsed.authSessions || {},
-          bankQuestions: parsed.bankQuestions || {},
-          liveSessions: parsed.liveSessions || {},
-          classes: parsed.classes || {},
+          users: bare(parsed.users),
+          activities: bare(parsed.activities),
+          games: bare(parsed.games),
+          authSessions: bare(parsed.authSessions),
+          bankQuestions: bare(parsed.bankQuestions),
+          liveSessions: bare(parsed.liveSessions),
+          classes: bare(parsed.classes),
           meta: parsed.meta || {},
         };
       } catch (err) {
@@ -550,8 +557,11 @@ function postgresDriver(connectionString) {
       subject: r.subject || '',
       grades: Array.isArray(r.grades) ? r.grades : [],
       description: r.description || '',
-      // القوائم لا تختار html ولا cover، فالحقلان قد يغيبان عن الصفّ
+      // القوائم لا تختار html ولا cover، فالحقلان قد يغيبان عن الصفّ.
+      // و`cover` يُعاد حين يُختار: تعديلُ اللعبة يُعيد كتابة صفّها كاملاً من
+      // هذا الكائن، فغيابُ الصورة منه كان يعني محوَها مع كل تعديلِ عنوان.
       ...(r.html === undefined ? {} : { html: r.html }),
+      ...(r.cover === undefined ? {} : { cover: r.cover || '' }),
       hasCover: r.has_cover === undefined ? Boolean(r.cover) : Boolean(r.has_cover),
       offlineOk: r.offline_ok !== false,
       bytes: Number(r.bytes || 0),
@@ -993,7 +1003,9 @@ function postgresDriver(connectionString) {
       await pool.query(
         `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at, cover, offline_ok)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-         ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13, cover = $14, offline_ok = $15`,
+         ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13,
+           -- الصورة تبقى إن لم تُرسل صورةٌ جديدة: تعديلٌ لا يحملها ليس طلباً لمحوها
+           cover = COALESCE($14, games.cover), offline_ok = $15`,
         [g.id, g.ownerId, g.title, g.subject || null, JSON.stringify(g.grades || []), g.description || null,
          g.html, g.bytes || 0, g.plays || 0, g.ratingSum || 0, g.ratingCount || 0, g.createdAt, g.updatedAt, g.cover || null,
          g.offlineOk !== false]

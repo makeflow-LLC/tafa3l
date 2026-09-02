@@ -75,13 +75,21 @@ function gameAiRoutes() {
     const now = Date.now();
     for (const [id, chat] of chats) if (now - chat.at > CHAT_TTL_MS) chats.delete(id);
     for (const [id, job] of jobs) if (now - job.startedAt > JOB_TTL_MS && job.status !== 'working') jobs.delete(id);
-    // سقفٌ صلب خلف المهلة: أقدمها يخرج أولاً
+    // سقفٌ صلب خلف المهلة: أقدمها يخرج أولاً — إلا ما يُبنى الآن. مهمّةٌ
+    // تُطرد وهي تعمل تعني معلّماً يُخصم من حصّته ولا يصله ملفّه
     while (chats.size > MAX_CHATS) chats.delete(chats.keys().next().value);
-    while (jobs.size > MAX_JOBS) jobs.delete(jobs.keys().next().value);
+    if (jobs.size > MAX_JOBS) {
+      for (const [id, job] of jobs) {
+        if (jobs.size <= MAX_JOBS) break;
+        if (job.status !== 'working') jobs.delete(id);
+      }
+    }
   }
 
   function rateLimited(userId) {
     const now = Date.now();
+    // تنظيفٌ كسول: مدخلٌ لكل معلّمٍ إلى الأبد ينمو ببطء ولا يتوقّف
+    if (usage.size > 2000) for (const [k, v] of usage) if (now >= v.resetAt) usage.delete(k);
     const entry = usage.get(userId);
     if (!entry || now >= entry.resetAt) {
       usage.set(userId, { count: 1, resetAt: now + RATE_WINDOW_MS });

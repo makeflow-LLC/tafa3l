@@ -34,6 +34,8 @@ const usage = new Map(); // userId -> { count, resetAt }
 
 function rateLimited(userId) {
   const now = Date.now();
+  // تنظيفٌ كسول: مدخلٌ لكل معلّمٍ إلى الأبد ينمو ببطء ولا يتوقّف
+  if (usage.size > 2000) for (const [k, v] of usage) if (now >= v.resetAt) usage.delete(k);
   const entry = usage.get(userId);
   if (!entry || now >= entry.resetAt) {
     usage.set(userId, { count: 1, resetAt: now + RATE_WINDOW_MS });

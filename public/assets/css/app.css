@@ -249,6 +249,29 @@ html.dark .brand .dark-only {
   display: inline-block;
 }
 
+/*
+ * لا زرَّ في الشريط يلتفّ نصُّه: «EN» كان يصير «E» فوق «N» حين يضيق الشريط
+ * بشارة الرمز وشارة البثّ على الجوال. والزرّ إمّا يظهر كاملاً أو يُخفى.
+ */
+.topbar .btn,
+.topbar .icon-btn,
+.topbar .badge {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/*
+ * شاشةُ الجلسة على الجوال: رمزُ الدخول وحالةُ البثّ أهمّ من الشعار واسم
+ * المعلّم — فحين تظهر شارةُ الرمز على شاشةٍ ضيّقة يُخفى الاثنان بدل أن
+ * يُعتصر الاسم إلى ثلاث نقاط ويُسحق الشعار إلى صفر.
+ */
+@media (max-width: 520px) {
+  .topbar:has(#codeBadge:not(.hidden)) .brand,
+  .topbar:has(#codeBadge:not(.hidden)) .tp-who__name {
+    display: none;
+  }
+}
+
 .topbar .logo {
   height: 30px;
   width: auto;
@@ -1510,6 +1533,11 @@ body.playing .footer {
   font: inherit;
   font-size: 0.85rem;
   padding: 5px 11px;
+  /* شريحةُ الاسم في كشف الصفّ هي زرُّ الدخول نفسه للطالب: ٤٤px لا ٣٠ */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1560,6 +1588,9 @@ body.playing .footer {
   background: none;
   border: 0;
   padding: 2px 4px;
+  /* خمس نجومٍ متلاصقة على الجوال: كل واحدةٍ هدفُ إبهامٍ كامل لا حرفاً بحجمه */
+  min-width: 44px;
+  min-height: 44px;
   cursor: pointer;
   color: var(--border);
 }
@@ -1988,6 +2019,27 @@ input[type='range'].slider::-moz-range-thumb {
   animation: pop 0.3s ease;
 }
 
+/*
+ * ألوان سحابة الكلمات لكل سِمة. كانت سبعة ألوان ثابتة في الجافاسكربت اختيرت
+ * للخلفية الداكنة، فتصير على الفاتحة (‎#FAF9F7‎) بتباين ١.٦ — كلماتٌ لا تُرى.
+ * السبعة نفسها هنا للداكن، ودرجاتٌ أعمق منها للفاتح.
+ */
+.cloud .c0 { color: #b8236f; }
+.cloud .c1 { color: #1d5fc4; }
+.cloud .c2 { color: #9a5b00; }
+.cloud .c3 { color: #0f7a4f; }
+.cloud .c4 { color: #6c3df4; }
+.cloud .c5 { color: #b7491a; }
+.cloud .c6 { color: #0b7f96; }
+
+html.dark .cloud .c0 { color: #f472b6; }
+html.dark .cloud .c1 { color: #60a5fa; }
+html.dark .cloud .c2 { color: #fbbf24; }
+html.dark .cloud .c3 { color: #34d399; }
+html.dark .cloud .c4 { color: #a78bfa; }
+html.dark .cloud .c5 { color: #fb923c; }
+html.dark .cloud .c6 { color: #22d3ee; }
+
 .quotes {
   display: grid;
   gap: 8px;
@@ -2206,6 +2258,23 @@ input[type='range'].slider::-moz-range-thumb {
   border-radius: 999px;
   padding: 4px;
   overflow-x: auto;
+  /*
+   * صفٌّ يُمرَّر لا يُقصّ: ما يخفيه الحدّ يُقال بتلاشٍ في طرفه لا بقطعٍ حادّ
+   * يبدو عطلاً، والتمرير يتوقّف على زرٍّ كامل لا نصفه. وشريط التمرير مخفيّ —
+   * الأزرار نفسها تقول إن هنا ما يُمرَّر.
+   */
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs button {
+  scroll-snap-align: start;
 }
 
 .tabs button {

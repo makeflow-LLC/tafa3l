@@ -92,7 +92,28 @@ function signatureOf(session) {
     session.ownerId,
     session.settings?.opensAt,
     session._shuffled ? 1 : 0,
+    /*
+     * ودقّةُ `lastActivity` عشرُ دقائق: في الوضع الحرّ لا يتغيّر شيءٌ ممّا
+     * فوق بعد الإطلاق، فكان آخرُ نشاطٍ على القرص يساوي لحظةَ البدء مهما
+     * أجاب الطلاب — وإعادةُ نشرٍ بعد ثلاث ساعاتٍ من حصةٍ جارية تُسقطها
+     * «خاملةً» وهي حيّة. عشرُ دقائق تجدّدها بلا كتابةٍ عند كل نقرة.
+     */
+    Math.floor((session.lastActivity || 0) / 600000),
+    session.rev || 0,
   ].join('|');
+}
+
+/**
+ * تعديلٌ يمسّ العنوان أو الأسئلة أو الإعدادات — يُعيد كتابة الصفّ كاملاً.
+ *
+ * التحديثات الخفيفة تتعمّد ألا تكتب الأسئلة (قد تحمل صوراً بميغابايتات)،
+ * فتعديلُ المعلّم قبل البدء كان يبقى في الذاكرة وحدها: بعد إعادة النشر تعود
+ * الجلسة بعنوانها وأسئلتها القديمة.
+ */
+function rewrite(session) {
+  session.rev = (session.rev || 0) + 1;
+  fullyWritten.delete(session.code);
+  markChanged(session);
 }
 
 function markChanged(session) {
@@ -205,8 +226,13 @@ async function restore() {
      * ساعاتِ خمولٍ فأُسقط عند أول إعادة نشر، وهو بالضبط ما جئنا نمنعه.
      */
     const scheduled = snap.status === 'lobby' && snap.settings?.opensAt;
+    // وواجبٌ له موعد تسليم: المنظّف يُبقيه حتى موعده (انظر `sweep`)، فلا يصحّ
+    // أن تُسقطه إعادةُ النشر وحدها — رابطُ الخميس يجب أن يعمل الأحد
+    const due = snap.status !== 'ended' && snap.settings?.dueAt;
     const alive =
-      now - (Number(snap.lastActivity) || 0) <= IDLE_TTL_MS || (scheduled && now < snap.settings.opensAt + 60 * 60 * 1000);
+      now - (Number(snap.lastActivity) || 0) <= IDLE_TTL_MS ||
+      (scheduled && now < snap.settings.opensAt + 60 * 60 * 1000) ||
+      (due && now < snap.settings.dueAt + 60 * 60 * 1000);
     if (!alive) {
       db.deleteLiveSession(snap.code).catch(() => {});
       continue;
@@ -273,4 +299,4 @@ function stats() {
   return { sessions: sessions.size, participants };
 }
 
-module.exports = { createSession, getSession, deleteSession, sweep, stats, sessions, restore, flush };
+module.exports = { createSession, getSession, deleteSession, sweep, stats, sessions, restore, flush, rewrite };

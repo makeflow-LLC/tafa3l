@@ -249,7 +249,8 @@
 
     drawThread();
     drawPreview();
-    input.focus();
+    // على الجوال يقفز التركيزُ بالصفحة ويفتح لوحة المفاتيح قبل أن يقرأ المعلّم سطراً
+    if (matchMedia('(hover: hover) and (pointer: fine)').matches) input.focus({ preventScroll: true });
   }
 
   global.AiChat = { render, CHAT_KEY };

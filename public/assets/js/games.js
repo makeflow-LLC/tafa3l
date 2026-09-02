@@ -117,7 +117,11 @@
     search.addEventListener('keydown', (e) => e.key === 'Enter' && run());
 
     const pick = (key, allLabel, options) => {
-      const sel = el('select', {}, [el('option', { value: '', text: allLabel }), ...options.map((o) => el('option', { value: o.value ?? o, text: o.label ?? o }))]);
+      // خيار «الكل» لمن له معنى فيه: قائمةُ الترتيب لا «كلّ» لها، فكان يتصدّرها سطرٌ فارغ
+      const sel = el('select', {}, [
+        allLabel ? el('option', { value: '', text: allLabel }) : null,
+        ...options.map((o) => el('option', { value: o.value ?? o, text: o.label ?? o })),
+      ]);
       sel.value = state[key];
       sel.addEventListener('change', () => {
         state[key] = sel.value;

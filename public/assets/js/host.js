@@ -589,7 +589,7 @@
       html = value;
       const kb = Math.round(Buffer_len(value) / 1024);
       note.textContent = value ? t('gFormLoaded', { from, kb }) : '';
-      note.style.color = kb > 2048 ? '#fca5a5' : '';
+      note.style.color = kb > 2048 ? 'var(--bad)' : '';
     };
     file.addEventListener('change', async () => {
       const f = file.files?.[0];
@@ -778,7 +778,11 @@
 
     const country = window.T.countrySelect(profile.country || '');
     const face = el('div', { class: 'profile-face' });
-    const photoInput = el('input', { type: 'file', accept: 'image/*' });
+    // حقلُ الملفّ مخفيّ خلف زرٍّ بلغة الصفحة: «Choose File / No file chosen»
+    // كان يظهر كما يرسمه المتصفّح، إنجليزياً وبلا اتجاه، وسط نموذجٍ عربيّ
+    const photoInput = el('input', { type: 'file', accept: 'image/*', class: 'sr-only', tabindex: '-1' });
+    const pickPhoto = el('button', { class: 'btn ghost', type: 'button' }, t('profPickPhoto'));
+    pickPhoto.addEventListener('click', () => photoInput.click());
     const photoNote = el('div', { class: 'muted small' });
     // undefined = لم تُلمس الصورة، '' = احذفها، data URI = صورة جديدة
     let photo;
@@ -845,7 +849,7 @@
           el('div', { class: 'stack tight grow' }, [
             el('span', { class: 'small' }, [t('profPhoto'), ' ', window.T.hintDot(t('profPhotoHint'))]),
             photoInput,
-            el('div', { class: 'row', style: { gap: '6px' } }, [clearPhoto]),
+            el('div', { class: 'row', style: { gap: '6px' } }, [pickPhoto, clearPhoto]),
           ]),
         ]),
         photoNote,
@@ -2699,6 +2703,12 @@
   function openLive(code) {
     const hostToken = hostTokenFor(code);
     if (!hostToken) {
+      // الجلسة السابقة تُغلق هنا أيضاً: كان مقبسها يبقى مفتوحاً فترسم حالتُها
+      // التالية فوق شاشة «لا نملك المفتاح» والعنوان يقول جلسةً أخرى
+      teardown();
+      codeBadge.classList.add('hidden');
+      connBadge.classList.add('hidden');
+      bar.innerHTML = '';
       app.innerHTML = '';
       app.append(
         el('div', { class: 'card stack center' }, [
@@ -2725,6 +2735,25 @@
       onStatus: (status) => {
         connBadge.className = 'badge ' + (status === 'online' ? 'ok' : status === 'offline' ? 'bad' : '');
         connBadge.textContent = status === 'online' ? t('hlive') : status === 'offline' ? t('hoffline') : t('hconnecting');
+        /*
+         * انقطاعٌ قبل أن تصل أي حالة: كانت الدوّامة تدور إلى الأبد وشارةٌ
+         * صغيرة في الشريط وحدها تقول «غير متصل». من فتح جلسته على شبكةٍ تمنع
+         * WebSocket يستحقّ أن يُقال له ما جرى وما يفعل — لا انتظاراً بلا نهاية.
+         */
+        if (status === 'offline' && !state.live && state.code === code) {
+          app.innerHTML = '';
+          app.append(
+            el('div', { class: 'card stack center' }, [
+              el('div', { style: { fontSize: '2.2rem' }, text: '📡' }),
+              el('h2', { style: { margin: 0 }, text: t('hLiveUnreachable') }),
+              el('p', { class: 'muted small', style: { margin: 0 }, text: t('hLiveUnreachableBody') }),
+              el('div', { class: 'row', style: { justifyContent: 'center', gap: '8px' } }, [
+                el('button', { class: 'btn primary', type: 'button', onclick: () => location.reload() }, t('hRetry')),
+                el('a', { class: 'btn ghost', href: '#/' }, t('hhome')),
+              ]),
+            ])
+          );
+        }
       },
       onMessage: (msg) => {
         if (msg.t === 'state') {
@@ -2784,6 +2813,12 @@
     state.live = null;
     state.dashboard = null;
     state.lastPhaseKey = '';
+    // تحليلُ جلسةٍ لا يُعرض على جلسةٍ أخرى: كان يبقى فيُرسم لثانيةٍ على الجلسة
+    // التالية، ويبقى إن فشل جلبُ الجديد — أرقامُ صفٍّ آخر بلا أي تنبيه
+    state.analyticsData = null;
+    state.analyticsError = null;
+    state.dashOpenQ = null;
+    state.gradeShown = new Map();
     clearTick();
     // استطلاعُ ما بعد الدفع يخصّ صفحته وحدها: من غادرها لا يُسأل عنه الخادم بعدها
     if (state.payPoll) clearInterval(state.payPoll);
@@ -3199,12 +3234,12 @@
     if (results.words) {
       const cloud = el('div', { class: 'cloud' });
       const max = Math.max(1, ...results.words.map((word) => word.count));
-      const colors = ['#f472b6', '#60a5fa', '#fbbf24', '#34d399', '#a78bfa', '#fb923c', '#22d3ee'];
       results.words.forEach((word, index) => {
         cloud.append(
           el('span', {
             text: word.text + (word.count > 1 ? ` ×${word.count}` : ''),
-            style: { fontSize: (1 + (word.count / max) * 2.2).toFixed(2) + 'rem', color: colors[index % colors.length] },
+            class: 'c' + (index % 7),
+            style: { fontSize: (1 + (word.count / max) * 2.2).toFixed(2) + 'rem' },
           })
         );
       });

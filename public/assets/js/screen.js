@@ -90,6 +90,8 @@
     if (row) {
       row.innerHTML = '';
       window.I18n.mountToggle(row);
+      // زرّ السِمة يسكن الصفّ نفسه، فإفراغُه كان يُسقطه مع كل تبديل لغة
+      window.Theme?.mountToggle(row, { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
     }
   }
 
@@ -370,12 +372,12 @@
     if (results.words) {
       const cloud = el('div', { class: 'cloud' });
       const max = Math.max(1, ...results.words.map((w) => w.count));
-      const colors = ['#f472b6', '#60a5fa', '#fbbf24', '#34d399', '#a78bfa', '#fb923c', '#22d3ee'];
       results.words.forEach((word, index) => {
         cloud.append(
           el('span', {
             text: word.text + (word.count > 1 ? ` ×${word.count}` : ''),
-            style: { fontSize: (1.2 + (word.count / max) * 2.6).toFixed(2) + 'rem', color: colors[index % colors.length] },
+            class: 'c' + (index % 7),
+            style: { fontSize: (1.2 + (word.count / max) * 2.6).toFixed(2) + 'rem' },
           })
         );
       });

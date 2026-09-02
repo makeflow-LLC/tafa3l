@@ -70,9 +70,18 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), bil
  */
 const jsonLarge = express.json({ limit: '12mb' });
 const jsonSmall = express.json({ limit: '256kb' });
-const CARRIES_IMAGES = [/^\/api\/sessions(\/[^/]+)?$/, /^\/api\/activities(\/[^/]+)?$/, /^\/api\/bank(\/[^/]+)?$/, /^\/api\/games(\/[^/]+)?$/];
+const CARRIES_IMAGES = [
+  /^\/api\/sessions(\/[^/]+)?$/,
+  /^\/api\/activities(\/[^/]+)?$/,
+  /^\/api\/bank(\/[^/]+)?$/,
+  /^\/api\/games(\/[^/]+)?$/,
+  // صورةُ اللعبة وصورةُ البروفايل: كلتاهما أكبر من السقف الصغير حين تُرمَّز
+  // base64، فكان تبديلُ صورةٍ بحجمٍ يقبله المتحقّق يُرفض قبل أن يصله بـ413
+  /^\/api\/games\/[^/]+\/cover$/,
+  /^\/api\/profile$/,
+];
 app.use((req, res, next) => {
-  const large = (req.method === 'POST' || req.method === 'PUT') && CARRIES_IMAGES.some((re) => re.test(req.path));
+  const large = ['POST', 'PUT', 'PATCH'].includes(req.method) && CARRIES_IMAGES.some((re) => re.test(req.path));
   return (large ? jsonLarge : jsonSmall)(req, res, next);
 });
 
@@ -294,10 +303,10 @@ app.put('/api/sessions/:code', (req, res) => {
     // نفس بوابة POST: بلا هذه كان يكفي إنشاء جلسة نظيفة ثم تعديلها بالصور
     premium.assertImagesAllowed(req.user, req.body?.questions);
     const quiz = normalizeQuiz(req.body || {});
-    session.title = quiz.title;
-    session.questions = quiz.questions;
-    session.settings = quiz.settings;
-    session.touch();
+    session.applyEdit(quiz);
+    // كتابةٌ كاملة لا خفيفة: الأسئلة والعنوان لا تكتبهما التحديثات الخفيفة،
+    // فكانت إعادةُ النشر تُعيد الجلسة بأسئلتها القديمة
+    store.rewrite(session);
     session.broadcastState();
     res.json({ ok: true, questionCount: session.questions.length });
   } catch (err) {
@@ -392,6 +401,28 @@ app.use((req, res) => {
   res.status(404).sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
+/**
+ * أخطاء ما قبل المسار — JSON دائماً على `/api`.
+ *
+ * بلا هذا المعالج كان جسمٌ مكسور أو أكبر من الحدّ يصل إلى معالج إكسبريس
+ * الافتراضي: صفحةُ HTML فيها تتبّعُ المكدّس بمسارات الخادم، والواجهة تقرؤها
+ * فتعرض «تعذّر الوصول إلى الخادم» لأنها ليست JSON. فالمعلّم الذي رفع صورةً
+ * كبيرةً قليلاً كان يُقال له إن الخادم متوقّف.
+ */
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (!req.path.startsWith('/api/')) {
+    res.status(err.status || err.statusCode || 500).type('text/plain; charset=utf-8').send('حدث خطأ');
+    return;
+  }
+  const status = err.status || err.statusCode || 500;
+  const tooLarge = err.type === 'entity.too.large' || status === 413;
+  if (status >= 500) console.error('خطأ غير متوقّع في', req.method, req.path, '—', err.message);
+  res.status(status).json({
+    error: tooLarge ? 'الملفّ أكبر من الحدّ المسموح — صغّر الصورة ثم أعد المحاولة' : status >= 500 ? 'حدث خطأ في الخادم' : 'طلب غير صالح',
+  });
+});
+
 function fail(res, err) {
   const status = err?.status || 400;
   res.status(status).json({ error: err?.message || 'طلب غير صالح' });
@@ -443,22 +474,7 @@ wss.on('connection', (socket) => {
     }
   });
 
-  socket.on('close', () => {
-    const ctx = socket.ctx;
-    if (!ctx) return;
-    const { session, role, participant } = ctx;
-    if (role === 'host') {
-      session.hostSockets.delete(socket);
-    } else if (role === 'screen') {
-      session.screenSockets.delete(socket);
-    } else if (participant) {
-      participant.sockets.delete(socket);
-      if (participant.sockets.size === 0) {
-        participant.connected = false;
-        pushHost(session);
-      }
-    }
-  });
+  socket.on('close', () => detachSocket(socket));
 });
 
 function sendTo(socket, message) {
@@ -467,6 +483,30 @@ function sendTo(socket, message) {
     socket.send(JSON.stringify(message));
   } catch {
     /* تجاهل */
+  }
+}
+
+/**
+ * يفصل المقبس عمّا كان مربوطاً به قبل ربطه بشيءٍ آخر.
+ *
+ * `join` وحدها كانت ترفض مقبساً مربوطاً، أمّا `rejoin` و`host:hello` فكانت
+ * تكتب `ctx` جديداً فوق القديم وتترك المقبس في مجموعة المشارك السابق: يبقى
+ * «متصلاً» في لوحة المعلّم إلى انتهاء الجلسة، وتصله حالاتُ غيره. وهو ما يعمله
+ * معالجُ الإغلاق نفسه — فلا يُكتب مرّتين.
+ */
+function detachSocket(socket) {
+  const ctx = socket.ctx;
+  if (!ctx) return;
+  const { session, role, participant } = ctx;
+  socket.ctx = null;
+  if (role === 'host') session.hostSockets.delete(socket);
+  else if (role === 'screen') session.screenSockets.delete(socket);
+  else if (participant) {
+    participant.sockets.delete(socket);
+    if (participant.sockets.size === 0) {
+      participant.connected = false;
+      pushHost(session);
+    }
   }
 }
 
@@ -481,6 +521,7 @@ function handleMessage(socket, msg) {
     if (msg.hostToken !== session.hostToken) {
       return sendTo(socket, { t: 'error', code: 'forbidden', message: 'مفتاح المضيف غير صالح' });
     }
+    detachSocket(socket);
     socket.ctx = { session, role: 'host', participant: null };
     session.hostSockets.add(socket);
     session.touch();
@@ -496,6 +537,7 @@ function handleMessage(socket, msg) {
     if (msg.hostToken !== session.hostToken) {
       return sendTo(socket, { t: 'error', code: 'forbidden', message: 'مفتاح المضيف غير صالح' });
     }
+    detachSocket(socket);
     socket.ctx = { session, role: 'screen', participant: null };
     session.screenSockets.add(socket);
     session.touch();
@@ -548,6 +590,7 @@ function handleMessage(socket, msg) {
     if (!participant || participant.token !== msg.participantToken) {
       return sendTo(socket, { t: 'error', code: 'no_participant', message: 'انتهت جلستك، أعد الدخول' });
     }
+    detachSocket(socket);
     attachParticipant(socket, session, participant);
     sendTo(socket, { t: 'joined', participantId: participant.id, participantToken: participant.token, code: session.code });
     sendTo(socket, session.participantState(participant));
