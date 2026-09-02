@@ -520,26 +520,180 @@ html.dark .brand .dark-only {
   color: #fff;
 }
 
+/*
+ * «طابِق»: كل طرفٍ بطاقةٌ بعرض الشاشة — الطرف في سطر، وما اختاره الطالب
+ * تحته بنصّه كاملاً — ونقرتُها تفتح تحتها قائمة الأطراف المقابلة. لا
+ * `<select>`: القائمة الأصلية المغلقة على الجوال تقصّ التعريف إلى كلمتين.
+ */
 .match-list {
   display: grid;
   gap: 10px;
 }
 
-.match-row {
+.match-block {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
+  gap: 6px;
 }
 
-.match-left {
-  font-weight: 600;
+.match-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'term caret'
+    'value caret';
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-height: 56px;
+  cursor: pointer;
+}
+
+.match-term {
+  grid-area: term;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.match-select {
+.match-value {
+  grid-area: value;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.match-item.has-value {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface-2));
+}
+
+.match-item.has-value .match-value {
+  color: var(--text);
+}
+
+.match-item.is-open {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+
+.match-caret {
+  grid-area: caret;
+  color: var(--muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  transition: transform 0.15s ease-out;
+}
+
+.match-item.is-open .match-caret {
+  transform: rotate(180deg);
+}
+
+.match-menu {
+  display: grid;
+  gap: 6px;
+  margin-inline-start: 12px;
+  padding: 4px 0 4px;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--brand);
+}
+
+.match-choice {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
   width: 100%;
-  min-height: 46px;
+  text-align: start;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: var(--tap);
+  cursor: pointer;
+}
+
+.match-choice .grow {
+  overflow-wrap: anywhere;
+}
+
+.match-choice.is-mine {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.match-choice.is-taken {
+  color: var(--muted);
+}
+
+.match-tag {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* كشف «طابِق» و«رتّب»: كل سطرٍ بعلامته — ✓ أو ✕ أو رقم موضعه */
+.reveal-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reveal-pair {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.reveal-pair .grow {
+  overflow-wrap: anywhere;
+}
+
+.reveal-pair.is-ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
+  background: var(--ok-soft);
+}
+
+.reveal-pair.is-bad {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--border));
+  background: var(--bad-soft);
+}
+
+.reveal-mark {
+  flex: 0 0 26px;
+  height: 26px;
+  margin-top: 2px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.reveal-pair.is-ok .reveal-mark {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.reveal-pair.is-bad .reveal-mark {
+  color: var(--bad);
+  border-color: var(--bad);
 }
 
 .card {
