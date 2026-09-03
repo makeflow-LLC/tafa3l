@@ -11,7 +11,7 @@
   const SUBJECTS = (window.I18n && window.I18n.SUBJECTS) || [];
   const GRADES = (window.I18n && window.I18n.GRADES) || [];
   /** لغة التنسيق للتواريخ والأرقام */
-  const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
+  const loc = () => 'ar';
 
   /*
    * اللغة والسِمَة كلتاهما في الشريط، لا داخل القائمة.
@@ -21,7 +21,6 @@
    * الألعاب…) جنباً إلى جنب. فبدا للمعلّم أن الوضع الداكن «اختفى» من صفحاته
    * الداخلية وحدها. مبدّلان متجاوران في كل صفحة: قاعدةٌ واحدة لا استثناء.
    */
-  if (window.I18n && $('#langRow')) window.I18n.mountToggle($('#langRow'));
   if ($('#langRow')) {
     window.Theme?.mountToggle($('#langRow'), {
       toDark: window.I18n?.t('themeToDark'),
@@ -1003,7 +1002,7 @@
 
   // ------------------------------------------------------- المكتبة العامة
 
-  const library = { q: '', subject: '', grade: '', lang: '', page: 0, items: [], total: 0 };
+  const library = { q: '', subject: '', grade: '', page: 0, items: [], total: 0 };
 
   /** يجمع قيم حقل من النتائج لبناء قوائم التصفية بلا مسار خادم إضافي */
   const facet = (key) => [...new Set(library.items.map((x) => x[key]).filter(Boolean))].sort();
@@ -1013,7 +1012,7 @@
     codeBadge.classList.add('hidden');
     connBadge.classList.add('hidden');
     bar.innerHTML = '';
-    if (!keepFilters) Object.assign(library, { q: '', subject: '', grade: '', lang: '', page: 0, items: [], total: 0 });
+    if (!keepFilters) Object.assign(library, { q: '', subject: '', grade: '', page: 0, items: [], total: 0 });
     if (!state.user) loadAccount();
     const UI = window.TeacherUI;
     app.innerHTML = '';
@@ -1022,7 +1021,7 @@
 
     let data;
     try {
-      const query = new URLSearchParams({ q: library.q, subject: library.subject, grade: library.grade, lang: library.lang, page: String(library.page) });
+      const query = new URLSearchParams({ q: library.q, subject: library.subject, grade: library.grade, page: String(library.page) });
       data = await api('/api/library?' + query);
     } catch (err) {
       app.innerHTML = '';
@@ -1079,14 +1078,13 @@
         el('div', { class: 'tp-d-row' }, [
           pick('subject', t('lAllSubjects'), facet('subject')),
           pick('grade', t('lAllGrades'), facet('grade')),
-          pick('lang', t('lAllLangs'), [{ value: 'ar', label: t('lArabic') }, { value: 'en', label: t('lEnglish') }]),
         ]),
         el('p', { class: 'tp-d-note', text: t('lCount', { n: library.total }) }),
       ])
     );
 
     if (!library.items.length) {
-      const filtered = library.q || library.subject || library.grade || library.lang;
+      const filtered = library.q || library.subject || library.grade;
       page.append(
         UI.EmptyState({
           emoji: filtered ? '🔍' : '🌍',
@@ -1121,7 +1119,6 @@
         // اسمُ المادة والصفّ بلغة المعلّم لا معرّفهما («math» و«g5» لا يقولان شيئاً)
         item.subject ? UI.Badge({ label: tagLabel('subject', item.subject) }) : null,
         item.grade ? UI.Badge({ label: tagLabel('grade', item.grade) }) : null,
-        UI.Badge({ label: item.lang === 'en' ? t('lEnglish') : t('lArabic') }),
         item.copies ? UI.Badge({ label: t('lCopies', { n: item.copies }) }) : null,
         item.author ? el('span', { text: t('lBy', { name: item.author }) }) : null,
       ].filter(Boolean),
@@ -1649,7 +1646,7 @@
    * الآن بالرمز — سطرٌ يقول «JO» أوضح من سطرٍ فارغ ينتظر الشبكة.
    */
   let countryNames = null;
-  window.T.countryList(loc())
+  window.T.countryList()
     .then(({ arab, rest }) => {
       countryNames = new Map([...arab, ...rest].map((c) => [c.code, c.name]));
     })

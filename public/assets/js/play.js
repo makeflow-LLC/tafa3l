@@ -6,7 +6,7 @@
   // اختصار الترجمة — إن لم يُحمَّل المحرّك لأي سبب نعرض المفتاح بدل الانهيار
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   /** لغة التنسيق للتواريخ والأرقام */
-  const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
+  const loc = () => 'ar';
   const Fx = window.Fx;
   const UI = window.TapioUI;
 
@@ -180,27 +180,11 @@
   async function boot() {
     try {
       state.info = await api('/api/sessions/' + code);
-      // لغة النشاط تسبق لغة المتصفح: يرى الطالب النشاط بلغة معلّمه
-      applyActivityLang(state.info.lang);
       document.title = state.info.title + ' — Tapio';
       setQuizTitle(state.info.title);
       if (!store.get(SESSION_KEY, null)) renderJoin();
     } catch (err) {
       renderMessage('❓', t('pSessionNotFound'), err.message);
-    }
-  }
-
-  /** يفرض لغة النشاط على هذه الصفحة (بلا حفظها كتفضيل للطالب) */
-  function applyActivityLang(lang) {
-    if (!window.I18n || (lang !== 'ar' && lang !== 'en')) return;
-    if (window.I18n.getLang() === lang) return;
-    window.I18n.setLang(lang, { remember: false });
-    // الشريط العلوي رُسم قبل معرفة اللغة، فنعيد بناء سطوره بها
-    buildExitMenu();
-    const btn = $('#exitBtn');
-    if (btn) {
-      btn.title = t('pMenuAria');
-      btn.setAttribute('aria-label', t('pMenuAria'));
     }
   }
 
@@ -2322,16 +2306,6 @@
         () => (Fx.soundOn() ? t('pSoundStateOn') : t('pSoundStateOff')),
         () => Fx.setSound(!Fx.soundOn())
       )
-    );
-    exitMenu.append(
-      UI.MenuRow({
-        label: t('pMenuLang'),
-        state: window.I18n?.getLang() === 'en' ? 'English' : 'العربية',
-        onClick: () => {
-          window.I18n?.setLang(window.I18n.getLang() === 'en' ? 'ar' : 'en');
-          location.reload();
-        },
-      })
     );
     exitMenu.append(
       UI.MenuToggle(

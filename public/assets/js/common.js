@@ -188,9 +188,9 @@
    * واحدة يفرضها الخادم (فلسطين)، ونسقط إلى الرمز إن غابت الدالة أصلاً.
    */
   let countryCache = null;
-  async function countryList(lang) {
+  async function countryList() {
     if (!countryCache) countryCache = await api('/api/countries');
-    const code = lang === 'en' ? 'en' : 'ar';
+    const code = 'ar';
     let display = null;
     try {
       display = new Intl.DisplayNames([code], { type: 'region', fallback: 'code' });
@@ -210,10 +210,9 @@
    */
   function countrySelect(value, opts) {
     const sel = el('select', { disabled: true });
-    const lang = global.I18n ? global.I18n.getLang() : 'ar';
     const t = (key) => (global.I18n ? global.I18n.t(key) : key);
     sel.append(el('option', { value: '', text: opts?.placeholder || t('cnPick') }));
-    countryList(lang)
+    countryList()
       .then(({ arab, rest }) => {
         const group = (label, items) => {
           const g = el('optgroup', { label });
@@ -912,7 +911,7 @@
     const wrap = el('span', { class: 'hintdot' });
     const btn = el('button', { class: 'hintdot__btn', type: 'button', 'aria-expanded': 'false' });
     btn.setAttribute('aria-label', window.I18n ? window.I18n.t('hintWhat') : '?');
-    btn.append(el('span', { class: 'hintdot__dot', 'aria-hidden': 'true', text: window.I18n && window.I18n.getLang() === 'en' ? '?' : '؟' }));
+    btn.append(el('span', { class: 'hintdot__dot', 'aria-hidden': 'true', text: '؟' }));
     const pop = el('span', { class: 'hintdot__pop', role: 'note', text });
     pop.hidden = true;
 
