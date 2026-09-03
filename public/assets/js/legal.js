@@ -2,7 +2,7 @@
   'use strict';
 
   /**
-   * سياسة الخصوصية وشروط الاستخدام، بلغتيهما، كبيانات مهيكلة.
+   * سياسة الخصوصية وشروط الاستخدام كبيانات مهيكلة.
    *
    * كُتبت لتصف ما يفعله التطبيق فعلاً لا ما تفعله المنصات عادةً: نتائج الطلاب
    * لا تُحفظ إطلاقاً، ولا نستخدم متتبّعات، ولا نبيع شيئاً. أي تغيير في سلوك
@@ -125,118 +125,6 @@
           },
         ],
       },
-
-      en: {
-        docTitle: 'Privacy policy — Tapio',
-        pageTitle: '🔒 Privacy policy',
-        intro: 'In short: we do not keep student answers, we do not track anyone, and we do not sell any data. Here are the details.',
-        updated: 'Last updated: August 2026',
-        sections: [
-          {
-            title: '1. The short version',
-            blocks: [
-              {
-                ul: [
-                  '<strong>Student data is entirely temporary</strong>: names, answers and points live in the server’s memory only, and are erased automatically when the session ends, goes idle, or the server restarts. They are never written to any database.',
-                  '<strong>Students need no account</strong>, and we ask them for no email, no phone and no identifier — just a name or nickname they choose, and the teacher can switch off the name request entirely.',
-                  '<strong>No ads, no trackers, no third-party analytics</strong>, and we never sell or share data with anyone.',
-                ],
-              },
-            ],
-          },
-          {
-            title: '2. What we actually store',
-            blocks: [
-              { p: 'The only permanent thing is <strong>the teacher’s account and their own content</strong>, and only if they choose to have one:' },
-              {
-                ul: [
-                  '<strong>Account details</strong>: the name, email and avatar as they reach us from Google sign-in, the registration date, and the subscription expiry if there is one. We never receive or see your password.',
-                  '<strong>Your activities and questions</strong> saved in “My activities” and the “Question bank” — content you authored.',
-                  '<strong>Cookies</strong>: one session cookie that keeps you signed in, and a short-lived cookie during sign-in that protects the process. No advertising or tracking cookies.',
-                ],
-              },
-              {
-                note: 'Any session’s results are erased automatically. If you want to keep them, download them (Excel or PDF) before closing the session — after that they are a file on your device, not with us.',
-                tone: 'warn',
-              },
-            ],
-          },
-          {
-            title: '3. Why we store it',
-            blocks: [
-              {
-                ul: [
-                  'So your activities and questions are waiting for you next time.',
-                  'To recognise your account and keep you signed in between visits.',
-                  'To know the state of your paid subscription.',
-                ],
-              },
-              { p: 'We use your data for nothing else — no marketing, no behavioural analysis, no interest profiling.' },
-            ],
-          },
-          {
-            title: '4. Who we share with',
-            blocks: [
-              { p: 'We do not sell your data or share it for commercial purposes. It passes through technical service providers only, each within its role:' },
-              {
-                table: {
-                  head: ['Provider', 'Role', 'What reaches it'],
-                  rows: [
-                    ['Google', 'Sign-in', 'Your name, email and avatar — with your consent at sign-in'],
-                    ['Render', 'Server hosting', 'Whatever passes through the server while it runs'],
-                    ['Supabase', 'Accounts database', 'Your account and saved activities'],
-                    ['Microsoft Azure', 'AI assistant (optional)', 'The text of your chat with the assistant only, when you use it'],
-                  ],
-                },
-              },
-              { muted: 'The AI assistant is only called when you open it and type in it, and no student data is ever sent to it.' },
-            ],
-          },
-          {
-            title: '5. Your rights',
-            blocks: [
-              {
-                ul: [
-                  '<strong>Access</strong>: everything we hold about you is visible to you inside the app (your account, activities and question bank).',
-                  '<strong>Correction and deletion</strong>: you can edit or delete your activities at any moment.',
-                  '<strong>Full account deletion</strong>: message us on the support WhatsApp below and we delete your account and all its content.',
-                  '<strong>Use without an account</strong>: the app works fully without signing up — in that case we store nothing about you at all.',
-                ],
-              },
-            ],
-          },
-          {
-            title: '6. Children and schools',
-            blocks: [
-              {
-                p: 'Students take part <strong>with no account and no personal data</strong> — a name or nickname only, and it is temporary and erased with the session. We recommend teachers switch off “require a name” for sensitive polls, or use pseudonyms with younger classes.',
-              },
-              { p: 'Teacher accounts are for adults. If you are a school administrator who needs a data processing agreement, contact us.' },
-            ],
-          },
-          {
-            title: '7. Security',
-            blocks: [
-              {
-                ul: [
-                  'All traffic is encrypted over HTTPS, and the live connection over WSS.',
-                  'The session cookie is protected (HttpOnly, Secure, SameSite) so no script on the page can reach it.',
-                  'We store no passwords at all — sign-in is through Google only.',
-                  'The session code and host key are temporary and expire with the session.',
-                ],
-              },
-              { p: 'No system is perfectly secure. If you find a vulnerability, report it on the support WhatsApp and we will act on it immediately.' },
-            ],
-          },
-          {
-            title: '8. Changes and contact',
-            blocks: [
-              { p: 'If we change this policy we will update the date above, and announce any material change inside the app.' },
-              { contact: true },
-            ],
-          },
-        ],
-      },
     },
 
     terms: {
@@ -330,97 +218,6 @@
           },
         ],
       },
-
-      en: {
-        docTitle: 'Terms of use — Tapio',
-        pageTitle: '📜 Terms of use',
-        intro: 'Short, clear terms for using Tapio. By using the app you agree to them.',
-        updated: 'Last updated: August 2026',
-        sections: [
-          {
-            title: '1. The service',
-            blocks: [
-              {
-                p: 'Tapio is a platform for live interactive questions and polls, provided by <strong>makeflow</strong>. Core use is free with no limit on the number of activities, questions or sessions.',
-              },
-            ],
-          },
-          {
-            title: '2. Your account',
-            blocks: [
-              {
-                ul: [
-                  'An account is optional — the app works fully without one, but an account saves your activities.',
-                  'You are responsible for protecting the Google account you sign in with.',
-                  'Accounts are personal; do not share yours or impersonate anyone.',
-                ],
-              },
-            ],
-          },
-          {
-            title: '3. Your content',
-            blocks: [
-              {
-                p: '<strong>Your questions and activities are yours.</strong> We claim no ownership, use them for nothing but running the service for you, and access them only as far as is technically necessary or when you ask for support.',
-              },
-              {
-                p: 'You are responsible for what you publish: do not post content that is unlawful, abusive, infringes others’ rights, or exposes someone’s personal data without their permission.',
-              },
-            ],
-          },
-          {
-            title: '4. Acceptable use',
-            blocks: [
-              { p: 'The following is prohibited:' },
-              {
-                ul: [
-                  'Attempting to disrupt, flood or break into the service, or to reach sessions that are not yours.',
-                  'Using automated means to create sessions or flood participants.',
-                  'Reselling the service or presenting it as your own product.',
-                  'Using the platform for academic dishonesty or to harm anyone.',
-                ],
-              },
-              { muted: 'We may suspend an account that breaches these terms, and will tell it why where that is possible.' },
-            ],
-          },
-          {
-            title: '5. Paid subscription',
-            blocks: [
-              {
-                ul: [
-                  'The paid plan unlocks: designing activities with AI, question images, and exporting results to Excel and PDF.',
-                  'The subscription is monthly, and is activated manually after contacting us on WhatsApp.',
-                  'You may stop at any time; the features remain until the end of the paid period.',
-                  'When the period ends your account returns to free with all its core features — none of your activities are deleted.',
-                ],
-              },
-            ],
-          },
-          {
-            title: '6. Service limits and liability',
-            blocks: [
-              {
-                note: '<strong>Session results are temporary by design and are not stored.</strong> If you want to keep your students’ marks, download them before closing the session. We are not responsible for results that were not downloaded.',
-                tone: 'warn',
-              },
-              {
-                p: 'We do our best to keep the service available and correct, but it is provided “as is” with no guarantee of zero downtime. We are not liable for indirect damages arising from an outage or a fault, and our liability is limited to what you paid over the preceding three months.',
-              },
-              { p: 'We may change features or retire some of them, and will announce material changes inside the app.' },
-            ],
-          },
-          {
-            title: '7. Privacy',
-            blocks: [
-              { p: 'How data is handled is set out in the <a href="/privacy.html">privacy policy</a>, which forms part of these terms.' },
-            ],
-          },
-          {
-            title: '8. Contact',
-            blocks: [{ contact: true }],
-          },
-        ],
-      },
     },
   };
 
@@ -486,13 +283,12 @@
   }
 
   /**
-   * يرسم مستنداً قانونياً باللغة الحالية.
+   * يرسم مستنداً قانونياً.
    * @param {HTMLElement} root
    * @param {'privacy'|'terms'} which
    */
   function render(root, which) {
-    const lang = global.I18n && global.I18n.getLang() === 'en' ? 'en' : 'ar';
-    const copy = DOCS[which][lang];
+    const copy = DOCS[which].ar;
 
     document.title = copy.docTitle;
     document.querySelectorAll('[data-nav="home"]').forEach((n) => (n.textContent = t('lBackHome')));

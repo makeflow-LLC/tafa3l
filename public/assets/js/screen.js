@@ -5,15 +5,14 @@
   const { $, el, avatarNode, toast, connect, TYPE_LABELS, TYPE_EMOJI, fmtMs, countdownTo } = window.T;
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   /** لغة التنسيق للتواريخ والأرقام */
-  const loc = () => (window.I18n && window.I18n.getLang() === 'en' ? 'en' : 'ar');
+  const loc = () => 'ar';
 
-  // نصوص الشريط العلوي ومبدّل اللغة
+  // نصوص الشريط العلوي ومبدّل السِمة
   const fsBtn = document.getElementById('fullscreenBtn');
   if (fsBtn) {
     fsBtn.title = t('sFullscreen');
     fsBtn.setAttribute('aria-label', t('sFullscreen'));
   }
-  if (window.I18n && document.getElementById('langRow')) window.I18n.mountToggle(document.getElementById('langRow'));
   window.Theme?.mountToggle(document.getElementById('langRow'), { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
   const Fx = window.Fx;
 
@@ -58,9 +57,7 @@
       onMessage: (msg) => {
         if (msg.t === 'state') {
           if (msg.serverNow) state.clockOffset = Date.now() - msg.serverNow;
-          // شاشة البروجكتر تتبع لغة النشاط لا لغة الجهاز الموصول بالشاشة
-          applyActivityLang(msg.lang);
-          // عنوان التبويب بلغة النشاط أيضاً — الشاشة تُفتح غالباً في نافذة مستقلة
+          // الشاشة تُفتح غالباً في نافذة مستقلة، فعنوان التبويب يقول أيّ نشاطٍ هذا
           document.title = (msg.title ? msg.title + ' — ' : '') + t('sProjectorTitle');
           state.live = msg;
           render();
@@ -80,21 +77,6 @@
       },
     });
   }
-
-  /** يفرض لغة النشاط على هذه الشاشة (بلا حفظها كتفضيل) */
-  function applyActivityLang(lang) {
-    if (!window.I18n || (lang !== 'ar' && lang !== 'en')) return;
-    if (window.I18n.getLang() === lang) return;
-    window.I18n.setLang(lang, { remember: false });
-    const row = document.getElementById('langRow');
-    if (row) {
-      row.innerHTML = '';
-      window.I18n.mountToggle(row);
-      // زرّ السِمة يسكن الصفّ نفسه، فإفراغُه كان يُسقطه مع كل تبديل لغة
-      window.Theme?.mountToggle(row, { toDark: window.I18n.t('themeToDark'), toLight: window.I18n.t('themeToLight') });
-    }
-  }
-
 
   /**
    * تضمين فيديو يوتيوب. الخادم خزّن المعرّف وحده بعد تحقّق صارم، فنبني

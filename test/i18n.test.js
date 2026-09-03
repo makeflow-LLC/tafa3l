@@ -1,13 +1,13 @@
 'use strict';
 
 /**
- * حراسة اللغتين على مستوى المصدر.
+ * حراسة نصوص الواجهة على مستوى المصدر.
  *
- * السبب الجذري لعطل «الدليل يظهر بالعربية فقط» لم يكن في الدليل نفسه: كان
- * رابطه في الصفحة الرئيسية مكتوباً نصاً عربياً داخل HTML بلا مفتاح ترجمة،
- * فبقي عربياً مهما بدّل الزائر اللغة. هذا النوع من الخطأ صامت — لا يكسر شيئاً
- * ولا يظهر في اختبار وظيفي — فنمنعه هنا: أي نص مرئي في HTML يجب أن يأتي من
- * القاموس، والقاموس نفسه يجب أن يبقى متطابق المفاتيح بين اللغتين.
+ * التطبيق عربيّ وحده، لكن نصّه يبقى في قاموسٍ واحد لا مبعثراً في الصفحات:
+ * نصٌّ مكتوبٌ في HTML يفلت من المراجعة ومن أي تغييرٍ لاحق في الصياغة، ويعيد
+ * إلينا العطل الذي بدأ منه هذا الملف — سطرٌ في الصفحة الرئيسية بقي كما هو
+ * بينما تغيّر توأمه في القاموس. فنمنعه هنا: كل نصٍّ مرئيّ من القاموس،
+ * والقاموس بلا مفاتيح مكرّرة تطمس بعضها بصمت.
  */
 
 const test = require('node:test');
@@ -19,7 +19,7 @@ const PUBLIC = path.join(__dirname, '..', 'public');
 const DICT_FILE = path.join(PUBLIC, 'assets', 'js', 'i18n.js');
 const ARABIC = /[؀-ۿ]/;
 
-/** مفاتيح كتلة لغة داخل القاموس، بالترتيب */
+/** مفاتيح كتلة اللغة داخل القاموس، بالترتيب */
 function dictKeys(source, lang) {
   const start = source.indexOf(`    ${lang}: {`);
   assert.notEqual(start, -1, `لم أجد كتلة اللغة ${lang}`);
@@ -48,27 +48,20 @@ function visibleText(html) {
   return out;
 }
 
-test('القاموس متطابق المفاتيح بين العربية والإنجليزية', () => {
+test('القاموس عربيٌّ وحده، بلا مفاتيح مكرّرة', () => {
   const source = fs.readFileSync(DICT_FILE, 'utf8');
   const ar = dictKeys(source, 'ar');
-  const en = dictKeys(source, 'en');
-
-  const missingEn = ar.filter((k) => !en.includes(k));
-  const missingAr = en.filter((k) => !ar.includes(k));
-  assert.deepEqual(missingEn, [], 'مفاتيح بلا ترجمة إنجليزية');
-  assert.deepEqual(missingAr, [], 'مفاتيح بلا نصّ عربي');
 
   const dupAr = ar.filter((k, i) => ar.indexOf(k) !== i);
-  const dupEn = en.filter((k, i) => en.indexOf(k) !== i);
-  assert.deepEqual(dupAr, [], 'مفاتيح مكرّرة في العربية (الأخيرة تطمس ما قبلها بصمت)');
-  assert.deepEqual(dupEn, [], 'مفاتيح مكرّرة في الإنجليزية');
+  assert.deepEqual(dupAr, [], 'مفاتيح مكرّرة (الأخيرة تطمس ما قبلها بصمت)');
   assert.ok(ar.length > 700, `عدد المفاتيح ${ar.length} — يبدو أن القاموس نقص`);
+  assert.equal(source.indexOf('\n    en: {'), -1, 'عادت كتلة لغة إنجليزية إلى القاموس');
 });
 
 test('لا نصّ عربي مكتوب داخل صفحات HTML — كله من القاموس', () => {
   const offenders = [];
   // offline.html وحدها مستثناة: تُعرض والشبكة مقطوعة فلا تستطيع تحميل
-  // القاموس، فترجمتها مضمّنة فيها وتُختار من لغة المتصفح مباشرة.
+  // القاموس، فنصّها مضمّن فيها.
   const EXEMPT = new Set(['offline.html']);
   for (const file of fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html') && !EXEMPT.has(f))) {
     const html = fs.readFileSync(path.join(PUBLIC, file), 'utf8');
@@ -79,26 +72,22 @@ test('لا نصّ عربي مكتوب داخل صفحات HTML — كله من �
   assert.deepEqual(
     offenders,
     [],
-    'نصّ عربي مكتوب في HTML لن يتبدّل مع اللغة — اجعله مفتاحاً في القاموس واضبطه من JS'
+    'نصّ عربي مكتوب في HTML يفلت من القاموس — اجعله مفتاحاً واضبطه من JS'
   );
 });
 
-test('دليل المعلّم موجود بلغتيه وبالبنية نفسها', () => {
+test('دليل المعلّم كاملٌ بأقسامه', () => {
   const helpSource = fs.readFileSync(path.join(PUBLIC, 'assets', 'js', 'help.js'), 'utf8');
-  // نستخرج معرّفات الأقسام لكل لغة بترتيب ورودها
-  const arBlock = helpSource.slice(helpSource.indexOf('    ar: {'), helpSource.indexOf('    en: {'));
-  const enStart = helpSource.indexOf('    en: {');
-  const enBlock = helpSource.slice(enStart, helpSource.indexOf('\n  };', enStart));
-  const ids = (block) => (block.match(/id: '([a-z]+)'/g) || []).map((s) => s.replace(/id: '|'/g, ''));
+  const ids = (helpSource.match(/id: '([a-z]+)'/g) || []).map((s) => s.replace(/id: '|'/g, ''));
+  assert.ok(ids.length >= 9, `أقسام الدليل ${ids.length} — ناقصة`);
+  assert.equal(new Set(ids).size, ids.length, 'معرّف قسمٍ مكرّر في الدليل');
+});
 
-  const arIds = ids(arBlock);
-  const enIds = ids(enBlock);
-  assert.ok(arIds.length >= 9, `أقسام الدليل العربية ${arIds.length} — ناقصة`);
-  assert.deepEqual(enIds, arIds, 'أقسام الدليل الإنجليزية لا تطابق العربية ترتيباً ومعرّفاً');
-
-  // ولا حرف عربي في نصوص الكتلة الإنجليزية
-  const arabicInEnglish = (enBlock.match(/'[^']*[؀-ۿ][^']*'/g) || [])
-    // «العربية» و«EN» ترد عمداً كأسماء أزرار داخل نصوص إنجليزية
-    .filter((s) => !/العربية|EN|AR/.test(s));
-  assert.deepEqual(arabicInEnglish, [], 'نصّ عربي داخل النسخة الإنجليزية من الدليل');
+test('لا بقايا لمبدّل اللغة في الواجهة', () => {
+  const files = ['assets/js/i18n.js', 'assets/js/topbar.js', 'assets/js/screen.js', 'assets/js/host.js', 'assets/js/play.js', 'index.html', 'join.html'];
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(PUBLIC, file), 'utf8');
+    assert.equal(source.includes('I18n.mountToggle'), false, `${file}: بقي زرّ تبديل اللغة`);
+    assert.equal(source.includes('I18n.setLang'), false, `${file}: بقي تبديل اللغة`);
+  }
 });

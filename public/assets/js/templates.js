@@ -8,9 +8,7 @@
     {
       key: 'quiz',
       name: '🎯 اختبار سريع',
-      nameEn: '🎯 Quick quiz',
       description: 'أسئلة اختيار من متعدد مع إجابات صحيحة ونقاط وترتيب',
-      descriptionEn: 'Multiple-choice questions with correct answers, points and ranking',
       title: 'اختبار سريع',
       settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'self', scoring: 'speed' },
       questions: [
@@ -52,9 +50,7 @@
     {
       key: 'poll',
       name: '📊 استطلاع مجهول',
-      nameEn: '📊 Anonymous poll',
       description: 'بلا أسماء وبلا نقاط — مناسب للآراء والتغذية الراجعة',
-      descriptionEn: 'No names and no points — good for opinions and feedback',
       title: 'استطلاع رأي',
       settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false, pace: 'self', scoring: 'none' },
       questions: [
@@ -80,9 +76,7 @@
     {
       key: 'icebreaker',
       name: '🧊 كسر الجليد',
-      nameEn: '🧊 Icebreaker',
       description: 'نشاط تحمية سريع وممتع في بداية الحصة',
-      descriptionEn: 'A quick, fun warm-up at the start of class',
       title: 'نبدأ بالتحمية!',
       settings: { requireName: true, allowLateJoin: true, showLeaderboard: true, countdown: true, pace: 'auto', autoAdvance: true, autoAdvanceSec: 6, scoring: 'flat' },
       questions: [
@@ -110,9 +104,7 @@
     {
       key: 'feedback',
       name: '💬 تغذية راجعة',
-      nameEn: '💬 Feedback',
       description: 'سحابة كلمات + مقياس + سؤال مفتوح لختام الحصة',
-      descriptionEn: 'Word cloud + scale + open question to close the class',
       title: 'ختام الحصة',
       settings: { requireName: false, allowLateJoin: true, showLeaderboard: false, countdown: false, pace: 'self', scoring: 'none' },
       questions: [

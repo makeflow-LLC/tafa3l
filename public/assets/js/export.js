@@ -11,8 +11,8 @@
 
   const enc = new TextEncoder();
   const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
-  const loc = () => (global.I18n && global.I18n.getLang() === 'en' ? 'en' : 'ar');
-  const isRtl = () => loc() === 'ar';
+  const loc = () => 'ar';
+  const isRtl = () => true;
 
   // ------------------------------------------------------------------ zip
 

@@ -186,23 +186,10 @@ html.stage .tp-entry .dark-only {
   transition: transform 150ms ease, background 200ms ease, border-color 200ms ease;
 }
 
-.tp-entry .lang-btn {
-  padding: 0 16px;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
 .tp-entry .theme-btn:hover {
   transform: translateY(-2px);
   background: rgba(255, 199, 20, 0.18);
   border-color: rgba(255, 199, 20, 0.6);
-}
-
-.tp-entry .lang-btn:hover {
-  transform: translateY(-2px);
-  background: rgba(46, 200, 192, 0.18);
-  border-color: rgba(46, 200, 192, 0.6);
 }
 
 .tp-entry .icon-btn:active {

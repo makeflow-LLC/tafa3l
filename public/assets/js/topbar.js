@@ -69,14 +69,11 @@
       ...(options.links || []).map((link) => el('a', { class: 'btn ghost sm', href: link.href, text: link.label })),
     ]);
 
-    const langRow = el('span', { id: 'langRow' });
     const themeRow = el('span', { id: 'themeRow' });
-    const end = el('div', { class: 'topbar-actions' }, [...(options.end || []), brand(home), langRow, themeRow]);
+    const end = el('div', { class: 'topbar-actions' }, [...(options.end || []), brand(home), themeRow]);
 
     bar.replaceChildren(start, end);
 
-    // المبدّلان في حاويتين منفصلتين ومرتّبتين: اللغة ثم السِمَة، دائماً
-    global.I18n?.mountToggle(langRow);
     global.Theme?.mountToggle(themeRow, { toDark: t('themeToDark'), toLight: t('themeToLight') });
     return bar;
   }

@@ -4,9 +4,8 @@
 
   const { el, toast, store, api, TYPE_LABELS, TYPE_EMOJI } = global.T;
   const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
-  const locale = () => (global.I18n && global.I18n.getLang() === 'en' ? 'en' : 'ar');
-  /** نص القالب بلغة الواجهة — القوالب تحمل نسخة إنجليزية بجانب العربية */
-  const tplText = (template, field) => (locale() === 'en' && template[field + 'En'] ? template[field + 'En'] : template[field]);
+  const locale = () => 'ar';
+  const tplText = (template, field) => template[field];
 
   const DRAFT_KEY = 'tafa3l:draft';
   const TYPES = ['mc', 'truefalse', 'poll', 'scale', 'word', 'open', 'blank', 'order', 'match', 'slide'];
@@ -1030,8 +1029,7 @@
           launch,
           // أزرار إضافية من صفحة المدرب (مثل الحفظ في الحساب)
           ...(typeof extraActions === 'function' ? [extraActions(draft, validate)] : []).filter(Boolean),
-          // لغة النشاط تُثبَّت وقت الإطلاق على لغة اللوحة، فليعرف المعلّم ذلك قبل الضغط
-          el('div', { class: 'tp-d-row', style: { justifyContent: 'center' } }, [window.T.hintDot(t('blangNote')), clear]),
+          el('div', { class: 'tp-d-row', style: { justifyContent: 'center' } }, [clear]),
         ])
       );
     }
