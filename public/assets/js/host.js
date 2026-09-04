@@ -2728,7 +2728,12 @@
     app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
 
     state.socket = connect({
-      onOpen: () => state.socket.send({ t: 'host:hello', code, hostToken }),
+      onOpen: () => {
+        state.socket.send({ t: 'host:hello', code, hostToken });
+        // الاشتراك في اللوحة معلّقٌ بالمقبس، والمقبس الجديد يبدأ بلا اشتراك:
+        // من انقطع اتصاله وهو في تبويب اللوحة يجب أن يستأنفها لا أن تتجمّد
+        if (state.tab === 'dashboard') state.socket.send({ t: 'host:dashboard' });
+      },
       onStatus: (status) => {
         connBadge.className = 'badge ' + (status === 'online' ? 'ok' : status === 'offline' ? 'bad' : '');
         connBadge.textContent = status === 'online' ? t('hlive') : status === 'offline' ? t('hoffline') : t('hconnecting');
@@ -2915,8 +2920,12 @@
   function tabBtn(key, label) {
     const button = el('button', { class: state.tab === key ? 'on' : '', type: 'button' }, label);
     button.addEventListener('click', () => {
+      const was = state.tab;
       state.tab = key;
+      // اللوحة أثقل ما يصل الجهاز، والواجهة تتجاهلها خارج تبويبها — فنطلبها
+      // عند دخوله ونوقفها عند الخروج منه بدل أن تتدفّق بلا قارئ
       if (key === 'dashboard') send('host:dashboard');
+      else if (was === 'dashboard') send('host:dashboard:off');
       if (key === 'analytics') loadAnalytics(true);
       renderLive();
     });

@@ -67,15 +67,36 @@ self.addEventListener('message', (event) => {
   if (type === 'saveGame') {
     event.waitUntil(
       (async () => {
+        /*
+         * `addAll` صفقةٌ واحدة: يكفي عنوانٌ يردّ ٤٠٤ ليُلغي الحفظ كلّه.
+         * وذلك ما كان يحدث فعلاً — لعبةٌ بلا صورة (`/cover` يردّ ٤٠٤) تُفشل
+         * حفظ اللعبة نفسها، وملفُّ قشرةٍ واحد ناقص يُفشل كل شيء. فصار
+         * الأساسيّ وحده شرطاً: بطاقة اللعبة ومستندها. وما عداهما — الصورة
+         * وملفات القشرة — يُحفظ ما استطاع، ونقصُه يُضعف المظهر لا يمنع اللعب.
+         */
+        const [card, frame, cover] = urls;
         try {
-          // القشرة أولاً: لعبةٌ محفوظة لا تُفتح إن لم تُفتح صفحتها
-          const shell = await caches.open(SHELL_CACHE);
-          await shell.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })));
           const games = await caches.open(GAMES_CACHE);
-          await games.addAll(urls.map((u) => new Request(u, { cache: 'reload' })));
+          const musts = await Promise.all(
+            [card, frame].map(async (u) => {
+              const res = await fetch(new Request(u, { cache: 'reload' }));
+              if (!res.ok) throw new Error(`${res.status} ${u}`);
+              await games.put(u, res);
+              return true;
+            })
+          );
+          if (musts.length !== 2) throw new Error('incomplete');
+
+          // ما دون الأساسيّ: محاولةٌ صامتة لكلٍّ على حدة
+          await games
+            .add(new Request(cover, { cache: 'reload' }))
+            .catch(() => {});
+          const shell = await caches.open(SHELL_CACHE);
+          await Promise.all(SHELL.map((u) => shell.add(new Request(u, { cache: 'reload' })).catch(() => {})));
+
           event.source?.postMessage({ type: 'gameSaved', id, ok: true });
         } catch (err) {
-          event.source?.postMessage({ type: 'gameSaved', id, ok: false, error: String(err && err.message) });
+          event.source?.postMessage({ type: 'gameSaved', id, ok: false, error: String((err && err.message) || err) });
         }
       })()
     );
@@ -84,9 +105,28 @@ self.addEventListener('message', (event) => {
   if (type === 'dropGame') {
     event.waitUntil(
       caches.open(GAMES_CACHE).then(async (c) => {
-        await Promise.all(urls.map((u) => c.delete(u)));
-        event.source?.postMessage({ type: 'gameDropped', id });
+        await Promise.all(urls.map((u) => c.delete(u, { ignoreSearch: true })));
+        event.source?.postMessage({ type: 'gameDropped', id, ok: true });
       })
+    );
+  }
+
+  /** الصفحة تسأل: أيّ الألعاب محفوظةٌ فعلاً؟ الحقيقة في المخبأ لا في localStorage */
+  if (type === 'listGames') {
+    event.waitUntil(
+      (async () => {
+        const ids = [];
+        try {
+          const c = await caches.open(GAMES_CACHE);
+          for (const req of await c.keys()) {
+            const m = /^\/api\/games\/([\w-]+)\/frame$/.exec(new URL(req.url).pathname);
+            if (m) ids.push(m[1]);
+          }
+        } catch {
+          /* لا مخبأ = لا محفوظات */
+        }
+        event.source?.postMessage({ type: 'gameList', ids });
+      })()
     );
   }
 });
@@ -99,12 +139,18 @@ self.addEventListener('fetch', (event) => {
 
   if (isGameAsset(url)) {
     const isCard = /^\/api\/games\/[\w-]+$/.test(url.pathname);
+    /*
+     * `ignoreSearch` لازمة: الصورة تُطلب ببصمة تحديثها (`/cover?v=…`) بينما
+     * حُفظت بلا بصمة، فبدونها لا يطابق شيءٌ شيئاً وتظهر اللعبة المحفوظة بلا
+     * غلافٍ بمجرّد انقطاع الشبكة.
+     */
+    const cached = (req) => caches.open(GAMES_CACHE).then((c) => c.match(req, { ignoreSearch: true }));
     event.respondWith(
       isCard
         // البطاقة تحمل عدّاد اللعب والتقييم: الشبكة أولاً كي لا تتجمّد أرقامها
-        ? fetch(request).catch(() => caches.open(GAMES_CACHE).then((c) => c.match(request)).then((hit) => hit || Response.error()))
+        ? fetch(request).catch(() => cached(request).then((hit) => hit || Response.error()))
         // المستند والصورة ثابتان لهذه اللعبة: المحفوظ أولاً وهذا كل معنى «بلا إنترنت»
-        : caches.open(GAMES_CACHE).then((c) => c.match(request)).then((hit) => hit || fetch(request))
+        : cached(request).then((hit) => hit || fetch(request))
     );
     return;
   }

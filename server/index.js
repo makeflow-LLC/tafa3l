@@ -707,8 +707,13 @@ function handleMessage(socket, msg) {
       }
       break;
     }
+    // فتحُ تبويب اللوحة اشتراكٌ فيها، وإغلاقه انصرافٌ عنها
     case 'host:dashboard':
+      socket.wantsDash = true;
       return sendTo(socket, { t: 'dashboard', data: session.dashboard() });
+    case 'host:dashboard:off':
+      socket.wantsDash = false;
+      return;
     case 'host:grade': {
       // تصحيح إجابة نصّية: علامة كاملة أو جزئية أو صفر
       const result = session.grade(String(msg.participantId), String(msg.questionId), msg.points);
@@ -731,20 +736,32 @@ function handleMessage(socket, msg) {
  * التأخير غير محسوس للمدرب، ويحمي حلقة الأحداث من التوقف.
  */
 const HOST_PUSH_MS = 120;
+/**
+ * واللوحة أبطأ من ذلك عمداً. حالةُ المضيف صغيرة (من أجاب، وكم) فتستحقّ
+ * ١٢٠ms، أما اللوحة فأربعون كيلوبايت لصفٍّ من ستين — وثمانُ نسخٍ منها في
+ * الثانية تعني ثلث ميغابايت في الثانية إلى جوّال المعلّم، وثمانَ عمليات
+ * تحليلٍ ورسمٍ كاملة عليه. والأرقام لا تحتاج ثمانيَ تحديثاتٍ في الثانية.
+ */
+const DASH_PUSH_MS = 900;
 const pendingPush = new Map(); // session -> timer
+const lastDash = new WeakMap(); // session -> آخر لحظة أُرسلت فيها اللوحة
 
-function pushHostNow(session) {
+function pushHostNow(session, { withDashboard = true } = {}) {
   if (!session.hostSockets.size && !session.screenSockets.size) return;
   const state = session.hostState();
-  const dashboard = { t: 'dashboard', data: session.dashboard() };
-  const forScreen = session.screenSockets.size ? { t: 'dashboard', data: withoutVoters(dashboard.data) } : null;
+  const wanted = [...session.hostSockets, ...session.screenSockets].filter((s) => session.wantsDashboard(s));
+  const due = withDashboard && wanted.length && Date.now() - (lastDash.get(session) || 0) >= DASH_PUSH_MS;
+  const data = due ? session.dashboard() : null;
+  if (data) lastDash.set(session, Date.now());
+  const dashboard = data ? { t: 'dashboard', data } : null;
+  const forScreen = data && session.screenSockets.size ? { t: 'dashboard', data: withoutVoters(data) } : null;
   for (const socket of session.hostSockets) {
     sendTo(socket, state);
-    sendTo(socket, dashboard);
+    if (dashboard && session.wantsDashboard(socket)) sendTo(socket, dashboard);
   }
   for (const socket of session.screenSockets) {
     sendTo(socket, state);
-    sendTo(socket, forScreen);
+    if (forScreen && session.wantsDashboard(socket)) sendTo(socket, forScreen);
   }
 }
 

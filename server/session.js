@@ -2240,20 +2240,37 @@ class Session {
     return state;
   }
 
+  /**
+   * هل يحتاج هذا المقبس لوحةَ الإحصاءات؟
+   *
+   * اللوحة أثقل ما نرسله بمراتب: أربعون كيلوبايت لصفٍّ من ستين في عشرة
+   * أسئلة، ومئتان لصفٍّ من مئة وخمسين في ثلاثين. وكانت تُرسل إلى كل مضيفٍ
+   * وكل شاشة عرضٍ مع كل دفعة إجابات — بينما الواجهة **تتجاهلها** ما لم يكن
+   * المعلّم في تبويب «لوحة التحكم». فصار الإرسال بطلبٍ صريح: من فتح
+   * التبويب اشترك، ومن خرج منه انصرف.
+   *
+   * والوضع الحرّ استثناء: مسرحه — عند المعلّم وعلى البروجكتر — مرسومٌ من
+   * اللوحة نفسها، فلا معنى لانتظار طلب.
+   */
+  wantsDashboard(socket) {
+    return socket.wantsDash === true || this.settings.pace === 'self';
+  }
+
   broadcastState() {
     const state = this.hostState();
-    // شاشة العرض تحتاج لوحة الإحصاءات أيضاً — نتائج كل سؤال في الوضع الحر تأتي منها
-    const dashboard =
-      this.hostSockets.size || this.screenSockets.size ? { t: 'dashboard', data: this.dashboard() } : null;
+    // لا نبني اللوحة أصلاً إن لم يكن لها طالب
+    const needs = [...this.hostSockets, ...this.screenSockets].some((s) => this.wantsDashboard(s));
+    const data = needs ? this.dashboard() : null;
     // شاشة العرض معلّقة أمام الصف كله: أسماء من صوّت لكل رأي لا تُعرض هناك
-    const forScreen = dashboard && this.screenSockets.size ? { t: 'dashboard', data: withoutVoters(dashboard.data) } : null;
+    const forScreen = data && this.screenSockets.size ? { t: 'dashboard', data: withoutVoters(data) } : null;
+    const dashboard = data ? { t: 'dashboard', data } : null;
     for (const socket of this.hostSockets) {
       this.send(socket, state);
-      if (dashboard) this.send(socket, dashboard);
+      if (dashboard && this.wantsDashboard(socket)) this.send(socket, dashboard);
     }
     for (const socket of this.screenSockets) {
       this.send(socket, state);
-      if (forScreen) this.send(socket, forScreen);
+      if (forScreen && this.wantsDashboard(socket)) this.send(socket, forScreen);
     }
     for (const p of this.participants.values()) {
       const payload = this.participantState(p);

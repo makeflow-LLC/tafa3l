@@ -272,7 +272,9 @@ test('الإجابة النصّية تبقى «بانتظار التصحيح» �
   b.send({ t: 'answer', questionId: qid, value: 'الماء يتبخر' });
   await b.next('answer:accepted');
 
-  // المدرب يرى قائمة التصحيح بالنصوص
+  // المدرب يرى قائمة التصحيح بالنصوص — وطابور التصحيح داخل «لوحة التحكم»،
+  // فيشترك فيها كما تفعل الواجهة عند فتح التبويب
+  host.send({ t: 'host:dashboard' });
   const dash = await host.next((m) => m.t === 'dashboard' && m.data.grading[0].answers.length === 2);
   const item = dash.data.grading[0];
   assert.equal(item.maxPoints, 5);

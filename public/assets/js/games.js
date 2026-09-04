@@ -16,7 +16,14 @@
   const state = { q: '', subject: '', grade: '', teacher: '', sort: 'popular', page: 0, items: [], total: 0, rated: new Set(), saved: new Set() };
 
 
-  /** الألعاب المحفوظة على هذا الجهاز — الحقيقة في مخبأ عامل الخدمة، وهذه مرآتها للواجهة */
+  /**
+   * الألعاب المحفوظة على هذا الجهاز.
+   *
+   * الحقيقة في **مخبأ المتصفّح** لا في `localStorage`: المتصفّح — وخاصةً على
+   * الجوال — يُفرغ المخبأ حين تضيق المساحة ولا يُخبر أحداً، فتبقى القائمة
+   * المحفوظة تقول «محفوظة ✅» للعبةٍ لن تفتح بلا شبكة. لذلك نقرأ المخبأ
+   * مباشرةً عند الإقلاع ونصحّح القائمة به.
+   */
   const SAVED_KEY = 'tapio:offlineGames';
   const readSaved = () => {
     try {
@@ -33,6 +40,27 @@
       /* تخزين معطّل */
     }
   };
+
+  /** يسأل المخبأ عمّا هو محفوظٌ فعلاً، ويعيد رسم البطاقة إن خالف ما ظنناه */
+  async function syncSaved() {
+    if (!('caches' in window)) return;
+    try {
+      const cache = await caches.open('tapio-games-v1');
+      const real = new Set();
+      for (const req of await cache.keys()) {
+        const m = /^\/api\/games\/([\w-]+)\/frame$/.exec(new URL(req.url).pathname);
+        if (m) real.add(m[1]);
+      }
+      const changed = real.size !== state.saved.size || [...real].some((id) => !state.saved.has(id));
+      if (!changed) return;
+      state.saved.clear();
+      real.forEach((id) => state.saved.add(id));
+      writeSaved();
+      route();
+    } catch {
+      /* المخبأ غير متاح (وضع خاص مثلاً) — نبقي ما لدينا */
+    }
+  }
 
   /** التقييم مرة واحدة لكل متصفّح — الخادم يحرس أيضاً بالعنوان */
   const RATED_KEY = 'tapio:ratedGames';
@@ -52,6 +80,7 @@
 
   window.addEventListener('hashchange', route);
   route();
+  syncSaved();
 
   function route() {
     const hash = location.hash.slice(1) || '/';
@@ -455,40 +484,57 @@
 
     btn.addEventListener('click', async () => {
       if (!ready) return toast(t('gOfflineUnsupported'), 'bad');
+      const on = state.saved.has(game.id);
       btn.disabled = true;
-      const reg = await navigator.serviceWorker.ready;
-      const worker = reg.active;
+      // اللعبة قد تبلغ ميغابايتين على شبكة مدرسة: يقول الزرّ إنه يعمل
+      if (!on) btn.textContent = t('gOfflineWorking');
+
+      let worker = null;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        worker = reg.active;
+      } catch {
+        /* لم يُسجَّل عامل الخدمة */
+      }
       if (!worker) {
         btn.disabled = false;
+        paint();
         return toast(t('gOfflineUnsupported'), 'bad');
       }
-      const on = state.saved.has(game.id);
-      const done = (e) => {
-        const d = e.data || {};
-        if (d.id !== game.id) return;
+
+      let settled = false;
+      const finish = () => {
+        settled = true;
         navigator.serviceWorker.removeEventListener('message', done);
         btn.disabled = false;
-        if (d.type === 'gameSaved' && d.ok) {
-          state.saved.add(game.id);
-          toast(t('gOfflineSaved'), 'ok');
-        } else if (d.type === 'gameSaved') {
-          toast(t('gOfflineFailed'), 'bad');
-        } else if (d.type === 'gameDropped') {
-          state.saved.delete(game.id);
-          toast(t('gOfflineRemoved'), 'ok');
-        }
         writeSaved();
         paint();
       };
+      function done(e) {
+        const d = e.data || {};
+        if (d.id !== game.id) return;
+        if (d.type === 'gameSaved' && d.ok) {
+          state.saved.add(game.id);
+          finish();
+          toast(t('gOfflineSaved'), 'ok');
+        } else if (d.type === 'gameSaved') {
+          finish();
+          // سببُ العطل يُقال: «تعذّر» وحدها لا تدلّ المعلّم على شيء
+          toast(d.error ? t('gOfflineFailedWhy', { why: String(d.error).slice(0, 60) }) : t('gOfflineFailed'), 'bad');
+        } else if (d.type === 'gameDropped') {
+          state.saved.delete(game.id);
+          finish();
+          toast(t('gOfflineRemoved'), 'ok');
+        }
+      }
       navigator.serviceWorker.addEventListener('message', done);
       worker.postMessage({ type: on ? 'dropGame' : 'saveGame', id: game.id });
       // لو صمت العامل لا نترك الزرّ معطّلاً إلى الأبد
       setTimeout(() => {
-        if (!btn.disabled) return;
-        navigator.serviceWorker.removeEventListener('message', done);
-        btn.disabled = false;
+        if (settled) return;
+        finish();
         toast(t('gOfflineFailed'), 'bad');
-      }, 15000);
+      }, 30000);
     });
 
     box.append(el('strong', { text: t('gOfflineTitle') }));
