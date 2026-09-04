@@ -15,6 +15,16 @@
 
   const state = { q: '', subject: '', grade: '', teacher: '', sort: 'popular', page: 0, items: [], total: 0, rated: new Set(), saved: new Set() };
 
+  /**
+   * دليل المعلّمين. القائمة كاملةٌ في نداءٍ واحد، فالبحث فيها **فوريّ** مع كل
+   * حرف بلا شبكة ولا زرّ — لا كبحث الألعاب الذي يسأل الخادم.
+   *
+   * وتعريفُه هنا لا عند الدالّة التي تستعمله: `route()` تُستدعى عند تحميل
+   * الملف، فلو كان تعريفه بعدها لَرمى فتحُ ‎#/teachers‎ مباشرةً خطأَ منطقةٍ
+   * ميتة وبقيت الصفحة على دوّامتها.
+   */
+  const teachers = { q: '', items: null };
+
 
   /**
    * الألعاب المحفوظة على هذا الجهاز.
@@ -217,18 +227,39 @@
 
   // -------------------------------------------------------- دليل المعلّمين
 
+  /**
+   * مفتاحُ مقارنةٍ للعربية: يوحّد ما يختلف رسمه ولا يختلف نطقاً.
+   *
+   * بدونه لا يجد من كتب «احمد» أستاذاً اسمه «أحمد»، ولا من كتب «فاطمه»
+   * أستاذةً اسمها «فاطمة» — وهو أكثر ما يُكتب في خانة بحثٍ عربية.
+   */
+  function searchKey(text) {
+    return String(text || '')
+      .replace(/[ً-ْٰـ]/g, '') // تشكيل وتطويل
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/[ىی]/g, 'ي')
+      .replace(/ؤ/g, 'و')
+      .replace(/ئ/g, 'ي')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
   /** يتصفّح الطالب حسب معلّمه لا حسب المادة وحدها */
   async function openTeachers() {
     exitImmersive();
     app.innerHTML = '<div class="card center"><div class="spinner"></div></div>';
-    let items;
-    try {
-      items = (await api('/api/game-teachers')).items;
-    } catch (err) {
-      app.innerHTML = '';
-      app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('gTeachersTitle') }), el('p', { class: 'muted small', text: err.message })]));
-      return;
+    if (!teachers.items) {
+      try {
+        teachers.items = (await api('/api/game-teachers')).items;
+      } catch (err) {
+        app.innerHTML = '';
+        app.append(el('div', { class: 'card stack center' }, [el('h2', { text: t('gTeachersTitle') }), el('p', { class: 'muted small', text: err.message })]));
+        return;
+      }
     }
+    const items = teachers.items;
 
     app.innerHTML = '';
     app.append(
@@ -241,20 +272,59 @@
       return;
     }
 
-    const grid = el('div', { class: 'game-grid' });
-    items.forEach((tch) => {
-      grid.append(
-        el('a', { class: 'card stack tight teacher-card', href: '#/t/' + tch.id }, [
-          faceNode(tch, tch.name),
-          el('strong', { class: 'center', text: tch.name }),
-          el('div', { class: 'row', style: { gap: '6px', justifyContent: 'center' } }, [
-            el('span', { class: 'badge', text: t('gCount', { n: tch.games }) }),
-            el('span', { class: 'badge', text: t('gPlays', { n: tch.plays }) }),
-          ]),
-        ])
-      );
+    const search = el('input', {
+      type: 'search',
+      placeholder: t('gTeacherSearch'),
+      value: teachers.q,
+      maxlength: 60,
+      'aria-label': t('gTeacherSearch'),
     });
+    const count = el('span', { class: 'muted small' });
+    app.append(
+      el('div', { class: 'card stack tight' }, [
+        el('div', { class: 'row', style: { gap: '6px' } }, [el('span', { class: 'grow' }, search), count]),
+      ])
+    );
+
+    // الشبكة وحدها تُعاد رسمها مع كل حرف: إعادةُ بناء الحقل تُسقط بؤرة الكتابة
+    const grid = el('div', { class: 'game-grid' });
+    const empty = el('div', { class: 'card stack center hidden' }, [
+      el('div', { style: { fontSize: '2.4rem' }, text: '🔍' }),
+      el('p', { class: 'muted', text: t('gTeacherNone') }),
+    ]);
     app.append(grid);
+    app.append(empty);
+
+    function draw() {
+      const needle = searchKey(teachers.q);
+      const shown = needle ? items.filter((tch) => searchKey(tch.name).includes(needle)) : items;
+      grid.innerHTML = '';
+      shown.forEach((tch) => {
+        grid.append(
+          el('a', { class: 'card stack tight teacher-card', href: '#/t/' + tch.id }, [
+            faceNode(tch, tch.name),
+            el('strong', { class: 'center', text: tch.name }),
+            el('div', { class: 'row', style: { gap: '6px', justifyContent: 'center' } }, [
+              el('span', { class: 'badge', text: t('gCount', { n: tch.games }) }),
+              el('span', { class: 'badge', text: t('gPlays', { n: tch.plays }) }),
+            ]),
+          ])
+        );
+      });
+      count.textContent = t('gTeachersCount', { n: shown.length });
+      empty.classList.toggle('hidden', shown.length > 0);
+      grid.classList.toggle('hidden', shown.length === 0);
+    }
+
+    search.addEventListener('input', () => {
+      teachers.q = search.value;
+      draw();
+    });
+    // «إدخال» لا يُرسل نموذجاً هنا — الترشيح تمّ وهو يكتب، فنكتفي بإخفاء لوحة المفاتيح
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') search.blur();
+    });
+    draw();
   }
 
   /** ترويسة صفحة المعلّم — الصورة والرقم يظهران فقط إن ملأهما هو */
