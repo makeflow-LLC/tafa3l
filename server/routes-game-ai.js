@@ -63,6 +63,17 @@ function nowId(prefix) {
   return prefix + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
+/**
+ * اسمُ المعلّم كما يراه الطلاب — القاعدة نفسها التي تنسب إليه ألعابه في
+ * المعرض (routes-account): ما اختاره في بروفايله، وإلا اسمُه الأول وحده.
+ * يُعرض عليه في سؤال الحقوق جاهزاً، فلا يُسأل «ما اسمك؟» وهو مسجَّل.
+ */
+function publicNameOf(user) {
+  const chosen = String(user?.displayName || '').trim().slice(0, 60);
+  if (chosen) return chosen;
+  return String(user?.name || '').trim().split(/\s+/)[0] || '';
+}
+
 function gameAiRoutes() {
   const router = express.Router();
 
@@ -183,7 +194,10 @@ function gameAiRoutes() {
     // محادثةٌ لا تخصّه — أو انتهى عمرها — تبدأ من جديد بلا رسالة خطأ
     if (!chat || chat.userId !== req.user.id) {
       chatId = nowId('gc_');
-      chat = { userId: req.user.id, turns: [], at: Date.now() };
+      // البذرة تُولد مع المحادثة وتثبت لها: منها تُنتخب دورةُ اللعبة (عائلتا
+      // لمسٍ وإطار) فلا تتشابه ألعابُ المحادثات المتتالية ولا تتبدّل اللعبة
+      // تحت يد من يعدّلها
+      chat = { userId: req.user.id, turns: [], at: Date.now(), seed: nowId('s_') };
       chats.set(chatId, chat);
     }
     chat.at = Date.now();
@@ -196,7 +210,14 @@ function gameAiRoutes() {
 
     const cfg = req.body?.config;
     builder
-      .chat({ turns: contextOf(chat), config: cfg, onProgress: (stage) => (job.stage = stage) })
+      .chat({
+        turns: contextOf(chat),
+        config: cfg,
+        // اسمه كما يراه الطلاب — القاعدة نفسها التي تنسب إليه ألعابه في المعرض
+        teacherName: publicNameOf(req.user),
+        seed: chat.seed,
+        onProgress: (stage) => (job.stage = stage),
+      })
       .then(async (out) => {
         chat.turns.push({ role: 'model', text: out.text + (out.html ? '\n\n```html\n' + out.html + '\n```' : ''), built: Boolean(out.html) });
         chat.at = Date.now();
