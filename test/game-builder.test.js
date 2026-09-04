@@ -341,3 +341,71 @@ test('كتلة CONFIG تعلن حال كل ميزة on/off — والمفاتي�
   assert.match(builder.configBlock(builder.readConfig({})), /TIMER\s+= off/, 'وبلا طلبٍ: مطفأ');
   for (const spec of Object.values(builder.SWITCHES)) assert.match(block, new RegExp(`${spec.key}\\s+= (on|off)`));
 });
+
+// ------------------------------------------ الأيدي أولاً، والاسم، والتنويع
+
+test('الرسالة الأولى تسأل عن العمر وعن اسم المعلّم في اللعبة — باسمه الحقيقي وفي رسالةٍ واحدة', () => {
+  const p = builder.systemPrompt(builder.readConfig({}), { teacherName: 'أ. سامي', seed: 's1' });
+  assert.match(p, /١\. لأي عمر أو صف هذه اللعبة؟/);
+  assert.match(p, /٢\. هل أكتب اسمك في اللعبة — «أ\. سامي» —/, 'الاسم يُعرض جاهزاً من حسابه');
+  assert.match(p, /One message total\. Never a second round of questions/);
+  // وبلا اسمٍ معروف يُطلب منه كتابته لا يُخترع
+  const anon = builder.systemPrompt(builder.readConfig({}), { seed: 's1' });
+  assert.match(anon, /٢\. هل تريد كتابة اسمك في اللعبة/);
+  assert.doesNotMatch(anon, /«»/, 'لا قوسين فارغين');
+});
+
+test('الاسم يُكتب في موضعين فقط إن أُريد، ولا يُخترع إن لم يُرَد', () => {
+  const p = builder.systemPrompt(builder.readConfig({}), { teacherName: 'ندى' });
+  assert.match(p, /# CREDIT LINE/);
+  assert.match(p, /exactly TWO places — the bottom of the start\/title screen, and the final result screen/);
+  assert.match(p, /Never invent, guess, or abbreviate a name/);
+  assert.match(p, /credit line is missing when the teacher asked for it, or present when the teacher declined/, 'وفي الفحص الصامت');
+});
+
+test('«اقرأ ثم انقر جواباً» ممنوعٌ عموداً للعبة — والفعل الجسديّ أوّل قرار', () => {
+  const p = builder.systemPrompt(builder.readConfig({}), { seed: 'x' });
+  assert.match(p, /# HANDS FIRST/);
+  assert.match(p, /is a QUIZ\. It is FORBIDDEN as the primary mechanic/);
+  assert.match(p, /at least TWO different physical interactions from two different families/);
+  assert.match(p, /# TOUCH CATALOG/);
+  for (const family of builder.TOUCH_FAMILIES) assert.match(p, new RegExp(family.name.replace(/[/]/g, '\\/')), family.name);
+  assert.match(p, /pop the balloons or bubbles/);
+  assert.match(p, /drag to CONNECT two things with a line/);
+  assert.match(p, /buttons that change a shape \(add a side, rotate, mirror, scale\)/);
+  // الاختبار لم يعد بذرةً إبداعية
+  assert.doesNotMatch(p, /^Quiz: adaptive/m);
+  assert.match(p, /Never offer "اختيار من متعدد" or "أسئلة وأجوبة" as an idea/);
+  assert.match(p, /the primary mechanic is "read a question, tap an answer button"/, 'وفي الفحص الصامت');
+});
+
+test('دورة المحادثة: عائلتا لمسٍ مختلفتان وإطار — ثابتةٌ للبذرة الواحدة ومختلفةٌ بين البذور', () => {
+  const a = builder.spinFor('s_abc');
+  const again = builder.spinFor('s_abc');
+  assert.deepEqual(a, again, 'البذرة نفسها → الدورة نفسها، فلا تتبدّل اللعبة تحت يد من يعدّلها');
+  assert.notEqual(a.touch[0].name, a.touch[1].name, 'عائلتان مختلفتان دائماً');
+  assert.ok(builder.FRAMES.includes(a.frame));
+
+  // عبر بذورٍ كثيرة تتوزّع الدورات لا تتكرّر
+  const seen = new Set();
+  for (let i = 0; i < 40; i += 1) seen.add(JSON.stringify(builder.spinFor('seed-' + i)));
+  assert.ok(seen.size >= 25, `تنوّع الدورات ${seen.size} من ٤٠ — قليل`);
+
+  const p = builder.systemPrompt(builder.readConfig({}), { seed: 's_abc' });
+  assert.match(p, new RegExp(`Lean on these two touch families: ${a.touch[0].name.replace(/[/]/g, '\\/')} and ${a.touch[1].name.replace(/[/]/g, '\\/')}`));
+  assert.match(p, new RegExp(`Lean on this frame: ${a.frame}`));
+  assert.match(p, /If the teacher asked for a specific mechanic or frame, theirs wins/);
+});
+
+test('chat يمرّر اسم المعلّم والبذرة إلى تعليمات النظام', async () => {
+  const mock = mockModel([{ text: 'لأي عمر هذه اللعبة؟' }]);
+  try {
+    await builder.chat({ turns: [{ role: 'user', text: 'درس الكسور' }], config: {}, teacherName: 'ريم', seed: 'z9' });
+    const system = mock.seen.calls[0].body.systemInstruction.parts[0].text;
+    assert.match(system, /«ريم»/);
+    const spin = builder.spinFor('z9');
+    assert.match(system, new RegExp(`Lean on this frame: ${spin.frame}`));
+  } finally {
+    mock.restore();
+  }
+});
