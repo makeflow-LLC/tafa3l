@@ -330,11 +330,16 @@ test('شاشة العرض المنفصلة: تتطلب مفتاح المضيف،
   p.send({ t: 'answer', questionId: qId, value: 'o0' });
   await p.next('answer:accepted');
 
-  // النتائج التفصيلية للسؤال الحالي تصل شاشة العرض مباشرة بعد الإجابة
-  const liveDash = await screen.next(
-    (m) => m.t === 'dashboard' && m.data.perQuestion[0] && m.data.perQuestion[0].responses > 0
-  );
-  assert.equal(liveDash.data.perQuestion[0].results.options[0].count, 1);
+  /*
+   * شاشة العرض في وضع المدرّب ترسم نتائج السؤال من **الحالة** لا من لوحة
+   * الإحصاءات (اللوحة لا يستعملها إلا مسرحُ الوضع الحرّ)، فعدّ المجيبين يصلها
+   * مع الحالة. واللوحة نفسها لا تُبَثّ هنا عمداً: أربعون كيلوبايت مع كل دفعة
+   * إجابات إلى جهازٍ لا يقرؤها.
+   */
+  // أجاب الجميع (طالبٌ واحد هنا) فتُعرض النتائج تلقائياً
+  const screenResults = await screen.next((m) => m.t === 'state' && m.phase === 'results');
+  assert.equal(screenResults.answeredCount, 1);
+  assert.equal(screenResults.results.options[0].count, 1, 'نتائج السؤال تصل شاشة العرض مع الحالة');
 
   p.send({ t: 'reaction', emoji: '🔥' });
   const reaction = await screen.next('reaction');
