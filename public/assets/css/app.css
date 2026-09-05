@@ -2658,6 +2658,49 @@ html.dark .cloud .c6 { color: #22d3ee; }
   background: color-mix(in srgb, var(--brand) 8%, transparent);
 }
 
+/* ------------------------------------------------------------ الواجبات */
+
+/*
+ * كشفُ من يُكلَّف: صناديقُ أسماء داخل صندوقٍ يُمرَّر.
+ *
+ * فصلُ ستّين طالباً لو انسدل بطوله دفع زرَّ «كلّف» إلى ما تحت الشاشة، فيبدو
+ * النموذج بلا زرّ. وسقفُه أربعون بالمئة من الشاشة: يُرى منه صفوفٌ تكفي
+ * للتعرّف على ما فيه، وما زاد يُمرَّر داخله.
+ */
+.roster-pick {
+  display: grid;
+  gap: 2px;
+  max-height: min(40dvh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+}
+
+.roster-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* هدفُ لمسٍ كامل: الاسم كلّه يُبدّل الصندوق، لا مربّعٌ صغير وحده */
+  min-height: 40px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin: 0;
+}
+
+.roster-pick__row:hover {
+  background: var(--brand-soft);
+}
+
+.roster-pick__row input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+}
+
 /* ------------------------------------------------- دليل الخطوات الأولى */
 
 .guide-steps {
@@ -4120,30 +4163,39 @@ details.card[open] > summary::after {
 }
 
 /**
- * جدول لوحة المالك على الجوّال: بطاقةٌ لكل معلّم لا جدولٌ يُمرَّر أفقياً.
+ * جدولان يصيران بطاقاتٍ على الجوّال: لوحة المالك، ومتابعة الواجب.
  *
  * ستّة أعمدة في شاشةٍ بعرض ٣٩٠px تعني أن «بريميوم ١٢ يوماً» يقع بجوار أزرار
  * التمديد فلا يُقرأ أيّهما، والمالك يمرّر يميناً ويساراً ليجمع صفّاً واحداً.
- * فتصير كل خليةٍ سطراً معنوناً باسم عمودها.
+ * ومثله متابعة الواجب: «من سلّم ومن لم يسلّم» سؤالٌ يُسأل من الجوّال غالباً،
+ * وجوابُه لا يجوز أن يكون خلف تمريرٍ أفقيّ. فتصير كل خليةٍ سطراً معنوناً
+ * باسم عمودها، واسمُ الطالب ترويسةَ بطاقته.
  */
 @media (max-width: 720px) {
-  .adm-table {
+  .adm-table,
+  .hw-table {
     min-width: 0;
   }
 
-  .adm-table thead {
+  .adm-table thead,
+  .hw-table thead {
     display: none;
   }
 
   .adm-table,
   .adm-table tbody,
   .adm-table tr,
-  .adm-table td {
+  .adm-table td,
+  .hw-table,
+  .hw-table tbody,
+  .hw-table tr,
+  .hw-table td {
     display: block;
     width: 100%;
   }
 
-  .adm-table tr {
+  .adm-table tr,
+  .hw-table tr {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 10px 12px;
@@ -4152,18 +4204,22 @@ details.card[open] > summary::after {
   }
 
   .adm-table tr:hover,
-  .adm-table tbody tr:nth-child(even) {
+  .adm-table tbody tr:nth-child(even),
+  .hw-table tr:hover td,
+  .hw-table tbody tr:nth-child(even) {
     background: var(--surface);
   }
 
-  .adm-table td {
+  .adm-table td,
+  .hw-table td {
     border: 0;
     padding: 4px 0;
     white-space: normal;
   }
 
-  /* عنوانُ العمود فوق قيمته — عدا اسم المعلّم فهو ترويسة البطاقة */
-  .adm-table td[data-label]::before {
+  /* عنوانُ العمود فوق قيمته — عدا الاسم فهو ترويسة البطاقة */
+  .adm-table td[data-label]::before,
+  .hw-table td[data-label]::before {
     content: attr(data-label);
     display: block;
     color: var(--muted);
@@ -4171,9 +4227,37 @@ details.card[open] > summary::after {
     margin-bottom: 2px;
   }
 
-  .adm-table td:first-child {
+  .adm-table td:first-child,
+  .hw-table td:first-child {
     border-bottom: 1px solid var(--border);
     padding-bottom: 8px;
     margin-bottom: 4px;
+  }
+}
+
+/*
+ * وبطاقةُ الواجب أضيق من بطاقة المالك: أربعةُ سطورٍ لكل طالبٍ تجعل صفّاً من
+ * ثلاثين تمريراً لا ينتهي، والسؤال المطروح («من لم يسلّم؟») يُقرأ من الشارات
+ * وحدها. فيبقى الاسم سطراً، وينساب ما بعده في سطرٍ واحد — بلا عنوانٍ لما
+ * يقول نفسه (شارةُ الحالة والنسبة)، وبعنوانٍ ملاصقٍ لما لا يقوله (الوقت
+ * والمجموعة).
+ */
+@media (max-width: 720px) {
+  .hw-table td {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    padding-inline-end: 12px;
+  }
+
+  .hw-table td[data-label]::before {
+    display: inline;
+    margin: 0;
+  }
+
+  .hw-table td:first-child {
+    display: block;
+    width: 100%;
   }
 }
