@@ -688,6 +688,161 @@ function accountRoutes(store) {
     }
   });
 
+  // ------------------------------------------------------- إدارة الطلاب
+  //
+  // الكشف نصٌّ يُلصق دفعةً واحدة، وهذا يكفي أوّل مرّة ولا يكفي بعدها: طالبٌ
+  // جديد في منتصف الفصل، واسمٌ فيه خطأٌ مطبعي، وطالبٌ ينتقل من مجموعةٍ إلى
+  // أخرى — ثلاثتها كانت تُقضى بإعادة كتابة القائمة كلّها. فهذه أفعالٌ مفردة
+  // على الكشف نفسه، لا تخزينٌ ثانٍ له.
+
+  /** يكتب الفصل بعد تعديل كشفه، ويوائم ملفّاته */
+  async function saveRoster(item, names, groups) {
+    const updated = withPupils({ ...item, students: names, groups, updatedAt: Date.now() });
+    await storage.get().saveClass(updated);
+    return updated;
+  }
+
+  const sameName = (a, b) => records.nameKey(a) === records.nameKey(b);
+
+  /** إضافة طالبٍ واحد — باسمه ومجموعته */
+  router.post('/classes/:id/students', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const name = String(req.body?.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (!name) return res.status(400).json({ error: 'اكتب اسم الطالب' });
+      const names = (item.students || []).slice();
+      if (names.length >= MAX_STUDENTS) return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_STUDENTS} طالباً)` });
+      if (names.some((n) => sameName(n, name))) return res.status(409).json({ error: 'هذا الاسم موجود في الفصل' });
+      const group = String(req.body?.group || '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
+      const groups = (item.groups || []).slice();
+      /*
+       * يُدرَج **آخرَ مجموعته** لا آخر القائمة: الكشف مقروءٌ بمجموعاته في
+       * شاشة الطالب وفي ورقة الرموز، فطالبٌ يهبط تحت عنوان مجموعةٍ أخرى
+       * يفسد الترتيب الذي رتّبه المعلّم بنفسه.
+       */
+      let at = names.length;
+      if (group) {
+        const last = groups.lastIndexOf(group);
+        if (last >= 0) at = last + 1;
+      }
+      names.splice(at, 0, name);
+      groups.splice(at, 0, group);
+      const updated = await saveRoster(item, names, groups);
+      res.status(201).json({ class: publicClass(updated) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّرت الإضافة' });
+    }
+  });
+
+  /**
+   * تعديل طالب: اسمُه أو مجموعته.
+   *
+   * والاسمُ يُعاد تسميته **في ملفّه أيضاً** قبل المواءمة، وإلا عُدَّ اسماً
+   * جديداً فأخذ ملفّاً جديداً برمزٍ جديد — فيفقد الطالب سجلّه لأن معلّمه
+   * صحّح حرفاً في اسمه.
+   */
+  router.patch('/classes/:id/students/:name', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const current = String(req.params.name || '');
+      const names = (item.students || []).slice();
+      const groups = (item.groups || []).slice();
+      const at = names.findIndex((n) => sameName(n, current));
+      if (at < 0) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
+
+      if (req.body?.name !== undefined) {
+        const next = String(req.body.name).replace(/\s+/g, ' ').trim().slice(0, 40);
+        if (!next) return res.status(400).json({ error: 'اكتب اسم الطالب' });
+        if (names.some((n, i) => i !== at && sameName(n, next))) return res.status(409).json({ error: 'هذا الاسم موجود في الفصل' });
+        const pupil = (item.pupils || []).find((p) => sameName(p.name, names[at]));
+        if (pupil) pupil.name = next;
+        names[at] = next;
+      }
+      if (req.body?.group !== undefined) {
+        groups[at] = String(req.body.group).replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
+        // ينتقل مع مجموعته الجديدة كي يبقى الكشف مقروءاً بعناوينه
+        const [movedName] = names.splice(at, 1);
+        const [movedGroup] = groups.splice(at, 1);
+        const last = movedGroup ? groups.lastIndexOf(movedGroup) : -1;
+        const to = last >= 0 ? last + 1 : names.length;
+        names.splice(to, 0, movedName);
+        groups.splice(to, 0, movedGroup);
+      }
+      const updated = await saveRoster(item, names, groups);
+      res.json({ class: publicClass(updated) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر التعديل' });
+    }
+  });
+
+  /** حذف طالب من الكشف — وسجلّه يبقى حتى يُحذف صراحةً */
+  router.delete('/classes/:id/students/:name', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const names = (item.students || []).slice();
+      const groups = (item.groups || []).slice();
+      const at = names.findIndex((n) => sameName(n, String(req.params.name || '')));
+      if (at < 0) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
+      names.splice(at, 1);
+      groups.splice(at, 1);
+      const updated = await saveRoster(item, names, groups);
+      res.json({ class: publicClass(updated) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر الحذف' });
+    }
+  });
+
+  /** مجموعةٌ جديدة بأسمائها دفعةً واحدة — أسرع طريقٍ لتقسيم فصلٍ كبير */
+  router.post('/classes/:id/groups', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const group = String(req.body?.name || '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
+      if (!group) return res.status(400).json({ error: 'اكتب اسم المجموعة' });
+      const names = (item.students || []).slice();
+      const groups = (item.groups || []).slice();
+      // أسماءٌ في الفصل بالفعل تُنقل إلى المجموعة الجديدة بدل أن تُرفض أو تتكرّر
+      const wanted = parseRoster(req.body?.students).names;
+      for (const name of wanted) {
+        const at = names.findIndex((n) => sameName(n, name));
+        if (at >= 0) {
+          names.splice(at, 1);
+          groups.splice(at, 1);
+        }
+      }
+      if (names.length + wanted.length > MAX_STUDENTS) return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_STUDENTS} طالباً)` });
+      names.push(...wanted);
+      groups.push(...wanted.map(() => group));
+      const updated = await saveRoster(item, names, groups);
+      res.status(201).json({ class: publicClass(updated) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر إنشاء المجموعة' });
+    }
+  });
+
+  /** إعادة تسمية مجموعة، أو حلّها (اسمٌ فارغ) — الطلاب يبقون في الفصل */
+  router.patch('/classes/:id/groups/:name', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const current = String(req.params.name || '').trim();
+      const next = String(req.body?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
+      const groups = (item.groups || []).slice();
+      if (!groups.some((g) => (g || '') === current)) return res.status(404).json({ error: 'المجموعة غير موجودة' });
+      const updated = await saveRoster(
+        item,
+        (item.students || []).slice(),
+        groups.map((g) => ((g || '') === current ? next : g))
+      );
+      res.json({ class: publicClass(updated) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر تعديل المجموعة' });
+    }
+  });
+
   /** ملخّص سجلّ الفصل: كل طالبٍ بمحاولاته ومتوسّطه، والجلسات التي كُتبت */
   router.get('/classes/:id/record', auth.requireUser, async (req, res) => {
     try {

@@ -96,6 +96,9 @@
     if (hash === '/upgrade') return openUpgrade();
     if (hash === '/pay') return openPayment();
     if (hash === '/admin') return openAdmin();
+    // إدارة الطلاب: كل الفصول، أو فصلٌ بعينه (‎#/students?class=cl_…‎)
+    const stu = hash.match(/^\/students(?:\?class=([^&]+))?$/);
+    if (stu) return openStudents(stu[1] ? decodeURIComponent(stu[1]) : null);
     // سجلّ الطلاب: قائمة الفصول المسجَّلة، أو فصلٌ كامل، أو ملفّ طالبٍ واحد
     if (hash === '/records') return openRecordsHub();
     const rec = hash.match(/^\/class\/([\w-]+)\/record(?:\/([\w-]+))?$/);
@@ -388,78 +391,16 @@
     const card = el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
       el('div', { class: 'row between' }, [
         el('h2', { style: { margin: 0 } }, [t('hClassesTitle'), ' ', window.T.hintDot(t('hClassesIntro'))]),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => makeDemo(), title: t('hRecDemoHint') }, t('hRecDemo')),
-          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(null) }, t('hClassNew')),
-        ]),
+        el('a', { class: 'btn primary sm', href: '#/students' }, t('hStuManage')),
       ]),
       body,
     ]);
 
-    /**
-     * سجلٌّ تجريبيّ بضغطة: فصلٌ نموذجيّ بطلابٍ وهميين ونتائجَ عبر خمسة أنشطة.
-     *
-     * غرضه أن يرى المعلّم الشاشة مأهولةً قبل أن يجمع بياناته بنفسه — ومن رأى
-     * ما تصير إليه بعد شهرٍ عرف لماذا يشغّل السجل أصلاً.
+    /*
+     * بطاقةُ لمحةٍ لا محرّر: التعديل كلّه في «إدارة الطلاب» (‎#/students‎).
+     * ولولا ذلك لكان للكشف محرّران يتفرّعان، ولوجد المعلّم نصفَ الأفعال هنا
+     * ونصفها هناك.
      */
-    async function makeDemo() {
-      if (!confirm(t('hRecDemoAsk'))) return;
-      body.replaceChildren(el('div', { class: 'spinner' }));
-      try {
-        const made = await api('/api/classes/demo', { method: 'POST' });
-        toast(t('hRecDemoDone'), 'ok');
-        location.hash = '#/class/' + made.class.id + '/record';
-      } catch (err) {
-        toast(err.message, 'bad');
-        load();
-      }
-    }
-
-    function openForm(existing) {
-      const nameInput = el('input', { maxlength: 60, placeholder: t('hClassNamePh'), value: existing?.name || '' });
-      const namesInput = el('textarea', { rows: 8, placeholder: t('hClassStudentsPh') });
-      /*
-       * الكشف يُعاد إلى النصّ كما كُتب: عناوينُ المجموعات أسطرٌ تسبق أسماءها،
-       * فمن قسّم صفّه مرّةً يجد تقسيمه كما تركه لا قائمةً مسطّحة.
-       */
-      namesInput.value = (existing?.students || [])
-        .map((name, i) => {
-          const group = (existing.groups || [])[i] || '';
-          const before = i === 0 ? '' : (existing.groups || [])[i - 1] || '';
-          return group && group !== before ? `# ${group}\n${name}` : name;
-        })
-        .join('\n');
-      const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hClassSave'));
-      save.addEventListener('click', async () => {
-        save.disabled = true;
-        try {
-          const payload = { name: nameInput.value.trim(), students: namesInput.value };
-          if (existing) await api('/api/classes/' + existing.id, { method: 'PUT', body: payload });
-          else await api('/api/classes', { method: 'POST', body: payload });
-          toast(t('hClassSaved'), 'ok');
-          load();
-        } catch (err) {
-          toast(err.message, 'bad');
-          save.disabled = false;
-        }
-      });
-      body.replaceChildren(
-        el('div', { class: 'stack' }, [
-          el('div', {}, [el('label', { text: t('hClassName') }), nameInput]),
-          el('div', {}, [
-            el('label', { text: t('hClassStudents') }),
-            namesInput,
-            el('span', { class: 'muted small', text: t('hClassGroupsHint') }),
-          ]),
-          el('div', { class: 'row', style: { gap: '8px' } }, [
-            save,
-            el('button', { class: 'btn ghost sm', type: 'button', onclick: () => load() }, t('hClassCancel')),
-          ]),
-        ])
-      );
-      nameInput.focus();
-    }
-
     async function load() {
       body.replaceChildren(el('div', { class: 'spinner' }));
       let items = [];
@@ -469,54 +410,181 @@
         return body.replaceChildren(el('span', { class: 'muted small', text: err.message }));
       }
       state.classes = items;
-      if (!items.length) return body.replaceChildren(el('span', { class: 'muted small', text: t('hClassEmpty') }));
-      body.replaceChildren(...items.map(classRow));
+      if (!items.length) {
+        return body.replaceChildren(
+          el('div', { class: 'stack tight' }, [
+            el('span', { class: 'muted small', text: t('hClassEmpty') }),
+            el('a', { class: 'btn ghost sm', href: '#/students', style: { alignSelf: 'flex-start' } }, t('hStuNewClass')),
+          ])
+        );
+      }
+      const rows = items.slice(0, 6).map((item) =>
+          el('a', {
+            class: 'row between',
+            href: '#/students?class=' + encodeURIComponent(item.id),
+            style: { padding: '8px 0', borderBottom: '1px solid var(--border)', textDecoration: 'none', color: 'inherit' },
+          }, [
+            el('div', { class: 'stack tight grow' }, [
+              el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+                el('strong', { text: item.name }),
+                item.demo ? el('span', { class: 'badge warn', text: t('hRecDemoBadge') }) : null,
+                item.record ? el('span', { class: 'badge ok', text: t('hRecOn') }) : null,
+              ]),
+              el('span', { class: 'muted small', text: classLine(item) }),
+            ]),
+            el('span', { class: 'muted', text: '‹' }),
+          ])
+      );
+      if (items.length > 6) rows.push(el('a', { class: 'btn ghost sm', href: '#/students' }, t('hStuAll', { n: items.length })));
+      body.replaceChildren(...rows);
     }
 
-    /**
-     * صفّ الفصل: اسمه وعدده، وأزراره، ومفتاح «سجلّ الطلاب».
-     *
-     * المفتاح هو القرار الوحيد الذي يغيّر وعد المنصة لهذا الفصل بعينه: مطفأً
-     * لا يُحفظ شيء كما كان دائماً، ومشغَّلاً يصير لكل اسمٍ ملفٌّ ورمزٌ وتُكتب
-     * نتائج الأنشطة فيه. لذلك يقف بجوار اسم الفصل لا في إعدادٍ بعيد.
-     */
-    function classRow(item) {
-      const toggle = el('input', { type: 'checkbox' });
-      toggle.checked = Boolean(item.record);
-      toggle.addEventListener('change', async () => {
-        toggle.disabled = true;
+    load();
+    return card;
+  }
+
+  /** سطرُ وصفٍ لفصل: عدد طلابه ومجموعاته */
+  function classLine(item) {
+    const groups = new Set((item.groups || []).filter(Boolean)).size;
+    return t('hClassCount', { n: item.students.length }) + (groups ? ' · ' + t('hRecGroupCount', { n: groups }) : '');
+  }
+
+
+  // ------------------------------------------------------ إدارة الطلاب
+
+  /**
+   * شاشةٌ واحدة لكل ما يخصّ الطلاب: الفصول، وأسماؤها، ومجموعاتها.
+   *
+   * وكان الكشف نصّاً يُلصق دفعةً واحدة — يكفي أوّل مرّة ولا يكفي بعدها:
+   * طالبٌ جديد في منتصف الفصل، واسمٌ فيه خطأٌ مطبعي، وطالبٌ ينتقل بين
+   * مجموعتين، كلّها كانت تُقضى بإعادة كتابة القائمة كلّها من الذاكرة.
+   */
+  async function openStudents(classId) {
+    blankPage();
+    let items = [];
+    try {
+      items = (await api('/api/classes')).classes || [];
+    } catch (err) {
+      app.replaceChildren(errorCard(err.message, '#/', t('hDashboard')));
+      return;
+    }
+    state.classes = items;
+    const current = items.find((c) => c.id === classId) || items[0] || null;
+    app.innerHTML = '';
+
+    const reload = (id) => openStudents(id || current?.id);
+
+    /** بطاقةٌ لإنشاء فصل — تُستعمل في الحالة الفارغة وفي زرّ «فصل جديد» */
+    function newClassForm(box) {
+      const nameInput = el('input', { maxlength: 60, placeholder: t('hClassNamePh') });
+      const namesInput = el('textarea', { rows: 6, placeholder: t('hClassStudentsPh') });
+      const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hClassSave'));
+      save.addEventListener('click', async () => {
+        save.disabled = true;
         try {
-          await api('/api/classes/' + item.id, { method: 'PUT', body: { record: toggle.checked } });
-          load();
+          const made = await api('/api/classes', { method: 'POST', body: { name: nameInput.value.trim(), students: namesInput.value } });
+          toast(t('hClassSaved'), 'ok');
+          location.hash = '#/students?class=' + encodeURIComponent(made.class.id);
+          reload(made.class.id);
         } catch (err) {
           toast(err.message, 'bad');
-          toggle.checked = !toggle.checked;
-          toggle.disabled = false;
+          save.disabled = false;
         }
       });
-      // كم مجموعةً في هذا الفصل — رقمٌ يقول للمعلّم إن تقسيمه وصل
-      const groupCount = new Set((item.groups || []).filter(Boolean)).size;
-      return el('div', { class: 'stack tight', style: { padding: '10px 0', borderBottom: '1px solid var(--border)' } }, [
-        el('div', { class: 'row between' }, [
-          el('div', { class: 'stack tight grow' }, [
-            el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
-              el('strong', { text: item.name }),
-              item.demo ? el('span', { class: 'badge warn', text: t('hRecDemoBadge') }) : null,
-            ]),
-            el('span', {
-              class: 'muted small',
-              text: t('hClassCount', { n: item.students.length }) + (groupCount ? ' · ' + t('hRecGroupCount', { n: groupCount }) : ''),
-            }),
+      box.replaceChildren(
+        el('div', { class: 'stack' }, [
+          el('div', {}, [el('label', { text: t('hClassName') }), nameInput]),
+          el('div', {}, [
+            el('label', { text: t('hClassStudents') }),
+            namesInput,
+            el('span', { class: 'muted small', text: t('hClassGroupsHint') }),
           ]),
-          item.record ? el('a', { class: 'btn primary sm', href: `#/class/${item.id}/record` }, t('hRecOpen')) : null,
-          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(item) }, t('hClassEdit')),
+          el('div', { class: 'row', style: { gap: '8px' } }, [save, el('button', { class: 'btn ghost sm', type: 'button', onclick: () => reload() }, t('hClassCancel'))]),
+        ])
+      );
+      nameInput.focus();
+    }
+
+    const head = el('div', { class: 'card stack' }, [
+      el('div', { class: 'row between', style: { flexWrap: 'wrap', gap: '8px' } }, [
+        el('h1', { style: { margin: 0 }, text: t('hStuTitle') }),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('button', { class: 'btn accent sm', type: 'button', onclick: () => newClassForm(formBox) }, t('hStuNewClass')),
+          items.some((c) => c.demo) ? null : el('button', {
+            class: 'btn ghost sm', type: 'button', title: t('hRecDemoHint'),
+            onclick: async () => {
+              try {
+                const made = await api('/api/classes/demo', { method: 'POST' });
+                toast(t('hRecDemoDone'), 'ok');
+                reload(made.class.id);
+              } catch (err) {
+                toast(err.message, 'bad');
+              }
+            },
+          }, t('hRecDemo')),
+        ]),
+      ]),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('hStuIntro') }),
+    ]);
+    const formBox = el('div', { class: 'stack' });
+    head.append(formBox);
+    app.append(head);
+
+    if (!items.length) {
+      newClassForm(formBox);
+      return;
+    }
+
+    // شرائح الفصول: التنقّل بينها بضغطة، والمختار ظاهرٌ في العنوان
+    if (items.length > 1) {
+      app.append(
+        el('div', { class: 'card' }, el('div', { class: 'chips' }, items.map((item) => {
+          const chip = el('a', {
+            class: 'chip' + (item.id === current.id ? ' on' : ''),
+            href: '#/students?class=' + encodeURIComponent(item.id),
+            text: item.name,
+          });
+          return chip;
+        })))
+      );
+    }
+
+    // ---- بطاقة الفصل المختار: اسمه، وسجلّه، وأفعاله
+    const recordToggle = el('input', { type: 'checkbox' });
+    recordToggle.checked = Boolean(current.record);
+    recordToggle.addEventListener('change', async () => {
+      recordToggle.disabled = true;
+      try {
+        await api('/api/classes/' + current.id, { method: 'PUT', body: { record: recordToggle.checked } });
+        reload(current.id);
+      } catch (err) {
+        toast(err.message, 'bad');
+        recordToggle.checked = !recordToggle.checked;
+        recordToggle.disabled = false;
+      }
+    });
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between', style: { flexWrap: 'wrap', gap: '8px' } }, [
+          el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+            el('h2', { style: { margin: 0 }, text: current.name }),
+            current.demo ? el('span', { class: 'badge warn', text: t('hRecDemoBadge') }) : null,
+          ]),
+          el('span', { class: 'muted small', text: classLine(current) }),
+        ]),
+        el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => renameClass() }, t('hStuRename')),
+          current.record ? el('a', { class: 'btn primary sm', href: `#/class/${current.id}/record` }, t('hRecOpen')) : null,
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => pasteList() }, t('hStuPaste')),
           el('button', {
             class: 'btn danger sm', type: 'button',
             onclick: async () => {
               if (!confirm(t('hClassDeleteAsk'))) return;
               try {
-                await api('/api/classes/' + item.id, { method: 'DELETE' });
-                load();
+                await api('/api/classes/' + current.id, { method: 'DELETE' });
+                location.hash = '#/students';
+                reload(null);
               } catch (err) {
                 toast(err.message, 'bad');
               }
@@ -524,17 +592,212 @@
           }, t('hClassDelete')),
         ]),
         el('label', { class: 'switch-row' }, [
-          toggle,
+          recordToggle,
           el('span', { class: 'stack tight' }, [
             el('strong', { class: 'small', text: t('hRecSwitch') }),
             el('span', { class: 'muted small', text: t('hRecSwitchHint') }),
           ]),
         ]),
-      ]);
+      ])
+    );
+
+    function renameClass() {
+      const next = prompt(t('hClassName'), current.name);
+      if (next === null) return;
+      api('/api/classes/' + current.id, { method: 'PUT', body: { name: next.trim() } })
+        .then(() => reload(current.id))
+        .catch((err) => toast(err.message, 'bad'));
     }
 
-    load();
-    return card;
+    /** لصقُ قائمةٍ كاملة — يبقى أسرع طريقٍ في بداية العام */
+    function pasteList() {
+      const box = el('div', { class: 'card stack' });
+      const namesInput = el('textarea', { rows: 8 });
+      namesInput.value = (current.students || [])
+        .map((name, i) => {
+          const group = (current.groups || [])[i] || '';
+          const before = i === 0 ? '' : (current.groups || [])[i - 1] || '';
+          return group && group !== before ? `# ${group}\n${name}` : name;
+        })
+        .join('\n');
+      const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hClassSave'));
+      save.addEventListener('click', async () => {
+        save.disabled = true;
+        try {
+          await api('/api/classes/' + current.id, { method: 'PUT', body: { students: namesInput.value } });
+          toast(t('hClassSaved'), 'ok');
+          reload(current.id);
+        } catch (err) {
+          toast(err.message, 'bad');
+          save.disabled = false;
+        }
+      });
+      box.append(
+        el('label', { text: t('hClassStudents') }),
+        namesInput,
+        el('span', { class: 'muted small', text: t('hClassGroupsHint') }),
+        el('div', { class: 'row', style: { gap: '8px' } }, [save, el('button', { class: 'btn ghost sm', type: 'button', onclick: () => reload(current.id) }, t('hClassCancel'))])
+      );
+      app.append(box);
+      box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      namesInput.focus();
+    }
+
+    // ---- إضافة: طالبٌ واحد، أو مجموعةٌ بأسمائها
+    const groupNames = [...new Set((current.groups || []).filter(Boolean))];
+    const addName = el('input', { maxlength: 40, placeholder: t('hStuNamePh') });
+    const addGroup = el('input', { maxlength: 40, placeholder: t('hStuGroupPh'), list: 'stu-groups' });
+    const groupList = el('datalist', { id: 'stu-groups' }, groupNames.map((g) => el('option', { value: g })));
+    const addBtn = el('button', { class: 'btn primary sm', type: 'button' }, t('hStuAdd'));
+    const addOne = async () => {
+      const name = addName.value.trim();
+      if (!name) return toast(t('hStuNeedName'), 'bad');
+      addBtn.disabled = true;
+      try {
+        await api('/api/classes/' + current.id + '/students', { method: 'POST', body: { name, group: addGroup.value.trim() } });
+        // المجموعة تبقى في مكانها: من يضيف خمسة إلى مجموعةٍ واحدة لا يكتب اسمها خمس مرّات
+        addName.value = '';
+        const keep = addGroup.value;
+        await reloadKeeping(keep);
+      } catch (err) {
+        toast(err.message, 'bad');
+        addBtn.disabled = false;
+      }
+    };
+    addBtn.addEventListener('click', addOne);
+    addName.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') addOne();
+    });
+
+    async function reloadKeeping(group) {
+      await openStudents(current.id);
+      const field = document.querySelector('#stuGroupField');
+      if (field) field.value = group || '';
+      const nameField = document.querySelector('#stuNameField');
+      if (nameField) nameField.focus();
+    }
+    addName.id = 'stuNameField';
+    addGroup.id = 'stuGroupField';
+
+    const bulkGroup = el('input', { maxlength: 40, placeholder: t('hStuGroupPh') });
+    const bulkNames = el('textarea', { rows: 4, placeholder: t('hStuBulkPh') });
+    const bulkBtn = el('button', { class: 'btn accent sm', type: 'button' }, t('hStuAddGroup'));
+    bulkBtn.addEventListener('click', async () => {
+      const name = bulkGroup.value.trim();
+      if (!name) return toast(t('hStuNeedGroup'), 'bad');
+      bulkBtn.disabled = true;
+      try {
+        const res = await api('/api/classes/' + current.id + '/groups', { method: 'POST', body: { name, students: bulkNames.value } });
+        toast(t('hStuGroupAdded', { n: res.class.students.length }), 'ok');
+        reload(current.id);
+      } catch (err) {
+        toast(err.message, 'bad');
+        bulkBtn.disabled = false;
+      }
+    });
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('h2', { style: { margin: 0 }, text: t('hStuAddTitle') }),
+        el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' } }, [
+          el('div', { class: 'grow', style: { minWidth: '140px' } }, [el('label', { text: t('hStuName') }), addName]),
+          el('div', { class: 'grow', style: { minWidth: '140px' } }, [el('label', { text: t('hStuGroup') }), addGroup, groupList]),
+          addBtn,
+        ]),
+        el('details', {}, [
+          el('summary', { class: 'muted small', style: { cursor: 'pointer' }, text: t('hStuAddGroupTitle') }),
+          el('div', { class: 'stack tight', style: { marginTop: '8px' } }, [
+            el('div', {}, [el('label', { text: t('hStuGroupName') }), bulkGroup]),
+            el('div', {}, [el('label', { text: t('hStuBulkNames') }), bulkNames]),
+            el('div', { class: 'row' }, [bulkBtn]),
+          ]),
+        ]),
+      ])
+    );
+
+    // ---- الكشف: الطلاب تحت عناوين مجموعاتهم، ولكلٍّ تعديلٌ وحذف
+    if (!current.students.length) {
+      app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hStuNoStudents') })));
+      return;
+    }
+
+    const pinOf = new Map((current.pupils || []).map((p) => [p.name, p.pin]));
+    const buckets = [];
+    const seen = new Map();
+    current.students.forEach((name, i) => {
+      const group = (current.groups || [])[i] || '';
+      if (!seen.has(group)) {
+        seen.set(group, { group, names: [] });
+        buckets.push(seen.get(group));
+      }
+      seen.get(group).names.push(name);
+    });
+
+    const studentRow = (name) =>
+      el('div', { class: 'row between', style: { padding: '6px 0', borderBottom: '1px solid var(--border)', gap: '8px' } }, [
+        el('div', { class: 'row grow', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+          el('span', { text: name }),
+          current.record && pinOf.get(name) ? pinChip(pinOf.get(name)) : null,
+        ]),
+        el('button', {
+          class: 'btn ghost sm', type: 'button', title: t('hStuEdit'),
+          onclick: () => {
+            const next = prompt(t('hStuName'), name);
+            if (next === null) return;
+            api(`/api/classes/${current.id}/students/${encodeURIComponent(name)}`, { method: 'PATCH', body: { name: next } })
+              .then(() => reload(current.id))
+              .catch((err) => toast(err.message, 'bad'));
+          },
+        }, '✏️'),
+        el('button', {
+          class: 'btn ghost sm', type: 'button', title: t('hStuMove'),
+          onclick: () => {
+            const next = prompt(t('hStuMoveAsk', { list: groupNames.join('، ') || '—' }), (current.groups || [])[current.students.indexOf(name)] || '');
+            if (next === null) return;
+            api(`/api/classes/${current.id}/students/${encodeURIComponent(name)}`, { method: 'PATCH', body: { group: next } })
+              .then(() => reload(current.id))
+              .catch((err) => toast(err.message, 'bad'));
+          },
+        }, '↔'),
+        el('button', {
+          class: 'btn danger sm', type: 'button', title: t('hStuRemove'),
+          onclick: () => {
+            if (!confirm(t('hStuRemoveAsk', { name }))) return;
+            api(`/api/classes/${current.id}/students/${encodeURIComponent(name)}`, { method: 'DELETE' })
+              .then(() => reload(current.id))
+              .catch((err) => toast(err.message, 'bad'));
+          },
+        }, '🗑'),
+      ]);
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between' }, [
+          el('h2', { style: { margin: 0 }, text: t('hStuRoster') }),
+          el('span', { class: 'muted small', text: t('hClassCount', { n: current.students.length }) }),
+        ]),
+        ...buckets.map((bucket) =>
+          el('div', { class: 'stack tight', style: { marginTop: '6px' } }, [
+            el('div', { class: 'row between' }, [
+              el('strong', { class: 'small', text: bucket.group || t('hRecNoGroup') }),
+              bucket.group
+                ? el('button', {
+                    class: 'btn ghost sm', type: 'button',
+                    onclick: () => {
+                      const next = prompt(t('hStuGroupRename'), bucket.group);
+                      if (next === null) return;
+                      api(`/api/classes/${current.id}/groups/${encodeURIComponent(bucket.group)}`, { method: 'PATCH', body: { name: next } })
+                        .then(() => reload(current.id))
+                        .catch((err) => toast(err.message, 'bad'));
+                    },
+                  }, t('hStuGroupEdit'))
+                : null,
+            ]),
+            ...bucket.names.map(studentRow),
+          ])
+        ),
+      ])
+    );
   }
 
   // ------------------------------------------------------- سجلّ الطلاب
@@ -1862,6 +2125,37 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
    * يقطع خطوةً ليصل إلى أهمّ ما في الصفحة. وما بقي من بطاقات (المنحة،
    * والإرشاد، والفصول) تحتها.
    */
+  /**
+   * أعداد البلاطات: نداءان لا أكثر، وكلاهما يُهمَل بصمت إن تعثّر.
+   *
+   * البلاطة تعمل بلا رقمها — الرقم زينةٌ نافعة لا شرطٌ للوصول — فلا يجوز
+   * أن يُعطّل فشلُ نداءٍ صفحةً بأكملها، ولا أن تنتظره.
+   */
+  async function fillTileCounts() {
+    const put = (id, text) => {
+      const node = document.getElementById(id);
+      if (node) node.textContent = text;
+    };
+    put('tileProfile', state.user ? firstName(state.user.name) : '');
+    put('tilePlan', state.premium?.isPremium ? t('hTilePremium') : t('hTileFree'));
+    api('/api/classes')
+      .then((data) => {
+        const classes = data.classes || [];
+        const students = classes.reduce((sum, c) => sum + c.students.length, 0);
+        put('tileStudents', classes.length ? t('hTileStudentsCount', { n: students, c: classes.length }) : t('hTileNone'));
+        put('tileRecords', classes.some((c) => c.record) ? t('hTileRecordsOn', { n: classes.filter((c) => c.record).length }) : t('hTileOff'));
+      })
+      .catch(() => {
+        put('tileStudents', '');
+        put('tileRecords', '');
+      });
+    if (state.user) {
+      api('/api/games?limit=1&teacher=' + encodeURIComponent(state.user.id))
+        .then((data) => put('tileGames', data.total ? t('hTileGamesCount', { n: data.total }) : t('hTileNone')))
+        .catch(() => put('tileGames', ''));
+    }
+  }
+
   async function openStart() {
     teardown();
     setEditingActivity(null);
@@ -1937,6 +2231,47 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       home.append(UI.Warning({ title: t('hstorageIsNotDurable'), body: t('haccountsAndActivitiesAre') }));
     }
 
+    /**
+     * أقسام اللوحة — بلاطاتٌ تقول للمعلّم ما الذي عنده.
+     *
+     * كانت أبوابُ المنصة سطوراً في قائمةٍ منسدلة ورقاقاتٍ فوق الصفحة: من
+     * يعرفها يصل إليها، ومن لا يعرفها لا يكتشفها. والبلاطة تقول الاسم
+     * والغرض وعدداً ممّا عنده — «١٢ طالباً في فصلين» أنفع من رابطٍ اسمه
+     * «الفصول». وتظهر لصاحب الحساب وحده.
+     */
+    if (state.user) {
+      home.append(el('h2', { class: 'tp-section', text: t('hSections') }));
+      const tiles = el('div', { class: 'tp-tiles' });
+      home.append(tiles);
+      const tile = (emoji, title, body, href, id) => {
+        // «…» لمن ينتظر عدداً فقط؛ وبلاطةٌ بلا عدّاد تبقى نظيفة
+        const meta = el('span', { class: 'tp-tile__meta', text: id ? '…' : '' });
+        if (id) meta.id = id;
+        return el('a', { class: 'tp-tile', href }, [
+          el('span', { class: 'tp-tile__em', text: emoji }),
+          el('span', { class: 'tp-tile__body' }, [
+            // الأسماء نفسها تحمل رموزها في القائمة والرقاقات، والبلاطة لها رمزها
+            // الكبير — فيُنزع الرمز من أول الاسم كي لا يظهر مرّتين
+            el('strong', { text: String(title).replace(/^[^\p{L}\p{N}]+/u, '') }),
+            el('span', { class: 'tp-tile__note', text: body }),
+          ]),
+          meta,
+        ]);
+      };
+      tiles.append(
+        tile('👤', t('profNav'), t('hTileProfile'), '#/profile', 'tileProfile'),
+        tile('📚', t('hmyActivities'), t('hTileActivities'), '#/mine', 'tileActivities'),
+        tile('🧑‍🏫', t('hStuTitle'), t('hTileStudents'), '#/students', 'tileStudents'),
+        tile('📒', t('hRecNav'), t('hTileRecords'), '#/records', 'tileRecords'),
+        tile('🎮', t('gMine'), t('hTileGames'), '#/games', 'tileGames'),
+        tile('🌍', t('lNav'), t('hTileLibrary'), '#/library'),
+        tile('⭐', t('upNav'), t('hTilePlan'), '#/upgrade', 'tilePlan'),
+        tile('📖', t('hteacherGuide'), t('hTileGuide'), '/help.html')
+      );
+      // الأعداد تُملأ بعد وصولها — البلاطات تُرسم فوراً ولا تنتظر شبكة
+      fillTileCounts();
+    }
+
     home.append(el('h2', { class: 'tp-section', text: t('hmyActivities') }));
     const listBox = el('div', { class: 'tp-home' });
     home.append(listBox);
@@ -1977,6 +2312,9 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
 
     listBox.removeAttribute('aria-busy');
     listBox.replaceChildren();
+    // عدّاد بلاطة «نشاطاتي» من القائمة نفسها — بلا نداءٍ ثانٍ لنفس البيانات
+    const activitiesTile = document.getElementById('tileActivities');
+    if (activitiesTile) activitiesTile.textContent = activities.length ? t('hTileActivitiesCount', { n: activities.length }) : t('hTileNone');
     if (!activities.length) {
       listBox.append(
         UI.EmptyState({
