@@ -25,7 +25,7 @@
   function blankQuestion(type) {
     // timeLimit صفر دائماً: الوقت — إن وُضع — واحدٌ لكل الأسئلة في الإعدادات،
     // ورقمٌ تحت السؤال لا يقرؤه أحد إلا مُستنتِج الأنشطة القديمة فيوهمه بمؤقّت
-    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', timeLimit: 0, points: 1000, mark: 0, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '', passage: '' };
+    const q = { id: uid(), type: type || 'mc', text: '', explanation: '', skill: '', timeLimit: 0, points: 1000, mark: 0, options: [], correct: [], image: null, video: '', blanks: [], items: [], pairs: [], body: '', passage: '' };
     if (type === 'mc' || type === 'poll' || !type) {
       q.options = [
         { id: 'o0', text: '' },
@@ -134,6 +134,8 @@
 
     question.text = typeof raw.text === 'string' ? raw.text : '';
     question.explanation = typeof raw.explanation === 'string' ? raw.explanation : '';
+    // وسم المهارة اختياري: يمرّ من المسودّة والمكتبة والاستيراد كما هو
+    question.skill = typeof raw.skill === 'string' ? raw.skill.slice(0, 60) : '';
     question.timeLimit = Number.isFinite(Number(raw.timeLimit)) ? Number(raw.timeLimit) : fresh.timeLimit;
     // علامة السؤال بوحدات العلامة — تُستعمل في التوزيع المخصّص
     question.mark = Number.isFinite(Number(raw.mark)) ? Math.max(0, Number(raw.mark)) : 0;
@@ -330,6 +332,8 @@
       return null;
     }
     out.explanation = String(q.explanation ?? q.reason ?? q.why ?? '').trim();
+    // المهارة كما يسمّيها المصدر: skill أو objective أو «المهارة»
+    out.skill = String(q.skill ?? q.objective ?? q.tag ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
     // قطعة القراءة تصل من المساعد الذكي ومن الاستيراد — بلا هذا تُفقد بصمت
     if (type !== 'slide') out.passage = String(q.passage ?? '').trim();
 
@@ -455,6 +459,8 @@
    */
   /** فصول المعلّم تُجلب مرة واحدة لكل صفحة — تنقّله بين مراحل المعالج لا يعيد النداء */
   let classCache = null;
+  /** وسوم المهارات التي استعملها من قبل — تُقترح في المحرّر كي لا تتشتّت الصياغات */
+  let skillCache = null;
 
   function mount(root, onLaunch, extraActions, opts) {
     const draft = loadDraft();
@@ -1113,6 +1119,7 @@
             const q = blankQuestion(raw.type);
             q.text = raw.text;
             if (raw.explanation) q.explanation = raw.explanation;
+            if (raw.skill) q.skill = raw.skill;
             if (raw.points !== undefined) {
               q.points = raw.points;
               q.pointsSet = true;
@@ -2107,6 +2114,52 @@
         );
       }
       body.append(timeAndPoints);
+
+      /**
+       * وسمُ المهارة أو الهدف — **اختياريّ**، ولكل نوعٍ يُجاب عنه.
+       *
+       * وهو الفرق بين تقريرٍ يقول «السؤال ٧ صعب» وتقريرٍ يقول «الصفّ ضعيف
+       * في جمع الكسور»: الأول لا يُبنى عليه درسٌ قادم، والثاني هو الدرس.
+       * ولذلك يقف هنا بين أدوات السؤال لا في شاشةٍ منفصلة، ومع قائمةِ ما
+       * سبق أن كتبه المعلّم كي لا يصير «جمع الكسور» و«جمع كسور» وسمين.
+       */
+      if (question.type !== 'slide') {
+        const listId = 'skills-' + question.id;
+        const skillInput = el('input', {
+          maxlength: 60,
+          placeholder: t('bSkillPh'),
+          list: listId,
+          value: question.skill || '',
+        });
+        const datalist = el('datalist', { id: listId });
+        const fillList = (names) => {
+          // ما في المسودّة أولاً: أقربُ ما يكتبه الآن هو ما كتبه في السؤال السابق
+          const local = draft.questions.map((item) => item.skill).filter(Boolean);
+          const all = [...new Set([...local, ...names])].slice(0, 60);
+          datalist.replaceChildren(...all.map((name) => el('option', { value: name })));
+        };
+        fillList(skillCache || []);
+        if (!skillCache) {
+          api('/api/my-skills')
+            .then((data) => {
+              skillCache = (data.skills || []).map((s) => s.skill);
+              if (datalist.isConnected) fillList(skillCache);
+            })
+            .catch(() => { skillCache = []; });
+        }
+        skillInput.addEventListener('input', () => {
+          question.skill = skillInput.value.replace(/\s+/g, ' ').trim().slice(0, 60);
+          saveDraft(draft);
+        });
+        advanced.append(
+          el('div', {}, [
+            el('label', { text: t('bSkillLabel') }),
+            skillInput,
+            datalist,
+            el('div', { class: 'muted small', style: { marginTop: '4px' }, text: t('bSkillHint') }),
+          ])
+        );
+      }
 
       // شرح أو سبب الإجابة الصحيحة (اختياري)
       if (question.type === 'mc' || question.type === 'truefalse') {

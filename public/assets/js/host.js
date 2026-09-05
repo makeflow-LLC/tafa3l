@@ -923,6 +923,25 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       ])
     );
 
+    /*
+     * المهارات المتعثّرة قبل الأسئلة: السؤال بنصّه لا يتكرّر بين اختبارَين،
+     * والمهارة تتكرّر — فهي ما يُبنى عليه دعمُ هذا الطالب بعينه.
+     */
+    const weakSkills = data.weakSkills || [];
+    if (weakSkills.length) {
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('h2', { style: { margin: 0 }, text: t('hRecWeakSkills') }),
+          el('div', { class: 'stack tight' }, weakSkills.map((s) =>
+            el('div', { class: 'row between', style: { gap: '8px' } }, [
+              el('span', { class: 'grow', text: '🎯 ' + s.skill }),
+              el('span', { class: 'badge bad', text: t('hRecWeakTimes', { n: s.misses }) }),
+            ])
+          )),
+        ])
+      );
+    }
+
     app.append(
       el('div', { class: 'card stack' }, [
         el('h2', { style: { margin: 0 }, text: t('hRecWeak') }),
@@ -1714,6 +1733,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('div', { class: 'row', style: { gap: '6px' } }, [
             el('span', { class: 'badge', text: `${TYPE_EMOJI[q.type] || '•'} ${index + 1}` }),
             el('strong', { text: q.text }),
+            q.skill ? el('span', { class: 'badge', text: t('hSkillChip', { skill: q.skill }) }) : null,
           ]),
           q.passage ? el('p', { class: 'passage', style: { margin: 0 } }, q.passage) : null,
           q.body ? el('p', { class: 'muted small', style: { margin: 0 }, text: q.body }) : null,
@@ -4341,6 +4361,8 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('td', { style: { whiteSpace: 'normal', minWidth: '180px' } }, [
           el('span', { text: question.text + ' ' }),
           el('span', { class: 'muted small', text: open ? '▲' : t('hresults') }),
+          // المهارة تحت نصّ السؤال: تعثّرُ الصفّ يُقرأ بمعناه لا برقم السؤال
+          question.skill ? el('div', { class: 'muted small', text: t('hSkillChip', { skill: question.skill }) }) : null,
         ]),
         el('td', {}, question.asked ? t('hResponsesRate', { n: question.responses, rate: question.responseRate }) : '—'),
         // «—» في خانة الدقّة تبدو بياناً ناقصاً؛ والسبب الحقيقي أن السؤال لا يُصحَّح أصلاً
