@@ -105,7 +105,36 @@
     if (rec) return rec[2] ? openStudentRecord(rec[1], rec[2]) : openClassRecord(rec[1]);
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
     if (edit) return openSavedActivity(edit[1]);
+    /**
+     * مسارٌ لا تعرفه هذه النسخة.
+     *
+     * كان يهبط صامتاً على اللوحة، وذلك أسوأ ما يمكن أن يفعله: المعلّم يضغط
+     * «إدارة الطلاب» فيجد نفسه أمام «نشاطاتي» بلا كلمة، فيظنّ الزرّ معطوباً
+     * — والسبب في الغالب ملفٌّ قديم بقي في ذاكرة متصفّحه بعد النشر. فنقولها
+     * له، ونضع الحلّ في زرّ: تحديثٌ يُسقط المخبّأ ويعيد التحميل.
+     */
+    if (hash !== '/') return openUnknown(hash);
     return openStart();
+  }
+
+  function openUnknown(hash) {
+    teardown();
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '';
+    app.append(
+      el('div', { class: 'card stack center' }, [
+        el('div', { style: { fontSize: '2.6rem' }, text: '🧭' }),
+        el('h1', { style: { margin: 0 }, text: t('hUnknownTitle') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hUnknownBody') }),
+        el('code', { class: 'muted small', style: { direction: 'ltr' }, text: '#' + hash }),
+        el('div', { class: 'row', style: { gap: '8px', justifyContent: 'center', flexWrap: 'wrap' } }, [
+          el('button', { class: 'btn primary sm', type: 'button', onclick: () => window.SiteFooter?.hardReload?.() || location.reload() }, t('hUnknownRefresh')),
+          el('a', { class: 'btn ghost sm', href: '#/' }, t('hDashboard')),
+        ]),
+      ])
+    );
   }
 
   // ------------------------------------------------------- حساب المدرب
