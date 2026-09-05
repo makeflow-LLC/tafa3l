@@ -1259,11 +1259,18 @@
             const menu = el('div', { class: 'match-menu', role: 'listbox' });
             rights.forEach((right) => {
               const mine = value === right;
-              const takenBy = mine ? null : pairs.find((other) => other.id !== pair.id && chosen[other.id] === right);
+              /*
+               * الجوابُ الواحد يصلح لأكثر من طرف: «لام شمسية» جوابُ كلمتين.
+               * فكان اختيارُه للثانية **يمسحه من الأولى** لأن المطابقة كانت
+               * واحدةً لواحد — والمعلّم يكتب سؤالاً كهذا عمداً. فصار الاستعمال
+               * المتكرّر مسموحاً، ويبقى سطرٌ يقول أين استُعمل من قبل: خبرٌ
+               * للطالب لا منعٌ له.
+               */
+              const usedBy = mine ? null : pairs.filter((other) => other.id !== pair.id && chosen[other.id] === right);
               const choice = el(
                 'button',
                 {
-                  class: 'match-choice' + (mine ? ' is-mine' : '') + (takenBy ? ' is-taken' : ''),
+                  class: 'match-choice' + (mine ? ' is-mine' : '') + (usedBy && usedBy.length ? ' is-used' : ''),
                   type: 'button',
                   role: 'option',
                   'aria-selected': mine ? 'true' : 'false',
@@ -1272,18 +1279,15 @@
                   el('span', { class: 'grow', text: right }),
                   mine
                     ? el('span', { class: 'match-tag', text: t('pMatchMine') })
-                    : takenBy
-                      ? el('span', { class: 'match-tag', text: t('pMatchTaken', { term: takenBy.left }) })
+                    : usedBy && usedBy.length
+                      ? el('span', { class: 'match-tag', text: t('pMatchUsed', { term: usedBy.map((o) => o.left).join('، ') }) })
                       : null,
                 ]
               );
               choice.addEventListener('click', () => {
+                // النقر على اختياري يلغيه، وعلى غيره يضعه — بلا مساسٍ ببقية الأطراف
                 if (mine) delete chosen[pair.id];
-                else {
-                  // الطرف المقابل يُطابَق مرةً واحدة: أخذُه من عنصرٍ آخر يُفرغ ذلك العنصر
-                  if (takenBy) delete chosen[takenBy.id];
-                  chosen[pair.id] = right;
-                }
+                else chosen[pair.id] = right;
                 open = null;
                 focusPair = pair.id;
                 draw();
