@@ -411,6 +411,130 @@ test('تجديد الرمز يُبطل القديم، وحذف سجلّ الطا
   assert.equal((await storage.get().listRecords(cls.id)).length, 0, 'حذف الفصل يمحو سجلّه');
 });
 
+// ------------------------------------------------------------ المجموعات
+
+test('عناوين المجموعات في الكشف: تُقرأ من # ومن [ ]، والأسماء تبقى قائمةً مسطّحة', async () => {
+  const teacher = client();
+  await teacher.login('أ. هبة');
+  const made = await teacher.request('POST', '/api/classes', {
+    name: 'السادس',
+    students: '# المجموعة أ\nسارة\nليان\n[المجموعة ب]\nكريم, رنا\nبلا عنوان بعدها؟ لا',
+    record: true,
+  });
+  const cls = made.data.class;
+  assert.deepEqual(cls.students, ['سارة', 'ليان', 'كريم', 'رنا', 'بلا عنوان بعدها؟ لا']);
+  assert.deepEqual(cls.groups, ['المجموعة أ', 'المجموعة أ', 'المجموعة ب', 'المجموعة ب', 'المجموعة ب']);
+  assert.equal(cls.pupils.find((p) => p.name === 'كريم').group, 'المجموعة ب');
+});
+
+test('الاسم المكرّر لا يُزيح المجموعات عن أسمائها', async () => {
+  const teacher = client();
+  await teacher.login('أ. رائد');
+  const made = await teacher.request('POST', '/api/classes', {
+    name: 'صف',
+    students: '# أ\nسارة\nسارة\n# ب\nكريم',
+    record: true,
+  });
+  assert.deepEqual(made.data.class.students, ['سارة', 'كريم']);
+  assert.deepEqual(made.data.class.groups, ['أ', 'ب']);
+});
+
+test('المجموعات تُلخَّص في سجلّ الفصل، وتصل كشفَ الدخول موازيةً للأسماء', async () => {
+  const { teacher, cls, code } = await classroom();
+  const info = await (await fetch(base + '/api/sessions/' + code)).json();
+  assert.equal(info.rosterGroups.length, info.roster.length);
+
+  const grouped = await teacher.request('PUT', '/api/classes/' + cls.id, { students: '# أ\nسارة\nليان' });
+  assert.deepEqual(grouped.data.class.groups, ['أ', 'أ']);
+  const sara = grouped.data.class.pupils.find((p) => p.name === 'سارة');
+  await (await play(code, 'سارة', sara.pin)).socket.close();
+  await sleep(400);
+  const rec = await teacher.request('GET', '/api/classes/' + cls.id + '/record');
+  assert.equal(rec.data.groups.length, 1);
+  assert.equal(rec.data.groups[0].name, 'أ');
+  assert.equal(rec.data.groups[0].students, 2);
+  assert.equal(rec.data.groups[0].avgPercent, 100);
+  assert.equal(rec.data.students[0].group, 'أ');
+});
+
+test('فصلٌ بلا مجموعات لا يُصنَّف: القائمة فارغة لا مجموعةٌ بلا اسم', async () => {
+  const { teacher, cls } = await classroom();
+  const rec = await teacher.request('GET', '/api/classes/' + cls.id + '/record');
+  assert.deepEqual(rec.data.groups, []);
+});
+
+// ----------------------------------------------------------- النموذج
+
+test('السجل التجريبي: فصلٌ بطلاب وهميين في ثلاث مجموعات ونتائجَ عبر خمسة أنشطة', async () => {
+  const teacher = client();
+  await teacher.login('أ. جهاد');
+  const made = await teacher.request('POST', '/api/classes/demo', {});
+  assert.equal(made.status, 201);
+  const cls = made.data.class;
+  assert.equal(cls.record, true);
+  assert.equal(cls.demo, true);
+  assert.equal(cls.students.length, 12);
+  assert.equal(new Set(cls.groups).size, 3);
+  assert.equal(new Set(cls.pupils.map((p) => p.pin)).size, 12, 'رموز لا تتكرّر');
+
+  const rec = await teacher.request('GET', '/api/classes/' + cls.id + '/record');
+  assert.equal(rec.data.class.demo, true);
+  assert.equal(rec.data.sessions.length, 5);
+  assert.equal(rec.data.groups.length, 3);
+  assert.ok(rec.data.avgPercent > 20 && rec.data.avgPercent < 100);
+  const busy = rec.data.students.filter((s) => s.attempts > 0);
+  assert.equal(busy.length, 12, 'كلّهم لهم محاولات');
+  assert.ok(rec.data.students.some((s) => s.attempts < 5), 'وفيهم من غاب عن نشاط');
+  // طالبةٌ تتحسّن: آخر نتيجة أعلى من أولى نتائجها
+  const rising = rec.data.students.find((s) => s.name === 'ليان محمود');
+  assert.ok(rising.trend[rising.trend.length - 1] > rising.trend[0], 'الاتجاه صاعد');
+
+  const file = await teacher.request('GET', `/api/classes/${cls.id}/record/${rising.id}`);
+  assert.equal(file.data.records.length, 5);
+  assert.ok(file.data.weak.length, 'وله أخطاء تُعرض');
+
+  // ومن لم يتقن مهارةً يجدها مكرّرةً: سؤالُ المراجعة يعيد سؤال الوحدة نفسه
+  const weak = await teacher.request('GET', `/api/classes/${cls.id}/record/${rec.data.students.find((s) => s.name === 'زيد حاتم').id}`);
+  assert.ok(weak.data.weak[0].times >= 2, 'سؤال المراجعة المكرّر يظهر مرّتين');
+  assert.ok(weak.data.records.some((r) => r.items.some((it) => it.mine)), 'وإجابته الخاطئة محفوظة');
+});
+
+test('إعادة إنشاء النموذج تُحدّثه ولا تكرّره، ومعاينة صفحة الطالب للنموذج وحده', async () => {
+  const teacher = client();
+  await teacher.login('أ. وائل');
+  const first = (await teacher.request('POST', '/api/classes/demo', {})).data.class;
+  const second = (await teacher.request('POST', '/api/classes/demo', {})).data.class;
+  assert.equal(first.id, second.id, 'فصلٌ واحد لا فصلان');
+  assert.equal((await teacher.request('GET', '/api/classes')).data.classes.length, 1);
+  const rec = await teacher.request('GET', '/api/classes/' + first.id + '/record');
+  assert.equal(rec.data.sessions.length, 5, 'ولا تتضاعف السطور');
+
+  // المعاينة: رمزٌ يفتح صفحة الطالب فعلاً
+  const pupil = second.pupils[0];
+  const preview = await teacher.request('GET', `/api/classes/${first.id}/record/${pupil.id}/preview`);
+  assert.equal(preview.status, 200);
+  const me = await (await fetch(base + '/api/record/me?token=' + encodeURIComponent(preview.data.token))).json();
+  assert.equal(me.name, pupil.name);
+  assert.ok(me.records.length >= 4);
+
+  // وعلى فصلٍ حقيقيّ: ممنوعة — صفحة الطالب له وحده
+  const real = (await teacher.request('POST', '/api/classes', { name: 'حقيقي', students: 'سارة', record: true })).data.class;
+  const denied = await teacher.request('GET', `/api/classes/${real.id}/record/${real.pupils[0].id}/preview`);
+  assert.equal(denied.status, 403);
+});
+
+test('حذف الفصل التجريبي يمحوه ويمحو سطوره، ولا يمسّ فصول غيره', async () => {
+  const teacher = client();
+  await teacher.login('أ. سُلاف');
+  const own = (await teacher.request('POST', '/api/classes', { name: 'صفّي', students: 'سارة', record: true })).data.class;
+  const demo = (await teacher.request('POST', '/api/classes/demo', {})).data.class;
+  assert.equal((await teacher.request('DELETE', '/api/classes/' + demo.id)).status, 200);
+  assert.equal((await storage.get().listRecords(demo.id)).length, 0);
+  const left = (await teacher.request('GET', '/api/classes')).data.classes;
+  assert.equal(left.length, 1);
+  assert.equal(left[0].id, own.id);
+});
+
 test('معرّف فصلٍ مشوّه في إعدادات الجلسة يُهمَل، ولا يُقبل إلا بصيغة cl_', async () => {
   const teacher = client();
   await teacher.login('أ. منى');

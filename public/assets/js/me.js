@@ -20,6 +20,13 @@
 
   const readAll = () => store.local.get(RECORDS_KEY, {}) || {};
 
+  /**
+   * معاينةٌ برمزٍ في العنوان: يفتحها المعلّم من الفصل التجريبي ليرى الصفحة
+   * كما يراها طالبه. ولا تُحفظ في الجهاز — معاينةٌ تمرّ ولا تصير سجلّاً
+   * لصاحب الجهاز، وسجلّه هو (إن كان له) يبقى كما هو.
+   */
+  const previewToken = new URLSearchParams(location.search).get('token');
+
   function when(at) {
     return new Date(at).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' });
   }
@@ -76,14 +83,23 @@
   async function render(classId) {
     const all = readAll();
     const ids = Object.keys(all).sort((a, b) => (all[b].at || 0) - (all[a].at || 0));
-    if (!ids.length) return renderEmpty();
+    if (!ids.length && !previewToken) return renderEmpty();
     const current = ids.includes(classId) ? classId : ids[0];
 
     app.replaceChildren(el('div', { class: 'card center' }, el('div', { class: 'spinner' })));
     let data;
     try {
-      data = await api('/api/record/me?token=' + encodeURIComponent(all[current].token));
+      data = await api('/api/record/me?token=' + encodeURIComponent(previewToken || all[current].token));
     } catch (err) {
+      if (previewToken) {
+        app.replaceChildren(
+          el('div', { class: 'card stack center' }, [
+            el('div', { style: { fontSize: '2.4rem' }, text: '⚠️' }),
+            el('p', { class: 'muted', style: { margin: 0 }, text: err.message }),
+          ])
+        );
+        return;
+      }
       // رمزٌ لم يعد يفتح شيئاً (جدّد المعلّم الرمز، أو أطفأ السجل، أو حذف الفصل): نُسقطه من الجهاز
       if (err.status === 404) {
         delete all[current];
@@ -108,12 +124,13 @@
     app.append(
       el('div', { class: 'card stack' }, [
         el('h1', { style: { margin: 0 }, text: t('meTitle') }),
+        previewToken ? el('span', { class: 'badge warn', text: t('mePreview') }) : null,
         el('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, [
           el('strong', { text: data.name }),
           el('span', { class: 'muted small', text: t('meIntro', { className: data.className }) }),
         ]),
         // أكثر من فصلٍ على هذا الجهاز: شرائح للتبديل
-        ids.length > 1
+        !previewToken && ids.length > 1
           ? el('div', { class: 'chips' }, ids.map((id) => {
               const chip = el('button', { class: 'chip' + (id === current ? ' on' : ''), type: 'button', text: id === current ? data.className : all[id].title || '…' });
               chip.addEventListener('click', () => render(id));
@@ -135,6 +152,9 @@
       );
       rows.forEach((r) => app.append(attemptCard(r)));
     }
+
+    // المعاينة لا تُزال من جهازٍ لم تُحفظ فيه أصلاً
+    if (previewToken) return;
 
     const forget = el('button', { class: 'btn ghost sm', type: 'button' }, t('meForget'));
     forget.addEventListener('click', () => {

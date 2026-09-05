@@ -567,9 +567,13 @@ function postgresDriver(connectionString) {
       ownerId: r.owner_id,
       name: r.name,
       students: r.students || [],
+      // مجموعات الطلاب — مصفوفة موازية للأسماء، فما يُحذف اسمٌ إلا وتذهب مجموعته معه
+      groups: Array.isArray(r.groups) ? r.groups : [],
       // سجلّ الطلاب: مطفأ ما لم يشغّله المعلّم، وملفّاتهم (معرّف ورمز ومفتاح)
       record: Boolean(r.record),
       pupils: Array.isArray(r.pupils) ? r.pupils : [],
+      // فصلُ العرض المصنوع بضغطة زرّ — أرقامه وهمية، وشارتُه تقول ذلك
+      demo: Boolean(r.demo),
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at),
     };
@@ -741,6 +745,8 @@ function postgresDriver(connectionString) {
         -- الطلاب على الفصل نفسه، ونتائجهم عبر الحصص في جدولٍ مستقل.
         ALTER TABLE classes ADD COLUMN IF NOT EXISTS record BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE classes ADD COLUMN IF NOT EXISTS pupils JSONB NOT NULL DEFAULT '[]'::jsonb;
+        ALTER TABLE classes ADD COLUMN IF NOT EXISTS demo BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE classes ADD COLUMN IF NOT EXISTS groups JSONB NOT NULL DEFAULT '[]'::jsonb;
         CREATE TABLE IF NOT EXISTS student_records (
           id TEXT PRIMARY KEY,
           class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
@@ -972,8 +978,9 @@ function postgresDriver(connectionString) {
     },
     async saveClass(item) {
       await pool.query(
-        `INSERT INTO classes (id, owner_id, name, students, created_at, updated_at, record, pupils) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (id) DO UPDATE SET name = $3, students = $4, updated_at = $6, record = $7, pupils = $8`,
+        `INSERT INTO classes (id, owner_id, name, students, created_at, updated_at, record, pupils, demo, groups)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (id) DO UPDATE SET name = $3, students = $4, updated_at = $6, record = $7, pupils = $8, demo = $9, groups = $10`,
         [
           item.id,
           item.ownerId,
@@ -983,6 +990,8 @@ function postgresDriver(connectionString) {
           item.updatedAt,
           Boolean(item.record),
           JSON.stringify(item.pupils || []),
+          Boolean(item.demo),
+          JSON.stringify(item.groups || []),
         ]
       );
       return item;

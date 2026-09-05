@@ -45,11 +45,11 @@ function nameKey(name) {
  * الجديد يأخذ ملفّاً جديداً، والاسم المحذوف يذهب ملفّه (وسجلّه يبقى حتى يحذفه
  * المعلّم صراحةً — الحذف قرارٌ لا أثرٌ جانبي لتعديل قائمة).
  */
-function syncPupils(students, previous) {
+function syncPupils(students, previous, groups) {
   const old = new Map((previous || []).map((p) => [nameKey(p.name), p]));
   const pins = new Set();
   const out = [];
-  for (const name of students || []) {
+  (students || []).forEach((name, i) => {
     const found = old.get(nameKey(name));
     let pin = found?.pin || '';
     // رمزان متطابقان في فصلٍ واحد يفتحان ملفاً بالخطأ — نعيد توليد المكرّر
@@ -60,14 +60,16 @@ function syncPupils(students, previous) {
       name,
       pin,
       key: found?.key || newKey(),
+      // مجموعته داخل الفصل — تُشتقّ من الكشف نفسه، فلا تفترق عنه
+      group: String((groups || [])[i] || ''),
     });
-  }
+  });
   return out;
 }
 
 /** ما يُرسل للمعلّم عن ملفّ: بلا مفتاح الطالب السرّي */
 function publicPupil(p) {
-  return { id: p.id, name: p.name, pin: p.pin };
+  return { id: p.id, name: p.name, pin: p.pin, group: p.group || '' };
 }
 
 /** رمز الطالب لصفحته: يُعطى له عند الدخول ويعيش على جهازه */
@@ -250,8 +252,48 @@ function summarize(pupils, records) {
   return {
     students,
     sessions,
+    groups: groupStats(students),
     avgPercent: scoredAll.length ? Math.round(scoredAll.reduce((s, r) => s + r.percent, 0) / scoredAll.length) : null,
   };
+}
+
+/**
+ * المجموعات داخل الفصل: صفٌّ لكل مجموعة بعددها ومتوسّطها.
+ *
+ * فصلُ ستّين طالباً جدولٌ لا يُقرأ، والمعلّم يسأل عن مجموعةٍ لا عن ستّين
+ * اسماً. والترتيب ترتيبُ ظهورها في الكشف — كما كتبها المعلّم لا كما يرتّبها
+ * حاسوب، ومن بلا مجموعة يُجمعون في آخر القائمة.
+ */
+function groupStats(students) {
+  const order = [];
+  const byName = new Map();
+  for (const s of students) {
+    const key = s.group || '';
+    if (!byName.has(key)) {
+      byName.set(key, { name: key, students: 0, attempts: 0, sum: 0, scored: 0 });
+      order.push(key);
+    }
+    const row = byName.get(key);
+    row.students += 1;
+    row.attempts += s.attempts;
+    if (s.avgPercent !== null && s.avgPercent !== undefined) {
+      row.sum += s.avgPercent;
+      row.scored += 1;
+    }
+  }
+  // بلا مجموعاتٍ أصلاً: لا داعي لصفٍّ واحدٍ اسمه فارغ
+  if (order.length === 1 && order[0] === '') return [];
+  return order
+    .sort((a, b) => (a === '' ? 1 : b === '' ? -1 : 0))
+    .map((key) => {
+      const row = byName.get(key);
+      return {
+        name: row.name,
+        students: row.students,
+        attempts: row.attempts,
+        avgPercent: row.scored ? Math.round(row.sum / row.scored) : null,
+      };
+    });
 }
 
 /** أكثر ما أخطأ فيه طالبٌ عبر محاولاته: نصّ السؤال وكم مرّة */
@@ -280,6 +322,7 @@ module.exports = {
   entryFor,
   capture,
   summarize,
+  groupStats,
   weakSpots,
   nameKey,
 };

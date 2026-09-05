@@ -386,7 +386,30 @@ function inferLegacyTime(questions) {
   return { mode: 'all', seconds: Math.max(...times) };
 }
 
+/**
+ * الكشف ومجموعاته معاً — **متوازيَين**، والتنظيف واحد.
+ *
+ * لو نُظّف كلٌّ على حدة لانزاح أحدهما عن الآخر عند أول اسمٍ مكرّر، فيجد
+ * الطالب اسمه تحت مجموعة زميله. فالحذف يقع على الاثنين في الخطوة نفسها.
+ */
+function normalizeRoster(raw) {
+  const names = Array.isArray(raw?.roster) ? raw.roster : [];
+  const groups = Array.isArray(raw?.rosterGroups) ? raw.rosterGroups : [];
+  const seen = new Set();
+  const roster = [];
+  const rosterGroups = [];
+  names.forEach((value, i) => {
+    const name = clean(value, LIMITS.name);
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    roster.push(name);
+    rosterGroups.push(clean(groups[i], 40));
+    });
+  return { roster: roster.slice(0, LIMITS.participants), rosterGroups: rosterGroups.slice(0, LIMITS.participants) };
+}
+
 function normalizeSettings(raw, questions) {
+    const roster = normalizeRoster(raw);
     const legacyTime = inferLegacyTime(questions);
     const scoring = SCORING_MODES.includes(raw?.scoring) ? raw.scoring : 'speed';
     const totalMarkRaw = clamp(raw?.totalMark, 0, MAX_TOTAL_MARK, 0);
@@ -503,9 +526,14 @@ function normalizeSettings(raw, questions) {
        * وهي **دليلٌ لا بوّابة**: من لم يجد اسمه يكتبه ويدخل — طالبٌ جديد أو
        * زائرٌ لا يجوز أن يُمنع من الحصة لأن قائمةً لم تُحدَّث.
        */
-      roster: Array.isArray(raw?.roster)
-        ? [...new Set(raw.roster.map((n) => clean(n, LIMITS.name)).filter(Boolean))].slice(0, LIMITS.participants)
-        : [],
+      roster: roster.roster,
+      /**
+       * مجموعةُ كلّ اسمٍ في الكشف — مصفوفةٌ موازية له.
+       *
+       * وفائدتها على جهاز الطالب قبل شاشة المعلّم: من يبحث عن اسمه بين ستّين
+       * اسماً يجده تحت عنوان مجموعته في سطرين، لا بعد تمريرٍ طويل.
+       */
+      rosterGroups: roster.rosterGroups,
 
       /**
        * سجلّ الطلاب: معرّف الفصل الذي **شغّل معلّمه السجل** ونُسخ كشفه أعلاه.
@@ -1892,6 +1920,14 @@ class Session {
        * والمقارنة بالنصّ المجرّد لأن الطالب اختار اسمه من القائمة نفسها.
        */
       hasRoster: (this.settings.roster || []).length > 0,
+      /** مجموعةُ كلّ اسمٍ غائب — صفٌّ كبير يُنادى بمجموعاته لا باسمٍ اسمٍ */
+      missingGroups: (() => {
+        const roster = this.settings.roster || [];
+        const groups = this.settings.rosterGroups || [];
+        if (!roster.length) return [];
+        const here = new Set(participants.map((p) => p.name));
+        return roster.map((name, i) => groups[i] || '').filter((_, i) => !here.has(roster[i]));
+      })(),
       missing: (() => {
         const roster = this.settings.roster || [];
         if (!roster.length) return [];

@@ -288,6 +288,8 @@ app.get('/api/sessions/:code', (req, res) => {
      * ولا رقم ولا درجة — لأن الكشف أسماءٌ فقط لا سجلّ طلاب.
      */
     roster: session.settings.roster || [],
+    // مجموعة كل اسم في الكشف — الطالب يجد اسمه تحت عنوان مجموعته لا في قائمةٍ طويلة
+    rosterGroups: session.settings.rosterGroups || [],
     // سجلّ الطلاب مفعّل: من يختار اسمه من الكشف يُدخل رمزه الشخصي معه
     record: Boolean(session.settings.recordClassId),
     participants: session.participants.size,
