@@ -892,6 +892,17 @@
    */
   const NAME_TITLES = /^(أ|د|م|ا|الأستاذ|الأستاذة|الاستاذ|الاستاذة|الدكتور|الدكتورة|المعلم|المعلمة|المعلّم|المعلّمة|مس|مستر|mr|mrs|ms|dr|prof|miss)\.?$/i;
 
+  /**
+   * الاسم الذي يُنادى به المعلّم: ما اختاره لنفسه، وإلا ما جاء من حسابه.
+   *
+   * ولها موضعٌ واحد كي لا يفترق ما يراه في الشريط عمّا يراه في المكتبة —
+   * وكان ذلك يقع: بطاقاتُ ألعابه تحمل اسمه المختار وشريطُه العلوي يحمل اسم
+   * بريده.
+   */
+  function userName(user) {
+    return String(user?.displayName || '').trim() || String(user?.name || '').trim();
+  }
+
   function firstName(name, fallback) {
     const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     while (parts.length > 1 && NAME_TITLES.test(parts[0])) parts.shift();
@@ -978,6 +989,7 @@
     $$,
     el,
     firstName,
+    userName,
     avatarNode,
     toast,
     api,

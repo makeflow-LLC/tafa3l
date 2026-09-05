@@ -48,7 +48,7 @@
     app.append(
       el('div', { class: 'card stack center' }, [
         el('div', { style: { fontSize: '2.4rem' }, text: '👋' }),
-        el('h1', { text: t('loginWelcome', { name: user.name }) }),
+        el('h1', { text: t('loginWelcome', { name: window.T.userName(user) }) }),
         el('p', { class: 'muted small', text: user.email }),
         el('a', { class: 'btn primary block', href: '/host.html#/mine' }, t('loginMyActivities')),
         el('a', { class: 'btn ghost block', href: '/host.html#/' }, t('loginNewActivity')),

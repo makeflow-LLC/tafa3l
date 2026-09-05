@@ -4118,3 +4118,62 @@ details.card[open] > summary::after {
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
 }
+
+/**
+ * جدول لوحة المالك على الجوّال: بطاقةٌ لكل معلّم لا جدولٌ يُمرَّر أفقياً.
+ *
+ * ستّة أعمدة في شاشةٍ بعرض ٣٩٠px تعني أن «بريميوم ١٢ يوماً» يقع بجوار أزرار
+ * التمديد فلا يُقرأ أيّهما، والمالك يمرّر يميناً ويساراً ليجمع صفّاً واحداً.
+ * فتصير كل خليةٍ سطراً معنوناً باسم عمودها.
+ */
+@media (max-width: 720px) {
+  .adm-table {
+    min-width: 0;
+  }
+
+  .adm-table thead {
+    display: none;
+  }
+
+  .adm-table,
+  .adm-table tbody,
+  .adm-table tr,
+  .adm-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .adm-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: var(--surface);
+  }
+
+  .adm-table tr:hover,
+  .adm-table tbody tr:nth-child(even) {
+    background: var(--surface);
+  }
+
+  .adm-table td {
+    border: 0;
+    padding: 4px 0;
+    white-space: normal;
+  }
+
+  /* عنوانُ العمود فوق قيمته — عدا اسم المعلّم فهو ترويسة البطاقة */
+  .adm-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    margin-bottom: 2px;
+  }
+
+  .adm-table td:first-child {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+  }
+}

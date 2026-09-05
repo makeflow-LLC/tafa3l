@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, firstName: baseFirstName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink, fitCover, gradeChips } =
+  const { $, firstName: baseFirstName, userName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink, fitCover, gradeChips } =
     window.T;
   const Fx = window.Fx;
   // اختصار الترجمة — إن غاب المحرّك نعرض المفتاح بدل الانهيار
@@ -167,14 +167,14 @@
     if (who && avatar && name) {
       who.hidden = !state.user;
       if (state.user) {
-        who.title = `${state.user.name} · ${state.user.email}`;
+        who.title = `${userName(state.user)} · ${state.user.email}`;
         who.setAttribute('aria-label', t('profNav'));
         avatar.replaceChildren(
           state.user.hasPhoto
             ? el('img', { src: '/api/teachers/' + state.user.id + '/photo', alt: '' })
-            : el('span', { text: (firstName(state.user.name) || '').charAt(0) || '👤' })
+            : el('span', { text: (firstName(userName(state.user)) || '').charAt(0) || '👤' })
         );
-        name.textContent = firstName(state.user.name);
+        name.textContent = firstName(userName(state.user));
       }
     }
 
@@ -185,7 +185,7 @@
     const sep = UI.MenuSep;
 
     if (state.user) {
-      menu.append(UI.MenuAccount({ name: state.user.name, mail: state.user.email }));
+      menu.append(UI.MenuAccount({ name: userName(state.user), mail: state.user.email }));
       menu.append(sep());
     }
 
@@ -1708,9 +1708,17 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
         toast(t('profSaved'), 'ok');
-        // البلد في الذاكرة يُحدَّث مع الحفظ: صفحة الباقات تقرؤه لتقرّر طريق
-        // الدفع، ومن غيّر بلده ثم فتحها في الجلسة نفسها كان يرى طريق بلده القديم
-        state.user = { ...state.user, name: res.profile.publicName, country: res.profile.country ?? country.value };
+        /*
+         * الذاكرة تُحدَّث مع الحفظ لا مع إعادة التحميل: البلد تقرؤه صفحةُ
+         * الباقات لتقرّر طريق الدفع، والاسمُ المختار يظهر في الشريط العلوي —
+         * ومن غيّرهما ثم بقي في الجلسة نفسها كان يرى القديم إلى أن يُحدّث.
+         */
+        state.user = {
+          ...state.user,
+          displayName: res.profile.displayName ?? displayName.value.trim(),
+          country: res.profile.country ?? country.value,
+        };
+        paintAccount();
         openProfile();
       } catch (err) {
         toast(err.message, 'bad');
@@ -2202,7 +2210,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       const node = document.getElementById(id);
       if (node) node.textContent = text;
     };
-    put('tileProfile', state.user ? firstName(state.user.name) : '');
+    put('tileProfile', state.user ? firstName(userName(state.user)) : '');
     put('tilePlan', state.premium?.isPremium ? t('hTilePremium') : t('hTileFree'));
     api('/api/classes')
       .then((data) => {
@@ -2249,7 +2257,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     home.append(
       el('div', { class: 'tp-greet' }, [
         el('h1', {
-          text: state.user ? t('hHelloUser', { name: firstName(state.user.name) }) : t('startTitle'),
+          text: state.user ? t('hHelloUser', { name: firstName(userName(state.user)) }) : t('startTitle'),
         }),
         el('p', {
           text: state.user
@@ -2683,7 +2691,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           }
         };
 
-        const controls = el('div', { class: 'row', style: { gap: '6px' } }, [
+        const controls = el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
           el('button', { class: 'btn sm ok', type: 'button', onclick: () => apply({ addDays: 30 }, t('haMonthWasAdded')) }, t('hmonth')),
           el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: 365 }, t('haYearWasAdded')) }, t('hyear')),
           el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: -30 }, t('haMonthWasDeducted')) }, t('hmonth2')),
@@ -2721,18 +2729,20 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('td', { style: { whiteSpace: 'normal' } }, [
             el('div', { class: 'stack tight' }, [el('strong', { text: user.name }), el('span', { class: 'muted small', text: user.email })]),
           ]),
-          el('td', {}, fmtDate(user.createdAt)),
-          el('td', {}, countryName(user.country)),
+          el('td', { 'data-label': t('hsignedUp') }, fmtDate(user.createdAt)),
+          el('td', { 'data-label': t('cnColumn') }, countryName(user.country)),
           // ماذا فعل هذا المعلّم فعلاً؟ الحساب المسجّل الذي لم ينشئ شيئاً ليس
           // مستخدماً بعد، والتمييز بينهما بنظرةٍ هو نصف قراءة اللوحة
-          el('td', {}, [
+          el('td', { 'data-label': t('hadmMade') }, [
             el('div', { class: 'stack tight' }, [
               el('span', { text: `📝 ${user.activities || 0}` }),
               el('span', { class: 'muted small', text: `🎮 ${user.games || 0}` }),
             ]),
           ]),
-          el('td', {}, [el('div', { class: 'stack tight' }, [statusBadge, el('span', { class: 'muted small', text: fmtDate(user.premiumUntil) })])]),
-          el('td', { style: { whiteSpace: 'normal' } }, [controls]),
+          el('td', { 'data-label': t('hsubscription') }, [
+            el('div', { class: 'stack tight' }, [statusBadge, el('span', { class: 'muted small', text: fmtDate(user.premiumUntil) })]),
+          ]),
+          el('td', { 'data-label': t('hcontrols'), style: { whiteSpace: 'normal' } }, [controls]),
         ]);
       });
 
@@ -2741,7 +2751,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('h2', { style: { margin: 0 }, text: t('hregisteredTeachers2') }),
           el('p', { class: 'muted small', style: { margin: 0 }, text: t('hextensionsStartFromThe') }),
           el('div', { class: 'table-wrap' }, [
-            el('table', {}, [
+            el('table', { class: 'adm-table' }, [
               el('thead', {}, el('tr', {}, [
                 el('th', {}, t('hteacher')),
                 el('th', {}, t('hsignedUp')),
