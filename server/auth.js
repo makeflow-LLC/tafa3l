@@ -78,6 +78,15 @@ async function attachUser(req, _res, next) {
             id: user.id,
             email: user.email,
             name: user.name,
+            /*
+             * الاسم الذي اختاره المعلّم لنفسه في بروفايله.
+             *
+             * `name` يأتي من جوجل ولا يتغيّر، وكان هو وحده ما تعرفه الواجهة —
+             * فمن كتب اسمه في البروفايل رآه في المكتبة وفي بطاقات ألعابه
+             * وبقي الشريط العلوي ينادي عليه باسم بريده. فيصل الاثنان، ويقدَّم
+             * المختار على الموروث حيث يُعرض الاسم.
+             */
+            displayName: user.displayName || '',
             premiumUntil: user.premiumUntil ?? null,
             // يميّز منحة التسجيل عن اشتراكٍ مدفوع في ما تعرضه الواجهة
             trialGrantedAt: user.trialGrantedAt ?? null,
