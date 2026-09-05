@@ -287,16 +287,44 @@
           picked.value = name;
           [...list.children].forEach((node) => node.classList.toggle('on', node.dataset.name === name));
         };
+        /**
+         * الأسماء تحت عناوين مجموعاتها إن قسّمها المعلّم.
+         *
+         * صفٌّ من ستّين اسماً على شاشة جوّال مسحٌ طويل قبل الحصة، والطالب
+         * يعرف مجموعته. فإن لم تكن مجموعات رُسمت القائمة كما كانت تماماً.
+         */
+        const groupsOf = Array.isArray(info.rosterGroups) ? info.rosterGroups : [];
+        const groupFor = new Map(roster.map((name, i) => [name, groupsOf[i] || '']));
         const paint = (needle) => {
           list.innerHTML = '';
           const key = String(needle || '').trim().toLowerCase();
           const hits = roster.filter((name) => !key || name.toLowerCase().includes(key));
           if (!hits.length) return list.append(el('span', { class: 'muted small', text: t('pRosterNoHits') }));
-          hits.forEach((name) => {
+          const chipFor = (name) => {
             const chip = el('button', { class: 'chip' + (picked.value === name ? ' on' : ''), type: 'button', text: name });
             chip.dataset.name = name;
             chip.addEventListener('click', () => select(name));
-            list.append(chip);
+            return chip;
+          };
+          const buckets = [];
+          const seenGroup = new Map();
+          hits.forEach((name) => {
+            const group = groupFor.get(name) || '';
+            if (!seenGroup.has(group)) {
+              seenGroup.set(group, { group, names: [] });
+              buckets.push(seenGroup.get(group));
+            }
+            seenGroup.get(group).names.push(name);
+          });
+          const grouped = buckets.some((b) => b.group);
+          if (!grouped) return hits.forEach((name) => list.append(chipFor(name)));
+          buckets.forEach((bucket) => {
+            list.append(
+              el('div', { class: 'roster-group' }, [
+                el('span', { class: 'roster-group__title', text: bucket.group || t('pRosterNoGroup') }),
+                el('div', { class: 'roster' }, bucket.names.map(chipFor)),
+              ])
+            );
           });
         };
         let timer = null;
@@ -328,6 +356,7 @@
           el('div', { class: 'row', style: { marginTop: '4px' } }, [free]),
         ]);
         if (pinBox) {
+          // الاستماع على الحاوية لا على كل شريحة: القائمة تُعاد رسمها مع كل بحث
           list.addEventListener('click', () => {
             if (!picked.value) return;
             pinBox.style.display = '';

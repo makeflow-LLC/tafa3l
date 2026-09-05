@@ -96,7 +96,8 @@
     if (hash === '/upgrade') return openUpgrade();
     if (hash === '/pay') return openPayment();
     if (hash === '/admin') return openAdmin();
-    // سجلّ الطلاب: الفصل كلّه، أو ملفّ طالبٍ واحد
+    // سجلّ الطلاب: قائمة الفصول المسجَّلة، أو فصلٌ كامل، أو ملفّ طالبٍ واحد
+    if (hash === '/records') return openRecordsHub();
     const rec = hash.match(/^\/class\/([\w-]+)\/record(?:\/([\w-]+))?$/);
     if (rec) return rec[2] ? openStudentRecord(rec[1], rec[2]) : openClassRecord(rec[1]);
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
@@ -168,6 +169,7 @@
     menu.append(UI.MenuRow({ label: t('hhome'), href: '/' }));
     menu.append(UI.MenuRow({ label: t('hDashboard'), href: '#/' }));
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
+    menu.append(UI.MenuRow({ label: t('hRecNav'), href: '#/records' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
     menu.append(UI.MenuRow({ label: t('gbNav'), href: '#/game-ai' }));
@@ -317,6 +319,7 @@
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
+        UI.NavChip({ label: t('hRecNav'), href: '#/records' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
       ])
@@ -385,15 +388,47 @@
     const card = el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
       el('div', { class: 'row between' }, [
         el('h2', { style: { margin: 0 } }, [t('hClassesTitle'), ' ', window.T.hintDot(t('hClassesIntro'))]),
-        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(null) }, t('hClassNew')),
+        el('div', { class: 'row', style: { gap: '6px' } }, [
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => makeDemo(), title: t('hRecDemoHint') }, t('hRecDemo')),
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(null) }, t('hClassNew')),
+        ]),
       ]),
       body,
     ]);
 
+    /**
+     * سجلٌّ تجريبيّ بضغطة: فصلٌ نموذجيّ بطلابٍ وهميين ونتائجَ عبر خمسة أنشطة.
+     *
+     * غرضه أن يرى المعلّم الشاشة مأهولةً قبل أن يجمع بياناته بنفسه — ومن رأى
+     * ما تصير إليه بعد شهرٍ عرف لماذا يشغّل السجل أصلاً.
+     */
+    async function makeDemo() {
+      if (!confirm(t('hRecDemoAsk'))) return;
+      body.replaceChildren(el('div', { class: 'spinner' }));
+      try {
+        const made = await api('/api/classes/demo', { method: 'POST' });
+        toast(t('hRecDemoDone'), 'ok');
+        location.hash = '#/class/' + made.class.id + '/record';
+      } catch (err) {
+        toast(err.message, 'bad');
+        load();
+      }
+    }
+
     function openForm(existing) {
       const nameInput = el('input', { maxlength: 60, placeholder: t('hClassNamePh'), value: existing?.name || '' });
-      const namesInput = el('textarea', { rows: 6, placeholder: t('hClassStudentsPh') });
-      namesInput.value = (existing?.students || []).join('\n');
+      const namesInput = el('textarea', { rows: 8, placeholder: t('hClassStudentsPh') });
+      /*
+       * الكشف يُعاد إلى النصّ كما كُتب: عناوينُ المجموعات أسطرٌ تسبق أسماءها،
+       * فمن قسّم صفّه مرّةً يجد تقسيمه كما تركه لا قائمةً مسطّحة.
+       */
+      namesInput.value = (existing?.students || [])
+        .map((name, i) => {
+          const group = (existing.groups || [])[i] || '';
+          const before = i === 0 ? '' : (existing.groups || [])[i - 1] || '';
+          return group && group !== before ? `# ${group}\n${name}` : name;
+        })
+        .join('\n');
       const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hClassSave'));
       save.addEventListener('click', async () => {
         save.disabled = true;
@@ -411,7 +446,11 @@
       body.replaceChildren(
         el('div', { class: 'stack' }, [
           el('div', {}, [el('label', { text: t('hClassName') }), nameInput]),
-          el('div', {}, [el('label', { text: t('hClassStudents') }), namesInput]),
+          el('div', {}, [
+            el('label', { text: t('hClassStudents') }),
+            namesInput,
+            el('span', { class: 'muted small', text: t('hClassGroupsHint') }),
+          ]),
           el('div', { class: 'row', style: { gap: '8px' } }, [
             save,
             el('button', { class: 'btn ghost sm', type: 'button', onclick: () => load() }, t('hClassCancel')),
@@ -455,11 +494,19 @@
           toggle.disabled = false;
         }
       });
+      // كم مجموعةً في هذا الفصل — رقمٌ يقول للمعلّم إن تقسيمه وصل
+      const groupCount = new Set((item.groups || []).filter(Boolean)).size;
       return el('div', { class: 'stack tight', style: { padding: '10px 0', borderBottom: '1px solid var(--border)' } }, [
         el('div', { class: 'row between' }, [
           el('div', { class: 'stack tight grow' }, [
-            el('strong', { text: item.name }),
-            el('span', { class: 'muted small', text: t('hClassCount', { n: item.students.length }) }),
+            el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+              el('strong', { text: item.name }),
+              item.demo ? el('span', { class: 'badge warn', text: t('hRecDemoBadge') }) : null,
+            ]),
+            el('span', {
+              class: 'muted small',
+              text: t('hClassCount', { n: item.students.length }) + (groupCount ? ' · ' + t('hRecGroupCount', { n: groupCount }) : ''),
+            }),
           ]),
           item.record ? el('a', { class: 'btn primary sm', href: `#/class/${item.id}/record` }, t('hRecOpen')) : null,
           el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(item) }, t('hClassEdit')),
@@ -549,17 +596,31 @@
    */
   function printPins(cls, students) {
     const esc = window.T.escapeHtml;
-    const cards = students
-      .map(
-        (s) =>
-          `<div class="c"><div class="n">${esc(s.name)}</div><div class="p" dir="ltr">${esc(s.pin)}</div><div class="h">${esc(t('hRecPrintNote'))}</div></div>`
-      )
+    // مقسّمةً بمجموعاتها إن وُجدت: ورقةٌ لكل مجموعة تُقصّ وتُسلَّم لمشرفها
+    const order = [];
+    const byGroup = new Map();
+    students.forEach((s) => {
+      const key = s.group || '';
+      if (!byGroup.has(key)) {
+        byGroup.set(key, []);
+        order.push(key);
+      }
+      byGroup.get(key).push(s);
+    });
+    const card = (s) =>
+      `<div class="c"><div class="n">${esc(s.name)}</div><div class="p" dir="ltr">${esc(s.pin)}</div><div class="h">${esc(t('hRecPrintNote'))}</div></div>`;
+    const cards = order
+      .map((key) => {
+        const grid = `<div class="g">${byGroup.get(key).map(card).join('')}</div>`;
+        return key ? `<h2>${esc(key)}</h2>${grid}` : grid;
+      })
       .join('');
     const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(t('hRecPrintTitle', { name: cls.name }))}</title>
 <style>body{font-family:system-ui,'Segoe UI',Tahoma,sans-serif;margin:16px;color:#10173A}h1{font-size:18px;margin:0 0 12px}
 .g{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.c{border:1px dashed #8A8FAD;border-radius:12px;padding:12px;text-align:center;break-inside:avoid}
 .n{font-weight:700;font-size:16px}.p{font-size:26px;font-weight:700;letter-spacing:.25em;margin:6px 0;font-variant-numeric:tabular-nums}.h{font-size:11px;color:#6E7290;line-height:1.6}
-@media print{body{margin:8mm}}</style></head><body><h1>${esc(t('hRecPrintTitle', { name: cls.name }))}</h1><div class="g">${cards}</div>
+h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
+@media print{body{margin:8mm}}</style></head><body><h1>${esc(t('hRecPrintTitle', { name: cls.name }))}</h1>${cards}
 <script>window.onload=function(){window.print()}</script></body></html>`;
     const win = window.open('', '_blank');
     if (!win) return toast(t('hRecPopup'), 'bad');
@@ -586,8 +647,11 @@
     app.append(
       el('div', { class: 'card stack' }, [
         el('a', { class: 'btn ghost sm', href: '#/', style: { alignSelf: 'flex-start' } }, t('hRecBackClasses')),
-        el('h1', { style: { margin: 0 }, text: t('hRecTitle', { name: cls.name }) }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hRecIntro') }),
+        el('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, [
+          el('h1', { style: { margin: 0 }, text: t('hRecTitle', { name: cls.name }) }),
+          cls.demo ? el('span', { class: 'badge warn', text: t('hRecDemoBadge') }) : null,
+        ]),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: cls.demo ? t('hRecDemoIntro') : t('hRecIntro') }),
         !cls.record ? el('div', { class: 'note warn', text: t('hRecOff') }) : null,
       ])
     );
@@ -628,31 +692,145 @@
     if (!students.length) return;
     if (cls.record && !withAttempts.length) app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hRecEmpty') })));
 
-    const rows = students.map((s) => {
-      const tr = el('tr', { style: { cursor: 'pointer' } }, [
-        // الاسم رابطٌ صريح إلى الملفّ — والصفّ كلّه ينقر أيضاً، عدا زرّ الرمز
-        el('td', {}, el('a', { href: `#/class/${classId}/record/${s.id}`, style: { fontWeight: '700' }, text: s.name })),
-        el('td', {}, pinChip(s.pin)),
-        el('td', { style: { direction: 'ltr', textAlign: 'end' }, text: String(s.attempts) }),
-        el('td', {}, pctBadge(s.avgPercent)),
-        el('td', {}, [pctBadge(s.lastPercent), el('span', { class: 'muted small', text: s.lastAt ? ' ' + recDate(s.lastAt) : '' })]),
-        el('td', {}, trendBars(s.trend)),
-      ]);
-      tr.addEventListener('click', (event) => {
-        if (event.target.closest('button')) return;
-        location.hash = `#/class/${classId}/record/${s.id}`;
+    /**
+     * المجموعات: بطاقةُ متوسّطاتٍ ثم مصفاةٌ فوق الجدول.
+     *
+     * صفٌّ من ستّين طالباً جدولٌ لا يُقرأ دفعةً واحدة، والمعلّم يسأل عن
+     * مجموعةٍ بعينها: «كيف حال مجموعة الدعم؟». فإن لم يقسّم فصله لم يظهر
+     * شيءٌ من هذا أصلاً — لا مصفاة ولا عمود.
+     */
+    const groups = data.groups || [];
+    if (groups.length) {
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('h2', { style: { margin: 0 }, text: t('hRecGroups') }),
+          el('div', { class: 'stack tight' }, groups.map((g) =>
+            el('div', { class: 'row between', style: { gap: '8px' } }, [
+              el('span', { class: 'grow', text: g.name || t('hRecNoGroup') }),
+              el('span', { class: 'muted small', text: t('hRecGroupSize', { n: g.students }) }),
+              pctBadge(g.avgPercent),
+            ])
+          )),
+        ])
+      );
+    }
+
+    /*
+     * ترتيب الأعمدة: الاسم فالمتوسط فالاتجاه.
+     *
+     * الجدول يمرّر أفقياً على الجوّال، فأولُ عمودين هما ما يُقرأ فعلاً — ولو
+     * وُضع الرمز ثانياً (وهو أندرُها حاجةً، ومطبوعٌ في ورقة) لاختفى المتوسّط
+     * خارج الشاشة عند من يفتح لوحته من جوّاله، وهو أكثر المعلّمين.
+     */
+    const table = el('table', { class: 'rec-table' });
+    const tbody = el('tbody', {});
+    const heads = [t('hRecColName'), t('hRecColAvg'), t('hRecColTrend'), t('hRecColLast'), t('hRecColAttempts')];
+    if (groups.length) heads.push(t('hRecColGroup'));
+    heads.push(t('hRecColPin'));
+    table.append(el('thead', {}, el('tr', {}, heads.map((h) => el('th', { text: h })))), tbody);
+
+    const draw = (only) => {
+      const shown = only ? students.filter((s) => (s.group || '') === only) : students;
+      tbody.replaceChildren(
+        ...shown.map((s) => {
+          const cells = [
+            // الاسم رابطٌ صريح إلى الملفّ — والصفّ كلّه ينقر أيضاً، عدا زرّ الرمز
+            el('td', {}, el('a', { href: `#/class/${classId}/record/${s.id}`, style: { fontWeight: '700' }, text: s.name })),
+            el('td', {}, pctBadge(s.avgPercent)),
+            el('td', {}, trendBars(s.trend)),
+            el('td', {}, [pctBadge(s.lastPercent), el('span', { class: 'muted small', text: s.lastAt ? ' ' + recDate(s.lastAt) : '' })]),
+            el('td', { style: { direction: 'ltr', textAlign: 'end' }, text: String(s.attempts) }),
+          ];
+          if (groups.length) cells.push(el('td', { class: 'muted', text: s.group || '—' }));
+          cells.push(el('td', {}, pinChip(s.pin)));
+          const tr = el('tr', { style: { cursor: 'pointer' } }, cells);
+          tr.addEventListener('click', (event) => {
+            if (event.target.closest('button') || event.target.closest('a')) return;
+            location.hash = `#/class/${classId}/record/${s.id}`;
+          });
+          return tr;
+        })
+      );
+    };
+    draw(null);
+
+    const card = el('div', { class: 'card stack' });
+    if (groups.length) {
+      const filter = el('div', { class: 'chips' });
+      const chips = [{ label: t('hRecAllGroups'), value: null }, ...groups.map((g) => ({ label: g.name || t('hRecNoGroup'), value: g.name }))];
+      chips.forEach((entry, i) => {
+        const chip = el('button', { class: 'chip' + (i === 0 ? ' on' : ''), type: 'button', text: entry.label });
+        chip.addEventListener('click', () => {
+          [...filter.children].forEach((node) => node.classList.remove('on'));
+          chip.classList.add('on');
+          draw(entry.value);
+        });
+        filter.append(chip);
       });
-      return tr;
-    });
+      card.append(filter);
+    }
+    card.append(el('div', { class: 'table-wrap' }, table));
+    app.append(card);
+  }
+
+  /**
+   * قائمة السجلّات: مدخلٌ واحد لكل فصلٍ شغّل معلّمه سجلّه.
+   *
+   * وبدونها كان السجل مخبوءاً في بطاقة الفصول أسفل «نشاطاتي» — يجده من
+   * أنشأه لا من سمع عنه. وهي أيضاً موضع زرّ النموذج لمن لم يبدأ بعد.
+   */
+  async function openRecordsHub() {
+    blankPage();
+    let items = [];
+    try {
+      items = (await api('/api/classes')).classes || [];
+    } catch (err) {
+      app.replaceChildren(errorCard(err.message, '#/', t('hDashboard')));
+      return;
+    }
+    const on = items.filter((c) => c.record);
+    app.innerHTML = '';
     app.append(
-      el('div', { class: 'card' }, [
-        el('div', { class: 'table-wrap' }, [
-          el('table', { class: 'rec-table' }, [
-            el('thead', {}, el('tr', {}, [t('hRecColName'), t('hRecColPin'), t('hRecColAttempts'), t('hRecColAvg'), t('hRecColLast'), t('hRecColTrend')].map((h) => el('th', { text: h })))),
-            el('tbody', {}, rows),
-          ]),
+      el('div', { class: 'card stack' }, [
+        el('h1', { style: { margin: 0 }, text: t('hRecNav') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hRecHubIntro') }),
+        el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hRecHubManage')),
+          items.some((c) => c.demo)
+            ? null
+            : el('button', {
+                class: 'btn accent sm', type: 'button',
+                onclick: async () => {
+                  try {
+                    const made = await api('/api/classes/demo', { method: 'POST' });
+                    toast(t('hRecDemoDone'), 'ok');
+                    location.hash = '#/class/' + made.class.id + '/record';
+                  } catch (err) {
+                    toast(err.message, 'bad');
+                  }
+                },
+              }, t('hRecDemo')),
         ]),
       ])
+    );
+
+    if (!on.length) {
+      app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hRecHubEmpty') })));
+      return;
+    }
+    app.append(
+      el('div', { class: 'card stack' }, on.map((item) =>
+        el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)', gap: '8px' } }, [
+          el('div', { class: 'stack tight grow' }, [
+            el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+              el('strong', { text: item.name }),
+              item.demo ? el('span', { class: 'badge warn', text: t('hRecDemoBadge') }) : null,
+            ]),
+            el('span', { class: 'muted small', text: t('hClassCount', { n: item.students.length }) }),
+          ]),
+          el('a', { class: 'btn primary sm', href: `#/class/${item.id}/record` }, t('hRecOpen')),
+        ])
+      ))
     );
   }
 
@@ -675,10 +853,31 @@
       el('div', { class: 'card stack' }, [
         el('a', { class: 'btn ghost sm', href: `#/class/${classId}/record`, style: { alignSelf: 'flex-start' } }, t('hRecBack')),
         el('div', { class: 'row between', style: { flexWrap: 'wrap', gap: '8px' } }, [
-          el('h1', { style: { margin: 0 }, text: t('hRecStudentTitle', { name: student.name }) }),
+          el('div', { class: 'stack tight' }, [
+            el('h1', { style: { margin: 0 }, text: t('hRecStudentTitle', { name: student.name }) }),
+            student.group ? el('span', { class: 'muted small', text: student.group }) : null,
+          ]),
           el('div', { class: 'row', style: { gap: '6px', alignItems: 'center' } }, [el('span', { class: 'muted small', text: t('hRecColPin') }), pinChip(student.pin)]),
         ]),
         el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
+          /*
+           * معاينةُ صفحة الطالب — في الفصل التجريبي وحده. صفحةُ الطالب له هو،
+           * ورمزُها يفتح سجلّه بلا حساب، فلا تُسلَّم عن طالبٍ حقيقيّ. أمّا
+           * النموذج فطلابه أسماءٌ اخترعناها.
+           */
+          data.demo
+            ? el('button', {
+                class: 'btn ghost sm', type: 'button',
+                onclick: async () => {
+                  try {
+                    const res = await api(`/api/classes/${classId}/record/${studentId}/preview`);
+                    window.open('/me.html?token=' + encodeURIComponent(res.token), '_blank');
+                  } catch (err) {
+                    toast(err.message, 'bad');
+                  }
+                },
+              }, t('hRecPreview'))
+            : null,
           el('button', {
             class: 'btn ghost sm', type: 'button',
             onclick: async () => {
@@ -1660,6 +1859,7 @@
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
+        UI.NavChip({ label: t('hRecNav'), href: '#/records' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
         UI.NavChip({ label: t('hteacherGuide'), href: '/help.html' }),
@@ -3653,6 +3853,13 @@
           el('button', { class: 'btn ghost', type: 'button', onclick: exportResults }, '⬇ JSON'),
         ]),
         state.premium?.isPremium ? null : el('span', { class: 'badge', text: t('hexcelAndPdfAre') }),
+        /*
+         * نشاطٌ كُتبت نتائجه في سجلّ فصله: الرابط هنا لا في قائمةٍ بعيدة.
+         * المعلّم أنهى الحصّة للتوّ، وهذه اللحظة التي يسأل فيها «وأين تُحفظ؟».
+         */
+        s.settings?.recordClassId
+          ? el('a', { class: 'btn ghost sm', href: `#/class/${s.settings.recordClassId}/record` }, t('hRecOpenAfter'))
+          : null,
         el('div', { class: 'row', style: { justifyContent: 'center' } }, [
           el(
             'button',
@@ -4074,12 +4281,33 @@
      * أمام صفّه ويريد اسماً ينادي به، لا عدّاً يقارنه بدفتره.
      */
     if ((data.missing || []).length || (data.hasRoster && !(data.missing || []).length)) {
+      // الغائبون تحت عناوين مجموعاتهم إن قُسّم الفصل: «مجموعة ب ناقصة كلّها» خبرٌ يُقرأ بنظرة
+      const missing = data.missing || [];
+      const mGroups = data.missingGroups || [];
+      const order = [];
+      const buckets = new Map();
+      missing.forEach((name, i) => {
+        const key = mGroups[i] || '';
+        if (!buckets.has(key)) {
+          buckets.set(key, []);
+          order.push(key);
+        }
+        buckets.get(key).push(name);
+      });
+      const grouped = order.some((key) => key);
       app.append(
         el('div', { class: 'card stack' }, [
-          el('h2', { style: { margin: 0 }, text: data.missing.length ? t('hMissingTitle', { n: data.missing.length }) : t('hMissingAllIn') }),
-          data.missing.length
-            ? el('div', { class: 'roster' }, data.missing.map((name) => el('span', { class: 'chip', text: name })))
-            : null,
+          el('h2', { style: { margin: 0 }, text: missing.length ? t('hMissingTitle', { n: missing.length }) : t('hMissingAllIn') }),
+          !missing.length
+            ? null
+            : grouped
+              ? el('div', { class: 'stack tight' }, order.map((key) =>
+                  el('div', { class: 'stack tight' }, [
+                    el('span', { class: 'muted small', text: key || t('hRecNoGroup') }),
+                    el('div', { class: 'roster' }, buckets.get(key).map((name) => el('span', { class: 'chip', text: name }))),
+                  ])
+                ))
+              : el('div', { class: 'roster' }, missing.map((name) => el('span', { class: 'chip', text: name }))),
         ])
       );
     }

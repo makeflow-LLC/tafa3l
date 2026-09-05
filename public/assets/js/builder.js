@@ -1387,6 +1387,8 @@
       select.addEventListener('change', () => {
         const found = (classCache || []).find((c) => c.id === select.value);
         draft.settings.roster = found ? found.students.slice() : [];
+        // المجموعات تُنسخ مع الأسماء: الطالب يجد اسمه تحت عنوان مجموعته
+        draft.settings.rosterGroups = found ? (found.groups || []).slice() : [];
         /*
          * الاستثناء الوحيد لقاعدة «نسخةٌ لا إشارة»: فصلٌ شغّل عليه المعلّم
          * سجلّ الطلاب يُرفق معرّفُه، لأن النتيجة تُكتب في ملفّ الطالب على

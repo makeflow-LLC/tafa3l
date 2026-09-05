@@ -16,6 +16,7 @@ const { normalizeQuiz } = require('./session');
 const gameCover = require('./game-cover');
 const { sendGameFrame } = require('./game-frame');
 const records = require('./records');
+const demoRecord = require('./demo-record');
 
 const MAX_ACTIVITIES = 200;
 // سقف ما تعرضه «أسئلتي السابقة» في نداء واحد — القائمة للتصفّح لا للجرد
@@ -467,19 +468,56 @@ function accountRoutes(store) {
   const MAX_CLASSES = 60;
   const MAX_STUDENTS = 300;
 
+  const MAX_GROUP_NAME = 40;
+
+  /**
+   * كشفُ الأسماء، ومجموعاتُه إن كتبها المعلّم.
+   *
+   * صفٌّ من ستّين طالباً قائمةٌ لا تُقرأ — لا على شاشة المعلّم ولا على جوّال
+   * الطالب وهو يبحث عن اسمه. فالمجموعة تُكتب **في الكشف نفسه** كعنوانٍ يسبق
+   * أسماءها: سطرٌ يبدأ بـ`#` أو محصورٌ بين قوسين معقوفين. ولا حقلَ جديداً
+   * ولا شاشةَ ثانية: من يلصق قائمته كما هي لا يرى شيئاً تغيّر، ومن أراد
+   * التقسيم كتب سطراً.
+   *
+   *     # المجموعة أ
+   *     سارة أحمد
+   *     ليان محمود
+   *     [المجموعة ب]
+   *     كريم خالد
+   *
+   * والمخرجان **متوازيان**: `names[i]` صاحب `groups[i]`. لا خريطةَ بالاسم —
+   * الاسم يتغيّر فتضيع مجموعته، والفهرس لا يكذب ما دام المصدر واحداً.
+   */
+  function parseRoster(raw) {
+    const lines = Array.isArray(raw) ? raw : String(raw || '').split(/\r?\n/);
+    const seen = new Set();
+    const names = [];
+    const groups = [];
+    let current = '';
+    for (const line of lines) {
+      const text = String(line || '').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const heading = /^#+\s*(.+)$/.exec(text) || /^\[(.+)\]$/.exec(text);
+      if (heading) {
+        current = heading[1].trim().slice(0, MAX_GROUP_NAME);
+        continue;
+      }
+      // الفواصل داخل السطر تبقى مقبولة كما كانت — من يلصق «سارة، ليان» يجد اسمين
+      for (const piece of text.split(/[,،;]+/)) {
+        const name = piece.replace(/\s+/g, ' ').trim().slice(0, 40);
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        names.push(name);
+        groups.push(current);
+        if (names.length >= MAX_STUDENTS) return { names, groups };
+      }
+    }
+    return { names, groups };
+  }
+
   /** أسماءٌ نظيفة بلا فراغات ولا تكرار — تُقبل ملصوقةً بأسطر أو فواصل */
   function cleanNames(raw) {
-    const list = Array.isArray(raw) ? raw : String(raw || '').split(/[\n,،;]+/);
-    const seen = new Set();
-    const out = [];
-    for (const item of list) {
-      const name = String(item || '').replace(/\s+/g, ' ').trim().slice(0, 40);
-      if (!name || seen.has(name)) continue;
-      seen.add(name);
-      out.push(name);
-      if (out.length >= MAX_STUDENTS) break;
-    }
-    return out;
+    return parseRoster(raw).names;
   }
 
   /**
@@ -491,13 +529,15 @@ function accountRoutes(store) {
   const publicClass = (item) => ({
     ...item,
     record: Boolean(item.record),
+    demo: Boolean(item.demo),
+    groups: item.groups || [],
     pupils: item.record ? (item.pupils || []).map(records.publicPupil) : [],
   });
 
   /** يعيد الفصل بملفّاته موائمةً لكشفه — إن كان السجل مفعّلاً */
   function withPupils(item) {
     if (!item.record) return { ...item, pupils: item.pupils || [] };
-    return { ...item, pupils: records.syncPupils(item.students, item.pupils) };
+    return { ...item, pupils: records.syncPupils(item.students, item.pupils, item.groups) };
   }
 
   /** فصلٌ يملكه هذا المعلّم وإلا 404 — لا فرق بين «غير موجود» و«ليس لك» */
@@ -528,11 +568,13 @@ function accountRoutes(store) {
       const name = String(req.body?.name || '').trim().slice(0, 60);
       if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
       const now = Date.now();
+      const roster = parseRoster(req.body?.students);
       const item = withPupils({
         id: storage.newId('cl_'),
         ownerId: req.user.id,
         name,
-        students: cleanNames(req.body?.students),
+        students: roster.names,
+        groups: roster.groups,
         record: req.body?.record === true,
         pupils: [],
         createdAt: now,
@@ -551,10 +593,12 @@ function accountRoutes(store) {
       if (!existing) return;
       const name = String(req.body?.name ?? existing.name).trim().slice(0, 60);
       if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
+      const roster = req.body?.students === undefined ? null : parseRoster(req.body.students);
       const updated = withPupils({
         ...existing,
         name,
-        students: req.body?.students === undefined ? existing.students : cleanNames(req.body.students),
+        students: roster ? roster.names : existing.students,
+        groups: roster ? roster.groups : existing.groups || [],
         record: typeof req.body?.record === 'boolean' ? req.body.record : Boolean(existing.record),
         updatedAt: Date.now(),
       });
@@ -578,6 +622,42 @@ function accountRoutes(store) {
     }
   });
 
+  /**
+   * سجلٌّ تجريبيّ بضغطة زرّ: فصلٌ نموذجيّ بطلابٍ وهميين ونتائجَ عبر خمسة
+   * أنشطة (انظر demo-record.js). ضغطُه مرّةً ثانية يعيد بناءه بتواريخَ
+   * جديدة بدل أن يكدّس نسخاً — فهو للعرض لا للتجميع.
+   */
+  router.post('/classes/demo', auth.requireUser, async (req, res) => {
+    try {
+      const mine = await storage.get().listClasses(req.user.id);
+      const existing = mine.find((c) => c.demo);
+      if (!existing && mine.length >= MAX_CLASSES) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_CLASSES} فصلاً) — احذف فصلاً قديماً` });
+      }
+      const now = Date.now();
+      const item = withPupils({
+        id: existing?.id || storage.newId('cl_'),
+        ownerId: req.user.id,
+        name: demoRecord.CLASS_NAME,
+        students: demoRecord.STUDENTS.map((s) => s.name),
+        groups: demoRecord.STUDENTS.map((s) => s.group),
+        record: true,
+        demo: true,
+        pupils: existing?.pupils || [],
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+      });
+      await storage.get().saveClass(item);
+      // إعادةُ البناء تمحو سطوره أولاً: تواريخُ اليوم لا تختلط بتواريخ الأمس
+      await storage.get().deleteRecords(item.id);
+      await storage.get().saveRecords(demoRecord.buildRows({ classId: item.id, ownerId: req.user.id, pupils: item.pupils }));
+      res.status(201).json({ class: publicClass(item) });
+    } catch (err) {
+      console.error('demo record:', err);
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر إنشاء السجل التجريبي' });
+    }
+  });
+
   /** ملخّص سجلّ الفصل: كل طالبٍ بمحاولاته ومتوسّطه، والجلسات التي كُتبت */
   router.get('/classes/:id/record', auth.requireUser, async (req, res) => {
     try {
@@ -585,7 +665,7 @@ function accountRoutes(store) {
       if (!item) return;
       const rows = await storage.get().listRecords(item.id);
       const summary = records.summarize(item.record ? item.pupils : [], rows);
-      res.json({ class: { id: item.id, name: item.name, record: Boolean(item.record) }, ...summary });
+      res.json({ class: { id: item.id, name: item.name, record: Boolean(item.record), demo: Boolean(item.demo) }, ...summary });
     } catch (err) {
       console.error('class record:', err);
       res.status(500).json({ error: 'تعذّر جلب السجل' });
@@ -600,10 +680,30 @@ function accountRoutes(store) {
       const pupil = (item.pupils || []).find((p) => p.id === req.params.sid);
       if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
       const rows = await storage.get().listRecords(item.id, pupil.id);
-      res.json({ student: records.publicPupil(pupil), records: rows, weak: records.weakSpots(rows) });
+      res.json({ student: records.publicPupil(pupil), demo: Boolean(item.demo), records: rows, weak: records.weakSpots(rows) });
     } catch (err) {
       console.error('student record:', err);
       res.status(500).json({ error: 'تعذّر جلب ملفّ الطالب' });
+    }
+  });
+
+  /**
+   * معاينة صفحة «سجلّي» كما يراها الطالب — **للفصل التجريبي وحده**.
+   *
+   * الرمز الذي تعيده يفتح سجلّ الطالب بلا حساب، فلا يجوز أن يُسلَّم لأحد عن
+   * طالبٍ حقيقيّ ولو كان معلّمه: صفحةُ الطالب له هو. أمّا فصلُ العرض فطلابه
+   * أسماءٌ اخترعناها ونتائجُهم مصنوعة، ولا خصوصيةَ فيها تُنتهك.
+   */
+  router.get('/classes/:id/record/:sid/preview', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      if (!item.demo) return res.status(403).json({ error: 'المعاينة متاحة في الفصل التجريبي وحده — صفحة الطالب له وحده' });
+      const pupil = (item.pupils || []).find((p) => p.id === req.params.sid);
+      if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
+      res.json({ token: records.tokenFor(item.id, pupil) });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّرت المعاينة' });
     }
   });
 
