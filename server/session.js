@@ -508,6 +508,15 @@ function normalizeSettings(raw, questions) {
         : [],
 
       /**
+       * سجلّ الطلاب: معرّف الفصل الذي **شغّل معلّمه السجل** ونُسخ كشفه أعلاه.
+       *
+       * وهذا هو الاستثناء الوحيد لقاعدة «الكشف نسخةٌ لا إشارة»: النتيجة تُكتب
+       * في ملفّ الطالب على هذا الفصل بعينه، فلا بدّ من معرّفه. null = لا يُكتب
+       * شيء، وهو الأصل. (انظر records.js)
+       */
+      recordClassId: /^cl_[\w-]{4,40}$/.test(String(raw?.recordClassId || '')) ? String(raw.recordClassId) : null,
+
+      /**
        * العلامة الكاملة للنشاط: «هذا الاختبار من ٣٠». صفر = بلا علامة.
        *
        * وهي شيء آخر غير النقاط: النقاط لعبةٌ تكافئ السرعة والسلسلة، والعلامة
@@ -801,6 +810,8 @@ class Session {
       answers: new Map(), // qid -> { value, at, ms, correct, points }
       // فريقه إن كان وضع الفرق مفعّلاً — يُحسب قبل الإضافة حتى يوازن العدد الحالي
       teamId: this.teams ? this.smallestTeam() : null,
+      // ملفّه في سجلّ الفصل إن دخل باسمه ورمزه — يضبطه الخادم بعد التحقّق، لا هنا
+      studentId: null,
     };
     this.participants.set(participant.id, participant);
 
@@ -1045,6 +1056,8 @@ class Session {
     this.clearAuto();
     for (const p of this.participants.values()) p.phase = 'done';
     this.touch();
+    // خطّاف يضعه المخزن ليكتب سجلّ الطلاب إن كان للجلسة فصلٌ مُسجَّل — لا يعرف عنه هذا الملف شيئاً
+    this.onFinish?.();
   }
 
   acceptsAnswers() {

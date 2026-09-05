@@ -2539,6 +2539,51 @@ html.dark .cloud .c6 { color: #22d3ee; }
   gap: 8px;
 }
 
+/* --------------------------------------------------------- سجلّ الطلاب */
+
+/* الرمز الشخصي: أرقامٌ لاتينية متباعدة تُقرأ من بعيد، وتُنسخ بنقرة */
+.chip.pin {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  color: var(--text);
+  min-height: 36px;
+  padding-inline: 10px;
+}
+
+/* اتجاه آخر النتائج: أعمدة صغيرة بلون النسبة — الأقدم في بداية القراءة */
+.trend {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 28px;
+  direction: ltr;
+}
+
+.trend i {
+  display: block;
+  width: 7px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+
+.trend i.ok {
+  background: var(--ok);
+}
+
+.trend i.warn {
+  background: var(--warn);
+}
+
+.trend i.bad {
+  background: var(--bad);
+}
+
+/* الصفّ في جدول السجل زرٌّ إلى ملفّ الطالب: يُبرَز عند المرور */
+.rec-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+}
+
 /* ------------------------------------------------- دليل الخطوات الأولى */
 
 .guide-steps {

@@ -14,6 +14,7 @@
 
 const { Session } = require('./session');
 const storage = require('./storage');
+const records = require('./records');
 
 /** @type {Map<string, Session>} */
 const sessions = new Map();
@@ -133,6 +134,8 @@ function markChanged(session) {
 /** يربط جلسةً بالحفظ التلقائي ويحفظها أول مرة */
 function watch(session) {
   session.onChange = () => markChanged(session);
+  // سجلّ الطلاب: عند انتهاء الجلسة تُكتب نتائج من دخلوا بملفّاتهم — إن كان لها فصلٌ مُسجَّل
+  session.onFinish = () => records.capture(session).catch(() => {});
   markChanged(session);
 }
 
@@ -241,6 +244,7 @@ async function restore() {
       const session = Session.restore(snap);
       sessions.set(session.code, session);
       session.onChange = () => markChanged(session);
+      session.onFinish = () => records.capture(session).catch(() => {});
       signatures.set(session.code, signatureOf(session));
       // صفّها موجود بأسئلته، فتكفيها التحديثات الخفيفة من الآن
       fullyWritten.set(session.code, Boolean(session._shuffled));

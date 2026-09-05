@@ -29,6 +29,8 @@
   }
 
   const SESSION_KEY = 'tafa3l:play:' + code;
+  /** رموز صفحة «سجلّي» على هذا الجهاز، مفتاحها معرّف الفصل — تقرؤها me.js */
+  const RECORDS_KEY = 'tafa3l:records';
 
   /**
    * هويّة المشارك تعيش في ذاكرة **الجهاز** لا التبويب.
@@ -75,6 +77,7 @@
     sendBtn: null, // زرّ الإرسال في السؤال متعدّد الاختيار
     pending: null, // إجابة محفوظة محلياً بانتظار عودة الاتصال
     online: false,
+    recordToken: null, // دخل بملفّه في سجلّ فصله: نتيجته تُحفظ وله صفحة «سجلّي»
   };
 
   // لافتة الاتصال وورقة التفاعلات: نسخة واحدة تعيش بين الرسمات
@@ -113,6 +116,16 @@
       case 'joined':
         state.joined = true;
         seat.set({ participantId: msg.participantId, participantToken: msg.participantToken });
+        /*
+         * دخل بملفّه في سجلّ فصله: رمزُ صفحته «سجلّي» يعيش على جهازه، فصلاً
+         * بفصل (طالبٌ عند معلّمَين له سجلّان). لا يُرسل إلا لمن أثبت رمزه.
+         */
+        if (msg.recordToken) {
+          state.recordToken = msg.recordToken;
+          const all = store.local.get(RECORDS_KEY, {}) || {};
+          all[msg.recordToken.split('.')[0]] = { token: msg.recordToken, at: Date.now(), title: state.info?.title || '' };
+          store.local.set(RECORDS_KEY, all);
+        }
         break;
       case 'state':
         // يجب التقاط الفارق لحظة الوصول؛ حسابه لاحقاً يجعله دائماً صفراً
@@ -161,8 +174,8 @@
           seat.clear();
           state.joined = false;
           renderJoin();
-        } else if (msg.code === 'name_taken') {
-          // اسمٌ داخلٌ بالفعل: نعيده إلى شاشة الاسم برسالةٍ تقول ماذا يفعل
+        } else if (msg.code === 'name_taken' || msg.code === 'pin') {
+          // اسمٌ داخلٌ بالفعل، أو رمزٌ شخصي خاطئ: نعيده إلى شاشة الاسم برسالةٍ تقول ماذا يفعل
           state.joined = false;
           renderJoin();
           toast(msg.message, 'bad');
@@ -202,6 +215,9 @@
       autocomplete: 'nickname',
       value: store.local.get('tafa3l:name', '') || '',
     });
+    // الرمز الشخصي: يظهر حين يختار الطالب اسمه من كشف فصلٍ سجلُّه مفعّل
+    let pinInput = null;
+    let pinShown = false;
 
     const card = el('div', { class: 'card stack' }, [
       el('h1', { text: info.title || t('pJoinBtn') }),
@@ -252,6 +268,16 @@
       const roster = Array.isArray(info.roster) ? info.roster : [];
       if (roster.length) {
         const picked = el('input', { type: 'hidden' });
+        pinInput = el('input', {
+          id: 'pin',
+          type: 'text',
+          inputmode: 'numeric',
+          pattern: '[0-9]*',
+          maxlength: 4,
+          autocomplete: 'off',
+          placeholder: '••••',
+          style: { direction: 'ltr', textAlign: 'center', letterSpacing: '0.3em', fontWeight: '700' },
+        });
         const list = el('div', { class: 'roster' });
         const search = el('input', { type: 'search', placeholder: t('pRosterSearch'), autocomplete: 'off' });
         const free = el('button', { class: 'btn ghost sm', type: 'button' }, t('pRosterNotListed'));
@@ -281,17 +307,41 @@
         paint('');
 
         const nameBox = el('div', { style: { display: 'none' } }, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]);
+        /**
+         * سجلّ الطلاب مفعّل على هذا الفصل: من يختار اسمه يكتب رمزه الشخصي
+         * معه، فتُنسب نتيجته إلى ملفّه لا إلى ملفّ زميلٍ اختار اسمه بالخطأ.
+         * ومن يدخل باسمٍ حرّ لا يُسأل رمزاً — يدخل ضيفاً كما كان.
+         */
+        const pinBox = info.record
+          ? el('div', { class: 'stack tight', style: { display: 'none' } }, [
+              el('label', { for: 'pin', text: t('pPinLabel') }),
+              pinInput,
+              el('span', { class: 'muted small', text: t('pPinHint') }),
+            ])
+          : null;
         const pickBox = el('div', { class: 'stack tight' }, [
           el('label', { text: t('pRosterLabel') }),
           // البحث يظهر عند الفصول الكبيرة وحدها: قائمةٌ من ستّة أسماء تُقرأ بنظرة
           roster.length > 12 ? search : null,
           list,
+          pinBox,
           el('div', { class: 'row', style: { marginTop: '4px' } }, [free]),
         ]);
+        if (pinBox) {
+          list.addEventListener('click', () => {
+            if (!picked.value) return;
+            pinBox.style.display = '';
+            pinShown = true;
+            pinInput.focus({ preventScroll: true });
+          });
+        }
         free.addEventListener('click', () => {
           pickBox.style.display = 'none';
           nameBox.style.display = '';
           nameInput.value = '';
+          picked.value = '';
+          pinInput.value = '';
+          pinShown = false;
           nameInput.focus();
         });
 
@@ -308,9 +358,12 @@
       event.preventDefault();
       const name = anonymous ? '' : nameInput.value.trim();
       if (!anonymous && name.length < 2) return toast(t('pNameShort'), 'bad');
+      // الرمز الشخصي مع الاسم المختار من الكشف — حين يكون للفصل سجل
+      const pin = pinShown && pinInput ? pinInput.value.replace(/\D/g, '') : '';
+      if (pinShown && pin.length !== 4) return toast(t('pPinShort'), 'bad');
       if (!anonymous) store.local.set('tafa3l:name', name);
       joinBtn.disabled = true;
-      const sent = socket.send({ t: 'join', code, name, avatar: state.avatar });
+      const sent = socket.send({ t: 'join', code, name, avatar: state.avatar, ...(pin ? { pin } : {}) });
       if (!sent) {
         joinBtn.disabled = false;
         toast(t('pNoConnection'), 'bad');
@@ -1735,6 +1788,16 @@
     // العلامة قبل الأوسمة والترتيب: هي ما يسأل عنه الطالب أولاً وما يحمله لبيته
     const markCard = markPanel(s.mark);
     if (markCard) app.append(markCard);
+
+    // دخل بملفّه: نتيجته الآن في سجلّه عند معلّمه، وله صفحةٌ يراجعها فيها لاحقاً
+    if (state.recordToken) {
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('div', { style: { fontWeight: '700' }, text: t('pRecSaved') }),
+          el('a', { class: 'btn ghost sm', href: '/me.html' }, t('pRecOpen')),
+        ])
+      );
+    }
 
     const awards = badgeList(s.badges);
     if (awards) app.append(awards);

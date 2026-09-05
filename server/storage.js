@@ -52,7 +52,7 @@ function sortGames(sort) {
 function fileDriver() {
   /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
   const empty = () => Object.create(null);
-  let db = { users: empty(), activities: empty(), authSessions: empty(), bankQuestions: empty(), games: empty(), liveSessions: empty(), classes: empty(), meta: {} };
+  let db = { users: empty(), activities: empty(), authSessions: empty(), bankQuestions: empty(), games: empty(), liveSessions: empty(), classes: empty(), records: empty(), meta: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -127,6 +127,7 @@ function fileDriver() {
           bankQuestions: bare(parsed.bankQuestions),
           liveSessions: bare(parsed.liveSessions),
           classes: bare(parsed.classes),
+          records: bare(parsed.records),
           meta: parsed.meta || {},
         };
       } catch (err) {
@@ -334,6 +335,27 @@ function fileDriver() {
     },
     async deleteClass(id) {
       delete db.classes[id];
+      schedule();
+    },
+
+    // ------------------------------------------------------- سجلّ الطلاب
+    //
+    // سطورٌ لا تُكتب إلا لفصلٍ شغّل معلّمه السجل — انظر records.js. معرّف
+    // السطر ثابت (فصل + طالب + جلسة) فالكتابة المكرّرة تحديثٌ لا تكرار.
+
+    async saveRecords(rows) {
+      for (const row of rows) db.records[row.id] = row;
+      schedule();
+    },
+    async listRecords(classId, studentId) {
+      return Object.values(db.records)
+        .filter((r) => r.classId === classId && (!studentId || r.studentId === studentId))
+        .sort((a, b) => b.at - a.at);
+    },
+    async deleteRecords(classId, studentId) {
+      for (const [id, r] of Object.entries(db.records)) {
+        if (r.classId === classId && (!studentId || r.studentId === studentId)) delete db.records[id];
+      }
       schedule();
     },
 
@@ -545,6 +567,9 @@ function postgresDriver(connectionString) {
       ownerId: r.owner_id,
       name: r.name,
       students: r.students || [],
+      // سجلّ الطلاب: مطفأ ما لم يشغّله المعلّم، وملفّاتهم (معرّف ورمز ومفتاح)
+      record: Boolean(r.record),
+      pupils: Array.isArray(r.pupils) ? r.pupils : [],
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at),
     };
@@ -712,6 +737,20 @@ function postgresDriver(connectionString) {
           updated_at BIGINT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS classes_owner_idx ON classes(owner_id);
+        -- سجلّ الطلاب (اختياري، يشغّله المعلّم على فصلٍ بعينه): ملفّات
+        -- الطلاب على الفصل نفسه، ونتائجهم عبر الحصص في جدولٍ مستقل.
+        ALTER TABLE classes ADD COLUMN IF NOT EXISTS record BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE classes ADD COLUMN IF NOT EXISTS pupils JSONB NOT NULL DEFAULT '[]'::jsonb;
+        CREATE TABLE IF NOT EXISTS student_records (
+          id TEXT PRIMARY KEY,
+          class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+          student_id TEXT NOT NULL,
+          owner_id TEXT,
+          code TEXT NOT NULL,
+          at BIGINT NOT NULL,
+          data JSONB NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS student_records_class_idx ON student_records(class_id, student_id);
         -- علاماتٌ تُكتب مرّةً: ترحيلاتٌ جرت، فلا تُعاد عند كل إقلاع
         CREATE TABLE IF NOT EXISTS app_meta (
           key TEXT PRIMARY KEY,
@@ -933,14 +972,45 @@ function postgresDriver(connectionString) {
     },
     async saveClass(item) {
       await pool.query(
-        `INSERT INTO classes (id, owner_id, name, students, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (id) DO UPDATE SET name = $3, students = $4, updated_at = $6`,
-        [item.id, item.ownerId, item.name, JSON.stringify(item.students), item.createdAt, item.updatedAt]
+        `INSERT INTO classes (id, owner_id, name, students, created_at, updated_at, record, pupils) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (id) DO UPDATE SET name = $3, students = $4, updated_at = $6, record = $7, pupils = $8`,
+        [
+          item.id,
+          item.ownerId,
+          item.name,
+          JSON.stringify(item.students),
+          item.createdAt,
+          item.updatedAt,
+          Boolean(item.record),
+          JSON.stringify(item.pupils || []),
+        ]
       );
       return item;
     },
     async deleteClass(id) {
       await pool.query('DELETE FROM classes WHERE id = $1', [id]);
+    },
+
+    // ------------------------------------------------------- سجلّ الطلاب
+
+    async saveRecords(rows) {
+      for (const row of rows) {
+        await pool.query(
+          `INSERT INTO student_records (id, class_id, student_id, owner_id, code, at, data) VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (id) DO UPDATE SET at = $6, data = $7`,
+          [row.id, row.classId, row.studentId, row.ownerId || null, row.code, row.at, JSON.stringify(row)]
+        );
+      }
+    },
+    async listRecords(classId, studentId) {
+      const { rows } = studentId
+        ? await pool.query('SELECT data FROM student_records WHERE class_id = $1 AND student_id = $2 ORDER BY at DESC', [classId, studentId])
+        : await pool.query('SELECT data FROM student_records WHERE class_id = $1 ORDER BY at DESC', [classId]);
+      return rows.map((r) => r.data);
+    },
+    async deleteRecords(classId, studentId) {
+      if (studentId) await pool.query('DELETE FROM student_records WHERE class_id = $1 AND student_id = $2', [classId, studentId]);
+      else await pool.query('DELETE FROM student_records WHERE class_id = $1', [classId]);
     },
 
     // ------------------------------------------------------------- الألعاب

@@ -1379,12 +1379,20 @@
 
       const paint = () => {
         hint.textContent = attached.length ? t('hClassCount', { n: attached.length }) + ' · ' + attached.slice(0, 4).join('، ') + (attached.length > 4 ? '…' : '') : '';
+        // فصلٌ سجلُّه مفعّل: النتائج ستُكتب في ملفّات الطلاب، والمعلّم يعرف ذلك قبل الإطلاق
+        if (draft.settings.recordClassId) hint.append(el('div', { class: 'small', text: t('hClassRecordHint') }));
       };
       paint();
 
       select.addEventListener('change', () => {
         const found = (classCache || []).find((c) => c.id === select.value);
         draft.settings.roster = found ? found.students.slice() : [];
+        /*
+         * الاستثناء الوحيد لقاعدة «نسخةٌ لا إشارة»: فصلٌ شغّل عليه المعلّم
+         * سجلّ الطلاب يُرفق معرّفُه، لأن النتيجة تُكتب في ملفّ الطالب على
+         * ذلك الفصل بعينه. والخادم يتحقّق من الملكية والتفعيل مرّة أخرى.
+         */
+        draft.settings.recordClassId = found?.record ? found.id : null;
         saveDraft(draft);
         update();
       });
@@ -1394,7 +1402,16 @@
         items.forEach((item) => select.append(el('option', { value: item.id }, `${item.name} (${item.students.length})`)));
         // المرفق حالياً: نطابق بالأسماء لأن المحفوظ نسخةٌ لا معرّف
         const same = items.find((item) => item.students.length === attached.length && item.students.every((n, i) => n === attached[i]));
-        if (same) select.value = same.id;
+        if (same) {
+          select.value = same.id;
+          // حالُ السجل كما هو **الآن** لا كما كان يوم حُفظت المسودة
+          const wanted = same.record ? same.id : null;
+          if ((draft.settings.recordClassId || null) !== wanted) {
+            draft.settings.recordClassId = wanted;
+            saveDraft(draft);
+            paint();
+          }
+        }
       };
       if (classCache) fill(classCache);
       else {

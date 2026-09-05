@@ -15,6 +15,7 @@ const social = require('./social-links');
 const { normalizeQuiz } = require('./session');
 const gameCover = require('./game-cover');
 const { sendGameFrame } = require('./game-frame');
+const records = require('./records');
 
 const MAX_ACTIVITIES = 200;
 // سقف ما تعرضه «أسئلتي السابقة» في نداء واحد — القائمة للتصفّح لا للجرد
@@ -481,9 +482,37 @@ function accountRoutes(store) {
     return out;
   }
 
+  /**
+   * سجلّ الطلاب — الاستثناء الذي يقرّره المعلّم لفصلٍ بعينه (انظر records.js).
+   *
+   * حين يشغّله يصير لكل اسمٍ ملفٌّ برمزٍ شخصي، وتُكتب نتائج من يدخلون بأسمائهم
+   * ورموزهم بعد كل نشاط. وحين يطفئه لا يُكتب جديد، وما كُتب يبقى حتى يحذفه هو.
+   */
+  const publicClass = (item) => ({
+    ...item,
+    record: Boolean(item.record),
+    pupils: item.record ? (item.pupils || []).map(records.publicPupil) : [],
+  });
+
+  /** يعيد الفصل بملفّاته موائمةً لكشفه — إن كان السجل مفعّلاً */
+  function withPupils(item) {
+    if (!item.record) return { ...item, pupils: item.pupils || [] };
+    return { ...item, pupils: records.syncPupils(item.students, item.pupils) };
+  }
+
+  /** فصلٌ يملكه هذا المعلّم وإلا 404 — لا فرق بين «غير موجود» و«ليس لك» */
+  async function ownClass(req, res) {
+    const item = await storage.get().getClass(req.params.id);
+    if (!item || item.ownerId !== req.user.id) {
+      res.status(404).json({ error: 'الفصل غير موجود' });
+      return null;
+    }
+    return item;
+  }
+
   router.get('/classes', auth.requireUser, async (req, res) => {
     try {
-      res.json({ classes: await storage.get().listClasses(req.user.id) });
+      res.json({ classes: (await storage.get().listClasses(req.user.id)).map(publicClass) });
     } catch (err) {
       console.error('list classes:', err);
       res.status(500).json({ error: 'تعذّر جلب فصولك' });
@@ -499,16 +528,18 @@ function accountRoutes(store) {
       const name = String(req.body?.name || '').trim().slice(0, 60);
       if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
       const now = Date.now();
-      const item = {
+      const item = withPupils({
         id: storage.newId('cl_'),
         ownerId: req.user.id,
         name,
         students: cleanNames(req.body?.students),
+        record: req.body?.record === true,
+        pupils: [],
         createdAt: now,
         updatedAt: now,
-      };
+      });
       await storage.get().saveClass(item);
-      res.status(201).json({ class: item });
+      res.status(201).json({ class: publicClass(item) });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر حفظ الفصل' });
     }
@@ -516,18 +547,19 @@ function accountRoutes(store) {
 
   router.put('/classes/:id', auth.requireUser, async (req, res) => {
     try {
-      const existing = await storage.get().getClass(req.params.id);
-      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'الفصل غير موجود' });
+      const existing = await ownClass(req, res);
+      if (!existing) return;
       const name = String(req.body?.name ?? existing.name).trim().slice(0, 60);
       if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
-      const updated = {
+      const updated = withPupils({
         ...existing,
         name,
         students: req.body?.students === undefined ? existing.students : cleanNames(req.body.students),
+        record: typeof req.body?.record === 'boolean' ? req.body.record : Boolean(existing.record),
         updatedAt: Date.now(),
-      };
+      });
       await storage.get().saveClass(updated);
-      res.json({ class: updated });
+      res.json({ class: publicClass(updated) });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر تحديث الفصل' });
     }
@@ -535,12 +567,108 @@ function accountRoutes(store) {
 
   router.delete('/classes/:id', auth.requireUser, async (req, res) => {
     try {
-      const existing = await storage.get().getClass(req.params.id);
-      if (!existing || existing.ownerId !== req.user.id) return res.status(404).json({ error: 'الفصل غير موجود' });
+      const existing = await ownClass(req, res);
+      if (!existing) return;
+      // سجلّ الفصل يذهب معه: لا سطور بلا فصلٍ يقرؤها أحد
+      await storage.get().deleteRecords(existing.id);
       await storage.get().deleteClass(existing.id);
       res.json({ ok: true });
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message || 'تعذّر حذف الفصل' });
+    }
+  });
+
+  /** ملخّص سجلّ الفصل: كل طالبٍ بمحاولاته ومتوسّطه، والجلسات التي كُتبت */
+  router.get('/classes/:id/record', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const rows = await storage.get().listRecords(item.id);
+      const summary = records.summarize(item.record ? item.pupils : [], rows);
+      res.json({ class: { id: item.id, name: item.name, record: Boolean(item.record) }, ...summary });
+    } catch (err) {
+      console.error('class record:', err);
+      res.status(500).json({ error: 'تعذّر جلب السجل' });
+    }
+  });
+
+  /** ملفّ طالبٍ واحد: محاولاته كلها، وما يتكرّر خطؤه */
+  router.get('/classes/:id/record/:sid', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const pupil = (item.pupils || []).find((p) => p.id === req.params.sid);
+      if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
+      const rows = await storage.get().listRecords(item.id, pupil.id);
+      res.json({ student: records.publicPupil(pupil), records: rows, weak: records.weakSpots(rows) });
+    } catch (err) {
+      console.error('student record:', err);
+      res.status(500).json({ error: 'تعذّر جلب ملفّ الطالب' });
+    }
+  });
+
+  /** رمزٌ شخصي جديد لطالبٍ نسي رمزه أو أفشاه */
+  router.post('/classes/:id/record/:sid/pin', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const pupils = item.pupils || [];
+      const pupil = pupils.find((p) => p.id === req.params.sid);
+      if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
+      const taken = new Set(pupils.filter((p) => p !== pupil).map((p) => p.pin));
+      let pin = records.newPin();
+      while (taken.has(pin)) pin = records.newPin();
+      pupil.pin = pin;
+      await storage.get().saveClass({ ...item, pupils, updatedAt: Date.now() });
+      res.json({ student: records.publicPupil(pupil) });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر تجديد الرمز' });
+    }
+  });
+
+  /** حذف سجلّ طالبٍ واحد، أو سجلّ الفصل كلّه — قرارٌ صريح من المعلّم */
+  router.delete('/classes/:id/record/:sid?', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      await storage.get().deleteRecords(item.id, req.params.sid || undefined);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر حذف السجل' });
+    }
+  });
+
+  /**
+   * صفحة الطالب «سجلّي»: برمزٍ يُعطاه جهازُه عند الدخول بملفّه، لا بحساب.
+   * يرى محاولاته ونسبه وما أخطأ فيه — بحدود ما سمح به معلّمه في كل نشاط.
+   */
+  router.get('/record/me', async (req, res) => {
+    try {
+      const found = await records.resolveToken(req.query.token);
+      if (!found) return res.status(404).json({ error: 'لم نجد سجلّاً بهذا الرمز — ادخل نشاطاً باسمك ورمزك أولاً' });
+      const rows = await storage.get().listRecords(found.cls.id, found.pupil.id);
+      res.json({
+        name: found.pupil.name,
+        className: found.cls.name,
+        records: rows.map((r) => ({
+          code: r.code,
+          title: r.title,
+          at: r.at,
+          total: r.total,
+          answered: r.answered,
+          correct: r.correct,
+          wrong: r.wrong,
+          partial: r.partial,
+          pending: r.pending,
+          percent: r.showScore ? r.percent : null,
+          mark: r.showScore ? r.mark : null,
+          // ما أخطأ فيه يُعرض حين كان المعلّم يكشف الإجابة الصحيحة في ذلك النشاط
+          items: r.reveal ? r.items : [],
+        })),
+      });
+    } catch (err) {
+      console.error('record/me:', err);
+      res.status(500).json({ error: 'تعذّر جلب سجلّك' });
     }
   });
 

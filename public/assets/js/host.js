@@ -96,6 +96,9 @@
     if (hash === '/upgrade') return openUpgrade();
     if (hash === '/pay') return openPayment();
     if (hash === '/admin') return openAdmin();
+    // سجلّ الطلاب: الفصل كلّه، أو ملفّ طالبٍ واحد
+    const rec = hash.match(/^\/class\/([\w-]+)\/record(?:\/([\w-]+))?$/);
+    if (rec) return rec[2] ? openStudentRecord(rec[1], rec[2]) : openClassRecord(rec[1]);
     const edit = hash.match(/^\/edit\/([\w-]+)$/);
     if (edit) return openSavedActivity(edit[1]);
     return openStart();
@@ -428,33 +431,360 @@
       }
       state.classes = items;
       if (!items.length) return body.replaceChildren(el('span', { class: 'muted small', text: t('hClassEmpty') }));
-      body.replaceChildren(
-        ...items.map((item) =>
-          el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)' } }, [
-            el('div', { class: 'stack tight grow' }, [
-              el('strong', { text: item.name }),
-              el('span', { class: 'muted small', text: t('hClassCount', { n: item.students.length }) }),
-            ]),
-            el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(item) }, t('hClassEdit')),
-            el('button', {
-              class: 'btn danger sm', type: 'button',
-              onclick: async () => {
-                if (!confirm(t('hClassDeleteAsk'))) return;
-                try {
-                  await api('/api/classes/' + item.id, { method: 'DELETE' });
-                  load();
-                } catch (err) {
-                  toast(err.message, 'bad');
-                }
-              },
-            }, t('hClassDelete')),
-          ])
-        )
-      );
+      body.replaceChildren(...items.map(classRow));
+    }
+
+    /**
+     * صفّ الفصل: اسمه وعدده، وأزراره، ومفتاح «سجلّ الطلاب».
+     *
+     * المفتاح هو القرار الوحيد الذي يغيّر وعد المنصة لهذا الفصل بعينه: مطفأً
+     * لا يُحفظ شيء كما كان دائماً، ومشغَّلاً يصير لكل اسمٍ ملفٌّ ورمزٌ وتُكتب
+     * نتائج الأنشطة فيه. لذلك يقف بجوار اسم الفصل لا في إعدادٍ بعيد.
+     */
+    function classRow(item) {
+      const toggle = el('input', { type: 'checkbox' });
+      toggle.checked = Boolean(item.record);
+      toggle.addEventListener('change', async () => {
+        toggle.disabled = true;
+        try {
+          await api('/api/classes/' + item.id, { method: 'PUT', body: { record: toggle.checked } });
+          load();
+        } catch (err) {
+          toast(err.message, 'bad');
+          toggle.checked = !toggle.checked;
+          toggle.disabled = false;
+        }
+      });
+      return el('div', { class: 'stack tight', style: { padding: '10px 0', borderBottom: '1px solid var(--border)' } }, [
+        el('div', { class: 'row between' }, [
+          el('div', { class: 'stack tight grow' }, [
+            el('strong', { text: item.name }),
+            el('span', { class: 'muted small', text: t('hClassCount', { n: item.students.length }) }),
+          ]),
+          item.record ? el('a', { class: 'btn primary sm', href: `#/class/${item.id}/record` }, t('hRecOpen')) : null,
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => openForm(item) }, t('hClassEdit')),
+          el('button', {
+            class: 'btn danger sm', type: 'button',
+            onclick: async () => {
+              if (!confirm(t('hClassDeleteAsk'))) return;
+              try {
+                await api('/api/classes/' + item.id, { method: 'DELETE' });
+                load();
+              } catch (err) {
+                toast(err.message, 'bad');
+              }
+            },
+          }, t('hClassDelete')),
+        ]),
+        el('label', { class: 'switch-row' }, [
+          toggle,
+          el('span', { class: 'stack tight' }, [
+            el('strong', { class: 'small', text: t('hRecSwitch') }),
+            el('span', { class: 'muted small', text: t('hRecSwitchHint') }),
+          ]),
+        ]),
+      ]);
     }
 
     load();
     return card;
+  }
+
+  // ------------------------------------------------------- سجلّ الطلاب
+
+  /** شاشةٌ فارغة جاهزة لصفحةٍ داخلية بلا شريط جلسة */
+  function blankPage() {
+    teardown();
+    setEditingActivity(null);
+    codeBadge.classList.add('hidden');
+    connBadge.classList.add('hidden');
+    bar.innerHTML = '';
+    app.innerHTML = '';
+    app.append(el('div', { class: 'card center' }, el('div', { class: 'spinner' })));
+  }
+
+  function recDate(at) {
+    if (!at) return '—';
+    return new Date(at).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  /** نسبةٌ ملوّنة: خضراء فوق ٧٠، كهرمانية فوق ٥٠، حمراء تحتها، ورمادية بلا نسبة */
+  function pctBadge(pct) {
+    if (pct === null || pct === undefined) return el('span', { class: 'muted', text: '—' });
+    const tone = pct >= 70 ? 'ok' : pct >= 50 ? 'warn' : 'bad';
+    return el('span', { class: 'badge ' + tone, style: { direction: 'ltr' }, text: pct + '%' });
+  }
+
+  /** خمسة أعمدة صغيرة لآخر النتائج — الاتجاه يُقرأ بنظرة */
+  function trendBars(values) {
+    if (!values?.length) return el('span', { class: 'muted', text: '—' });
+    return el(
+      'span',
+      { class: 'trend', title: values.join(' → ') },
+      values.map((v) => el('i', { style: { height: Math.max(8, Math.round((v / 100) * 28)) + 'px' }, class: v >= 70 ? 'ok' : v >= 50 ? 'warn' : 'bad' }))
+    );
+  }
+
+  /** الرمز الشخصي: أرقامٌ لاتينية بمسافات، تُنسخ بنقرة */
+  function pinChip(pin) {
+    const chip = el('button', { class: 'chip pin', type: 'button', title: pin, text: pin });
+    chip.style.direction = 'ltr';
+    chip.addEventListener('click', () => {
+      navigator.clipboard?.writeText(pin).then(() => toast(t('hRecCopied'), 'ok')).catch(() => {});
+    });
+    return chip;
+  }
+
+  function errorCard(message, backHref, backLabel) {
+    return el('div', { class: 'card stack center' }, [
+      el('div', { style: { fontSize: '2.4rem' }, text: '⚠️' }),
+      el('p', { class: 'muted', style: { margin: 0 }, text: message }),
+      el('a', { class: 'btn ghost sm', href: backHref }, backLabel),
+    ]);
+  }
+
+  /**
+   * ورقة الرموز: اسمٌ ورمزٌ لكل طالب، تُطبع وتُقصّ وتُوزَّع. نافذةٌ مستقلّة
+   * بأنماطٍ مضمّنة، فلا يظهر في الطباعة شريطٌ ولا زرّ.
+   */
+  function printPins(cls, students) {
+    const esc = window.T.escapeHtml;
+    const cards = students
+      .map(
+        (s) =>
+          `<div class="c"><div class="n">${esc(s.name)}</div><div class="p" dir="ltr">${esc(s.pin)}</div><div class="h">${esc(t('hRecPrintNote'))}</div></div>`
+      )
+      .join('');
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(t('hRecPrintTitle', { name: cls.name }))}</title>
+<style>body{font-family:system-ui,'Segoe UI',Tahoma,sans-serif;margin:16px;color:#10173A}h1{font-size:18px;margin:0 0 12px}
+.g{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.c{border:1px dashed #8A8FAD;border-radius:12px;padding:12px;text-align:center;break-inside:avoid}
+.n{font-weight:700;font-size:16px}.p{font-size:26px;font-weight:700;letter-spacing:.25em;margin:6px 0;font-variant-numeric:tabular-nums}.h{font-size:11px;color:#6E7290;line-height:1.6}
+@media print{body{margin:8mm}}</style></head><body><h1>${esc(t('hRecPrintTitle', { name: cls.name }))}</h1><div class="g">${cards}</div>
+<script>window.onload=function(){window.print()}</script></body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) return toast(t('hRecPopup'), 'bad');
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }
+
+  /** سجلّ الفصل: كل طالبٍ بمحاولاته ومتوسّطه واتجاهه — والنقر يفتح ملفّه */
+  async function openClassRecord(classId) {
+    blankPage();
+    let data;
+    try {
+      data = await api(`/api/classes/${classId}/record`);
+    } catch (err) {
+      app.replaceChildren(errorCard(err.message, '#/', t('hRecBackClasses')));
+      return;
+    }
+    app.innerHTML = '';
+    const cls = data.class;
+    const students = data.students || [];
+    const withAttempts = students.filter((s) => s.attempts > 0);
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('a', { class: 'btn ghost sm', href: '#/', style: { alignSelf: 'flex-start' } }, t('hRecBackClasses')),
+        el('h1', { style: { margin: 0 }, text: t('hRecTitle', { name: cls.name }) }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hRecIntro') }),
+        !cls.record ? el('div', { class: 'note warn', text: t('hRecOff') }) : null,
+      ])
+    );
+
+    if (cls.record) {
+      app.append(
+        el('div', { class: 'stats' }, [
+          stat(students.length, t('hRecStudents')),
+          stat((data.sessions || []).length, t('hRecSessions')),
+          stat(data.avgPercent === null || data.avgPercent === undefined ? '—' : data.avgPercent + '%', t('hRecAvg')),
+        ])
+      );
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
+            el('button', { class: 'btn accent sm', type: 'button', onclick: () => printPins(cls, students) }, t('hRecPrint')),
+            withAttempts.length
+              ? el('button', {
+                  class: 'btn danger sm', type: 'button',
+                  onclick: async () => {
+                    if (!confirm(t('hRecWipeAllAsk'))) return;
+                    try {
+                      await api(`/api/classes/${classId}/record`, { method: 'DELETE' });
+                      toast(t('hRecWiped'), 'ok');
+                      openClassRecord(classId);
+                    } catch (err) {
+                      toast(err.message, 'bad');
+                    }
+                  },
+                }, t('hRecWipeAll'))
+              : null,
+          ]),
+          el('span', { class: 'muted small', text: t('hRecPrintHint') }),
+        ])
+      );
+    }
+
+    if (!students.length) return;
+    if (cls.record && !withAttempts.length) app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hRecEmpty') })));
+
+    const rows = students.map((s) => {
+      const tr = el('tr', { style: { cursor: 'pointer' } }, [
+        // الاسم رابطٌ صريح إلى الملفّ — والصفّ كلّه ينقر أيضاً، عدا زرّ الرمز
+        el('td', {}, el('a', { href: `#/class/${classId}/record/${s.id}`, style: { fontWeight: '700' }, text: s.name })),
+        el('td', {}, pinChip(s.pin)),
+        el('td', { style: { direction: 'ltr', textAlign: 'end' }, text: String(s.attempts) }),
+        el('td', {}, pctBadge(s.avgPercent)),
+        el('td', {}, [pctBadge(s.lastPercent), el('span', { class: 'muted small', text: s.lastAt ? ' ' + recDate(s.lastAt) : '' })]),
+        el('td', {}, trendBars(s.trend)),
+      ]);
+      tr.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        location.hash = `#/class/${classId}/record/${s.id}`;
+      });
+      return tr;
+    });
+    app.append(
+      el('div', { class: 'card' }, [
+        el('div', { class: 'table-wrap' }, [
+          el('table', { class: 'rec-table' }, [
+            el('thead', {}, el('tr', {}, [t('hRecColName'), t('hRecColPin'), t('hRecColAttempts'), t('hRecColAvg'), t('hRecColLast'), t('hRecColTrend')].map((h) => el('th', { text: h })))),
+            el('tbody', {}, rows),
+          ]),
+        ]),
+      ])
+    );
+  }
+
+  /** ملفّ طالب: محاولاته واحدةً واحدة، وما يتكرّر خطؤه، ورمزه وأزرار الإدارة */
+  async function openStudentRecord(classId, studentId) {
+    blankPage();
+    let data;
+    try {
+      data = await api(`/api/classes/${classId}/record/${studentId}`);
+    } catch (err) {
+      app.replaceChildren(errorCard(err.message, `#/class/${classId}/record`, t('hRecBack')));
+      return;
+    }
+    app.innerHTML = '';
+    const { student, records: rows, weak } = data;
+    const scored = rows.filter((r) => r.percent !== null && r.percent !== undefined);
+    const avg = scored.length ? Math.round(scored.reduce((s, r) => s + r.percent, 0) / scored.length) : null;
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('a', { class: 'btn ghost sm', href: `#/class/${classId}/record`, style: { alignSelf: 'flex-start' } }, t('hRecBack')),
+        el('div', { class: 'row between', style: { flexWrap: 'wrap', gap: '8px' } }, [
+          el('h1', { style: { margin: 0 }, text: t('hRecStudentTitle', { name: student.name }) }),
+          el('div', { class: 'row', style: { gap: '6px', alignItems: 'center' } }, [el('span', { class: 'muted small', text: t('hRecColPin') }), pinChip(student.pin)]),
+        ]),
+        el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
+          el('button', {
+            class: 'btn ghost sm', type: 'button',
+            onclick: async () => {
+              if (!confirm(t('hRecNewPinAsk', { name: student.name }))) return;
+              try {
+                const res = await api(`/api/classes/${classId}/record/${studentId}/pin`, { method: 'POST' });
+                toast(t('hRecNewPinDone', { pin: res.student.pin }), 'ok');
+                openStudentRecord(classId, studentId);
+              } catch (err) {
+                toast(err.message, 'bad');
+              }
+            },
+          }, t('hRecNewPin')),
+          rows.length
+            ? el('button', {
+                class: 'btn danger sm', type: 'button',
+                onclick: async () => {
+                  if (!confirm(t('hRecWipeStudentAsk', { name: student.name }))) return;
+                  try {
+                    await api(`/api/classes/${classId}/record/${studentId}`, { method: 'DELETE' });
+                    toast(t('hRecWiped'), 'ok');
+                    openStudentRecord(classId, studentId);
+                  } catch (err) {
+                    toast(err.message, 'bad');
+                  }
+                },
+              }, t('hRecWipeStudent'))
+            : null,
+        ]),
+      ])
+    );
+
+    if (!rows.length) {
+      app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hRecNoAttempts') })));
+      return;
+    }
+
+    app.append(
+      el('div', { class: 'stats' }, [
+        stat(rows.length, t('hRecAttempts')),
+        stat(avg === null ? '—' : avg + '%', t('hRecColAvg')),
+        stat(scored.length ? Math.max(...scored.map((r) => r.percent)) + '%' : '—', t('meBest')),
+      ])
+    );
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('h2', { style: { margin: 0 }, text: t('hRecWeak') }),
+        weak.length
+          ? el('div', { class: 'stack tight' }, weak.map((w) =>
+              el('div', { class: 'row between', style: { gap: '8px', alignItems: 'flex-start' } }, [
+                el('div', { class: 'stack tight grow' }, [
+                  el('span', { text: w.text }),
+                  w.right ? el('span', { class: 'muted small', text: t('hRecRight', { right: w.right }) }) : null,
+                ]),
+                el('span', { class: 'badge bad', text: t('hRecWeakTimes', { n: w.times }) }),
+              ])
+            ))
+          : el('p', { class: 'muted small', style: { margin: 0 }, text: t('hRecNoWeak') }),
+      ])
+    );
+
+    app.append(el('h2', { text: t('hRecAttempts') }));
+    rows.forEach((r) => app.append(attemptCard(r, true)));
+  }
+
+  /**
+   * بطاقة محاولة: العنوان والتاريخ والنسبة، وتحتها تفاصيل ما أُخطئ فيه.
+   * تُستعمل في ملفّ الطالب عند المعلّم وفي صفحة «سجلّي» عند الطالب.
+   */
+  function attemptCard(r, forTeacher) {
+    const details = (r.items || []).map((it) =>
+      el('div', { class: 'stack tight', style: { padding: '8px 0', borderTop: '1px solid var(--border)' } }, [
+        el('div', { class: 'row', style: { gap: '8px', alignItems: 'flex-start' } }, [
+          el('span', { class: 'badge ' + (it.ok === 'partial' ? 'warn' : it.ok === false ? 'bad' : ''), text: it.ok === 'partial' ? t('hRecPartial') : it.ok === false ? '✕' : t('hRecUnanswered') }),
+          el('span', { class: 'grow', text: it.text }),
+        ]),
+        it.mine ? el('span', { class: 'muted small', text: t('hRecMine', { mine: it.mine }) }) : null,
+        it.right ? el('span', { class: 'small', style: { color: 'var(--ok)' }, text: t('hRecRight', { right: it.right }) }) : null,
+      ])
+    );
+    const head = el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap' } }, [
+      el('div', { class: 'stack tight grow' }, [
+        el('strong', { text: r.title }),
+        el('span', { class: 'muted small', text: recDate(r.at) }),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px', alignItems: 'center' } }, [
+        r.mark ? el('span', { class: 'badge', style: { direction: 'ltr' }, text: `${r.mark.mark} / ${r.mark.of}` }) : null,
+        el('span', { class: 'muted small', style: { direction: 'ltr' }, text: t('hRecOf', { correct: r.correct + (r.partial ? '½' : ''), total: r.total }) }),
+        pctBadge(r.percent),
+      ]),
+    ]);
+    const bar = el('div', { class: 'progress thin' }, el('i', { style: { width: (r.percent || 0) + '%' } }));
+    const kids = [head, bar];
+    if (r.pending) kids.push(el('span', { class: 'badge warn', text: t('hRecPending', { n: r.pending }) }));
+    if (details.length) {
+      kids.push(
+        el('details', {}, [
+          el('summary', { class: 'muted small', style: { cursor: 'pointer' }, text: forTeacher ? t('hRecMistakes') : t('meMistakes') }),
+          ...details,
+        ])
+      );
+    } else if (!forTeacher) {
+      kids.push(el('span', { class: 'muted small', text: r.reveal === false ? t('meHidden') : t('meAllRight') }));
+    }
+    return el('div', { class: 'card stack tight' }, kids);
   }
 
   // ------------------------------------------------- ألعابي التفاعلية
