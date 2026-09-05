@@ -628,8 +628,12 @@ html.dark .brand .dark-only {
   background: var(--brand-soft);
 }
 
-.match-choice.is-taken {
-  color: var(--muted);
+/*
+ * جوابٌ استُعمل مع طرفٍ آخر: **لا يُبهَت**. الإبهات يقول «ممنوع»، والجواب
+ * الواحد قد يصلح لأكثر من طرف عمداً — والشارة وحدها تكفي خبراً.
+ */
+.match-choice.is-used .match-tag {
+  opacity: 0.9;
 }
 
 .match-tag {

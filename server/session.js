@@ -2286,6 +2286,17 @@ class Session {
       durationMinutes: this.settings.durationMinutes,
       autoNextAt: this._autoTimer ? this._autoAt : null,
       finishedCount: [...this.participants.values()].filter((p) => p.phase === 'done').length,
+      /**
+       * كم إجابةً مكتوبة تنتظر تصحيح المعلّم — في حالة المضيف نفسها.
+       *
+       * كان الرقم لا يعيش إلا داخل لوحة الإحصاءات، فمن لم يفتح ذلك التبويب
+       * لم يعلم أن على طلابه إجاباتٍ معلّقة أصلاً — وينهي الحصّة وتبقى
+       * شاشاتهم تقول «بانتظار تصحيح المدرب» إلى أن تختفي الجلسة.
+       */
+      pendingGrades: [...this.participants.values()].reduce(
+        (sum, p) => sum + [...p.answers.values()].filter((a) => a.pending).length,
+        0
+      ),
       teams: this.teams,
     };
     if (q) {
@@ -2402,7 +2413,13 @@ function publicQuestion(q, revealCorrect, code, view, seconds) {
   // «رتّب» يُخلط دائماً وإلا وصل الجواب مرتّباً؛ والبذرة تُثبّته لهذا الطالب
   const items = seededShuffle(q.items, (view?.seed || 'x') + q.id + ':items');
   // أطراف المطابقة اليمنى تُخلط كي لا يكون الترتيب نفسه هو الجواب
-  const rights = seededShuffle(q.pairs.map((pr) => pr.right), (view?.seed || 'x') + q.id + ':right');
+  /*
+   * الأطراف المقابلة **بلا تكرار**: سؤالٌ فيه أربع كلمات، اثنتان جوابهما «لام
+   * شمسية» واثنتان «لام قمرية»، كان يعرض على الطالب أربع بطاقات في اثنتين
+   * منها النصّ نفسه — فيظنّ إحداهما «مأخوذة» والأخرى غيرها. والجوابُ واحد
+   * يصلح لأكثر من طرف، فيُعرض مرّةً ويُستعمل حيث لزم.
+   */
+  const rights = seededShuffle([...new Set(q.pairs.map((pr) => pr.right))], (view?.seed || 'x') + q.id + ':right');
   return {
     id: q.id,
     type: q.type,

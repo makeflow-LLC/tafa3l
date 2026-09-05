@@ -1124,7 +1124,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('h1', { style: { margin: 0 }, text: t('hRecNav') }),
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('hRecHubIntro') }),
         el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
-          el('a', { class: 'btn ghost sm', href: '#/mine' }, t('hRecHubManage')),
+          el('a', { class: 'btn ghost sm', href: '#/students' }, t('hRecHubManage')),
           items.some((c) => c.demo)
             ? null
             : el('button', {
@@ -3851,13 +3851,36 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       app.append(el('div', { class: 'banner', style: { marginBottom: '12px' }, text: '⚠️ ' + t('hRestoredNote') }));
     }
 
+    /*
+     * الإجاباتُ المكتوبة تنتظر يداً تصحّحها، ومكانُها تبويبُ اللوحة. فإن كانت
+     * هناك واحدة قلناها في التبويب نفسه وفي الشاشة — لا نتركها تُكتشف صدفةً.
+     */
+    const pending = s.pendingGrades || 0;
     const tabs = el('div', { class: 'tabs', style: { marginBottom: '12px' } }, [
       tabBtn('stage', t('hstage')),
-      tabBtn('dashboard', t('hdashboard')),
+      tabBtn('dashboard', pending ? t('hdashboard') + ` (${pending})` : t('hdashboard')),
       tabBtn('analytics', t('hanalysis')),
       tabBtn('share', t('hshare')),
     ]);
     app.append(tabs);
+
+    if (pending && state.tab !== 'dashboard') {
+      const go = el('button', { class: 'btn primary sm', type: 'button' }, t('hGradeNowBtn'));
+      go.addEventListener('click', () => {
+        state.tab = 'dashboard';
+        send('host:dashboard');
+        renderLive();
+      });
+      app.append(
+        el('div', { class: 'card row between', style: { marginBottom: '12px', gap: '8px', flexWrap: 'wrap' } }, [
+          el('div', { class: 'stack tight grow' }, [
+            el('strong', { text: t('hGradeWaiting', { n: pending }) }),
+            el('span', { class: 'muted small', text: t('hGradeWaitingNote') }),
+          ]),
+          go,
+        ])
+      );
+    }
 
     if (state.tab === 'stage') renderStage(s);
     else if (state.tab === 'dashboard') {

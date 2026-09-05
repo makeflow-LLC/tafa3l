@@ -120,6 +120,7 @@
       pMatchPicked: 'طابقت {n} من {total}',
       pMatchMine: 'اختيارك — انقر للإلغاء',
       pMatchTaken: 'مختار لـ «{term}»',
+      pMatchUsed: 'مستعمل أيضاً في «{term}»',
       pMatchCorrectTitle: '✓ المطابقة الصحيحة',
       pOrderCorrectTitle: '✓ الترتيب الصحيح',
       pOrderYours: 'وضعته في الموضع {n}',
@@ -1439,6 +1440,9 @@
       hUnknownTitle: 'هذه الصفحة غير موجودة في نسختك',
       hUnknownBody: 'الغالب أن متصفّحك يحتفظ بنسخة قديمة من التطبيق. اضغط «تحديث» فتُحمَّل النسخة الأحدث ويعمل الرابط.',
       hUnknownRefresh: '🔄 تحديث التطبيق',
+      hGradeWaiting: '📝 {n} إجابة مكتوبة تنتظر تصحيحك',
+      hGradeWaitingNote: 'نتيجة الطالب لا تكتمل قبل أن تصحّحها — وشاشته تقول «بانتظار تصحيح المدرب».',
+      hGradeNowBtn: 'صحّح الآن',
       // أقسام لوحة المعلّم
       hSections: '🧭 أقسام لوحتك',
       hTileProfile: 'اسمك وصورتك وبلدك وروابطك',
