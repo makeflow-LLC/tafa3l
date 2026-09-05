@@ -282,10 +282,16 @@
         const search = el('input', { type: 'search', placeholder: t('pRosterSearch'), autocomplete: 'off' });
         const free = el('button', { class: 'btn ghost sm', type: 'button' }, t('pRosterNotListed'));
 
+        // من اختار اسمه: اسمه مكتوبٌ فوق خانة الرمز ومعه زرُّ تغييره
+        const chosenName = el('strong', {});
         const select = (name) => {
           nameInput.value = name;
           picked.value = name;
-          [...list.children].forEach((node) => node.classList.toggle('on', node.dataset.name === name));
+          chosenName.textContent = name;
+          // رمزٌ كُتب لاسمٍ ثم بُدِّل الاسم لا يصلح للجديد
+          if (pinInput) pinInput.value = '';
+          // الشرائح داخل مجموعاتٍ أحياناً، فالبحث في الشجرة كلّها لا في الأبناء
+          list.querySelectorAll('.chip').forEach((node) => node.classList.toggle('on', node.dataset.name === name));
         };
         /**
          * الأسماء تحت عناوين مجموعاتها إن قسّمها المعلّم.
@@ -334,14 +340,27 @@
         });
         paint('');
 
-        const nameBox = el('div', { style: { display: 'none' } }, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]);
+        const nameBox = el('div', { class: 'stack tight', style: { display: 'none' } }, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]);
         /**
          * سجلّ الطلاب مفعّل على هذا الفصل: من يختار اسمه يكتب رمزه الشخصي
          * معه، فتُنسب نتيجته إلى ملفّه لا إلى ملفّ زميلٍ اختار اسمه بالخطأ.
          * ومن يدخل باسمٍ حرّ لا يُسأل رمزاً — يدخل ضيفاً كما كان.
          */
+        /*
+         * ومعه اسمُه وزرُّ تغييره.
+         *
+         * كان الطالب الذي يضغط اسم زميله بالخطأ يجد خانة الرمز وقد فُتحت
+         * لوحةُ المفاتيح فوق الكشف، فلا يرى أيَّ اسمٍ اختار ولا يعرف أن
+         * الكشف ما زال يُلمس فوقها — ولا يبقى أمامه إلا «اسمي غير موجود»
+         * فيدخل ضيفاً بلا سجلّ. فالاسمُ مكتوبٌ فوق الخانة، وتغييرُه زرٌّ.
+         */
+        const changeName = el('button', { class: 'btn ghost sm', type: 'button' }, t('pPinChange'));
         const pinBox = info.record
           ? el('div', { class: 'stack tight', style: { display: 'none' } }, [
+              el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap', alignItems: 'center' } }, [
+                el('span', { class: 'muted small' }, [t('pPinWho'), chosenName]),
+                changeName,
+              ]),
               el('label', { for: 'pin', text: t('pPinLabel') }),
               pinInput,
               el('span', { class: 'muted small', text: t('pPinHint') }),
@@ -361,19 +380,46 @@
             if (!picked.value) return;
             pinBox.style.display = '';
             pinShown = true;
+            /*
+             * وتُجلب الخانة إلى النظر قبل البؤرة: كانت تُفتح تحت حافّة
+             * الشاشة بلا تمرير، فيبدو للطالب أن ضغطته لم تفعل شيئاً — ثم
+             * يضغط «دخول» فيُقال له «اكتب رمزك» عن خانةٍ لم يرها قط.
+             */
+            pinBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
             pinInput.focus({ preventScroll: true });
           });
+          changeName.addEventListener('click', () => {
+            picked.value = '';
+            nameInput.value = '';
+            pinInput.value = '';
+            pinShown = false;
+            pinBox.style.display = 'none';
+            list.querySelectorAll('.chip').forEach((node) => node.classList.remove('on'));
+            // إغلاق لوحة المفاتيح ثم العودة بالكشف إلى النظر
+            pinInput.blur();
+            list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
         }
+        // العودة من الكتابة الحرّة إلى الكشف: من ضغط «اسمي غير موجود» هرباً من
+        // الرمز كان يقع في طريقٍ بلا رجعة — ويدخل ضيفاً فلا تُحفظ نتيجته
+        const backToRoster = el('button', { class: 'btn ghost sm', type: 'button' }, t('pRosterBack'));
+        backToRoster.addEventListener('click', () => {
+          nameBox.style.display = 'none';
+          pickBox.style.display = '';
+          nameInput.value = '';
+          list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
         free.addEventListener('click', () => {
           pickBox.style.display = 'none';
           nameBox.style.display = '';
           nameInput.value = '';
           picked.value = '';
-          pinInput.value = '';
+          if (pinInput) pinInput.value = '';
           pinShown = false;
           nameInput.focus();
         });
 
+        nameBox.append(el('div', { class: 'row', style: { marginTop: '4px' } }, [backToRoster]));
         card.append(pickBox, nameBox);
       } else {
         card.append(el('div', {}, [el('label', { for: 'name', text: t('pNameLabel') }), nameInput]));
