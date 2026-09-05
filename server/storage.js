@@ -52,7 +52,7 @@ function sortGames(sort) {
 function fileDriver() {
   /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
   const empty = () => Object.create(null);
-  let db = { users: empty(), activities: empty(), authSessions: empty(), bankQuestions: empty(), games: empty(), liveSessions: empty(), classes: empty(), records: empty(), meta: {} };
+  let db = { users: empty(), activities: empty(), authSessions: empty(), bankQuestions: empty(), games: empty(), liveSessions: empty(), classes: empty(), records: empty(), assignments: empty(), meta: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -128,6 +128,7 @@ function fileDriver() {
           liveSessions: bare(parsed.liveSessions),
           classes: bare(parsed.classes),
           records: bare(parsed.records),
+          assignments: bare(parsed.assignments),
           meta: parsed.meta || {},
         };
       } catch (err) {
@@ -335,6 +336,11 @@ function fileDriver() {
     },
     async deleteClass(id) {
       delete db.classes[id];
+      // وواجباتُه معه: تكليفٌ لفصلٍ محذوف لا يعرف من كُلِّف به
+      // (وفي قاعدة البيانات يتكفّل بذلك ON DELETE CASCADE)
+      for (const [key, a] of Object.entries(db.assignments)) {
+        if (a.classId === id) delete db.assignments[key];
+      }
       schedule();
     },
 
@@ -356,6 +362,26 @@ function fileDriver() {
       for (const [id, r] of Object.entries(db.records)) {
         if (r.classId === classId && (!studentId || r.studentId === studentId)) delete db.records[id];
       }
+      schedule();
+    },
+
+    // ------------------------------------------------------------- الواجبات
+
+    async listAssignments(ownerId) {
+      return Object.values(db.assignments)
+        .filter((a) => a.ownerId === ownerId)
+        .sort((a, b) => b.createdAt - a.createdAt);
+    },
+    async getAssignment(id) {
+      return db.assignments[id] || null;
+    },
+    async saveAssignment(item) {
+      db.assignments[item.id] = item;
+      schedule();
+      return item;
+    },
+    async deleteAssignment(id) {
+      delete db.assignments[id];
       schedule();
     },
 
@@ -757,6 +783,16 @@ function postgresDriver(connectionString) {
           data JSONB NOT NULL
         );
         CREATE INDEX IF NOT EXISTS student_records_class_idx ON student_records(class_id, student_id);
+        -- الواجبات: تكليفُ طلابٍ بأعيانهم بنشاطٍ إلى موعد. النتائج ليست هنا
+        -- بل تُقرأ من student_records برموز جلساته (انظر homework.js).
+        CREATE TABLE IF NOT EXISTS assignments (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+          created_at BIGINT NOT NULL,
+          data JSONB NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS assignments_owner_idx ON assignments(owner_id, created_at DESC);
         -- علاماتٌ تُكتب مرّةً: ترحيلاتٌ جرت، فلا تُعاد عند كل إقلاع
         CREATE TABLE IF NOT EXISTS app_meta (
           key TEXT PRIMARY KEY,
@@ -1020,6 +1056,28 @@ function postgresDriver(connectionString) {
     async deleteRecords(classId, studentId) {
       if (studentId) await pool.query('DELETE FROM student_records WHERE class_id = $1 AND student_id = $2', [classId, studentId]);
       else await pool.query('DELETE FROM student_records WHERE class_id = $1', [classId]);
+    },
+
+    // ------------------------------------------------------------- الواجبات
+
+    async listAssignments(ownerId) {
+      const { rows } = await pool.query('SELECT data FROM assignments WHERE owner_id = $1 ORDER BY created_at DESC', [ownerId]);
+      return rows.map((r) => r.data);
+    },
+    async getAssignment(id) {
+      const { rows } = await pool.query('SELECT data FROM assignments WHERE id = $1', [id]);
+      return rows[0]?.data || null;
+    },
+    async saveAssignment(item) {
+      await pool.query(
+        `INSERT INTO assignments (id, owner_id, class_id, created_at, data) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (id) DO UPDATE SET data = $5`,
+        [item.id, item.ownerId, item.classId, item.createdAt, JSON.stringify(item)]
+      );
+      return item;
+    },
+    async deleteAssignment(id) {
+      await pool.query('DELETE FROM assignments WHERE id = $1', [id]);
     },
 
     // ------------------------------------------------------------- الألعاب

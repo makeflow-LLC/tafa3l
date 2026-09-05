@@ -17,6 +17,8 @@ const gameCover = require('./game-cover');
 const { sendGameFrame } = require('./game-frame');
 const records = require('./records');
 const demoRecord = require('./demo-record');
+const homework = require('./homework');
+const review = require('./review');
 
 const MAX_ACTIVITIES = 200;
 // سقف ما تعرضه «أسئلتي السابقة» في نداء واحد — القائمة للتصفّح لا للجرد
@@ -960,6 +962,352 @@ function accountRoutes(store) {
     } catch (err) {
       console.error('record/me:', err);
       res.status(500).json({ error: 'تعذّر جلب سجلّك' });
+    }
+  });
+
+  // --------------------------------------------------------- نشاط المراجعة
+
+  /** كل أسئلة هذا المعلّم — من أنشطته المحفوظة وبنكه القديم معاً */
+  async function allMyQuestions(ownerId) {
+    const db = storage.get();
+    const [activities, bank] = await Promise.all([db.listActivities(ownerId), db.listBankQuestions(ownerId)]);
+    const out = [];
+    for (const item of bank) if (item.question) out.push(item.question);
+    for (const activity of activities) for (const question of activity.questions || []) out.push(question);
+    return out;
+  }
+
+  /**
+   * «نشاط مراجعة» — يُبنى ممّا أخطأ فيه الطلاب لا ممّا نظنّ.
+   *
+   * نطاقه ثلاثة: الفصل كلّه، أو مجموعةٌ فيه، أو طالبٌ بعينه — وهو الفرق بين
+   * مراجعةٍ عامّة ودرسِ علاجٍ لمن يحتاجه. والناتج **نشاطٌ محفوظ** لا جلسة:
+   * المعلّم يفتحه فيحذف ويضيف ثم يطلقه أو يكلّف به، فالقرار الأخير له.
+   */
+  router.post('/classes/:id/review', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownClass(req, res);
+      if (!item) return;
+      const db = storage.get();
+      const list = await db.listActivities(req.user.id);
+      if (list.length >= MAX_ACTIVITIES) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_ACTIVITIES} نشاطاً) — احذف نشاطاً قديماً` });
+      }
+
+      const pupils = item.pupils || [];
+      const studentId = String(req.body?.studentId || '');
+      const group = String(req.body?.group || '').trim();
+      let scope = item.name;
+      let rows = await db.listRecords(item.id, studentId || undefined);
+      if (studentId) {
+        const pupil = pupils.find((p) => p.id === studentId);
+        if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
+        scope = pupil.name;
+      } else if (group) {
+        const ids = new Set(pupils.filter((p) => String(p.group || '').trim() === group).map((p) => p.id));
+        rows = rows.filter((r) => ids.has(r.studentId));
+        scope = group;
+      }
+      if (!rows.length) return res.status(409).json({ error: 'لا سجلّ بعد لهذا النطاق — المراجعة تُبنى من نتائج سابقة' });
+
+      const picked = review.pickReviewQuestions({ records: rows, questions: await allMyQuestions(req.user.id), limit: req.body?.limit });
+      if (!picked.questions.length) {
+        /*
+         * لم نجد سؤالاً واحداً يقابل ما أخطؤوا فيه. والسبب دائماً أحدهما:
+         * أنشطةٌ حُذفت بعد حلّها، أو سجلٌّ تجريبيّ لا أنشطة وراءه. ونقولها
+         * صراحةً — «لم يتم» بلا سبب تجعل المعلّم يظنّ الميزة معطوبة.
+         */
+        return res.status(409).json({
+          error: 'لم نجد في أسئلتك ما يقابل أخطاء الطلاب — المراجعة تُبنى من أسئلتك أنت، فأبقِ الأنشطة التي حلّوها محفوظة',
+        });
+      }
+
+      const now = Date.now();
+      const quiz = normalizeQuiz({
+        title: `مراجعة — ${scope}`,
+        questions: picked.questions,
+        // مراجعةٌ يحلّها الطالب بمهله ويرى صواب إجابته فوراً: هذا هو الغرض
+        settings: { pace: 'self', revealAnswer: true, showScore: true, timeMode: 'none', reward: 'points' },
+      });
+      const activity = {
+        id: storage.newId('a_'),
+        ownerId: req.user.id,
+        title: quiz.title,
+        settings: quiz.settings,
+        questions: quiz.questions,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.saveActivity(activity);
+      res.status(201).json({
+        activity: { id: activity.id, title: activity.title, questionCount: activity.questions.length },
+        direct: picked.direct,
+        bySkill: picked.bySkill,
+        skills: picked.skills,
+      });
+    } catch (err) {
+      console.error('review activity:', err);
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر بناء نشاط المراجعة' });
+    }
+  });
+
+  // -------------------------------------------------------------- الواجبات
+
+  /** واجبٌ يملكه هذا المعلّم وإلا 404 */
+  async function ownAssignment(req, res) {
+    const item = await storage.get().getAssignment(req.params.id);
+    if (!item || item.ownerId !== req.user.id) {
+      res.status(404).json({ error: 'الواجب غير موجود' });
+      return null;
+    }
+    return item;
+  }
+
+  /** من فتح الواجب ولم ينهه بعد — من الجلسة الحيّة وحدها، فهي وحدها تعرف */
+  function startedIn(assignment) {
+    const open = new Set();
+    for (const code of homework.codesOf(assignment)) {
+      const session = store.getSession(code);
+      if (!session) continue;
+      for (const p of session.participants.values()) {
+        if (p.studentId && p.phase !== 'done') open.add(p.studentId);
+      }
+    }
+    return open;
+  }
+
+  /** حالةُ رابط الواجب الآن: حيٌّ يُحلّ، أو منتهٍ، أو ذهب مع الخادم */
+  function linkState(assignment) {
+    const session = store.getSession(assignment.code);
+    if (!session) return 'gone';
+    return session.status === 'ended' ? 'ended' : 'open';
+  }
+
+  /** ما يُرسل للمعلّم عن واجب — بلا مفتاح المضيف إلا حين يُطلب صراحةً */
+  const publicAssignment = (a) => ({
+    id: a.id,
+    classId: a.classId,
+    className: a.className || '',
+    activityId: a.activityId,
+    title: a.title,
+    code: a.code,
+    groups: a.groups || [],
+    assigned: (a.studentIds || []).length,
+    dueAt: a.dueAt || null,
+    createdAt: a.createdAt,
+  });
+
+  router.get('/assignments', auth.requireUser, async (req, res) => {
+    try {
+      const db = storage.get();
+      const items = await db.listAssignments(req.user.id);
+      // سجلّ الفصل يُقرأ مرّةً لكل فصل مهما كثرت واجباته
+      const byClass = new Map();
+      const out = [];
+      for (const item of items) {
+        if (!byClass.has(item.classId)) {
+          byClass.set(item.classId, {
+            cls: await db.getClass(item.classId),
+            rows: await db.listRecords(item.classId),
+          });
+        }
+        const { cls, rows } = byClass.get(item.classId);
+        const { totals } = homework.progress({
+          assignment: item,
+          pupils: cls?.pupils || [],
+          records: rows,
+          started: startedIn(item),
+        });
+        out.push({ ...publicAssignment(item), className: cls?.name || item.className || '', totals, link: linkState(item) });
+      }
+      res.json({ assignments: out });
+    } catch (err) {
+      console.error('list assignments:', err);
+      res.status(500).json({ error: 'تعذّر جلب الواجبات' });
+    }
+  });
+
+  router.post('/assignments', auth.requireUser, async (req, res) => {
+    try {
+      const db = storage.get();
+      const mine = await db.listAssignments(req.user.id);
+      if (mine.length >= homework.MAX_ASSIGNMENTS) {
+        return res.status(409).json({ error: `بلغت الحد الأقصى (${homework.MAX_ASSIGNMENTS} واجباً) — احذف واجباً قديماً` });
+      }
+      const cls = await db.getClass(String(req.body?.classId || ''));
+      if (!cls || cls.ownerId !== req.user.id) return res.status(404).json({ error: 'الفصل غير موجود' });
+      /*
+       * السجل شرطُ الواجب لا زينته: نتيجته تُكتب في ملفّ الطالب، وبلا ملفٍّ
+       * لا نعرف من سلّم — فيصير الواجب رابطاً كسائر الروابط.
+       */
+      if (!cls.record) {
+        return res.status(409).json({ error: 'شغّل «سجلّ الطلاب» على هذا الفصل أولاً — نتيجة الواجب تُكتب في ملفّ الطالب' });
+      }
+      const activity = await db.getActivity(String(req.body?.activityId || ''));
+      if (!activity || activity.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+      premium.assertImagesAllowed(req.user, activity.questions);
+
+      const pupils = cls.pupils || [];
+      const studentIds = homework.pickStudents(pupils, { groups: req.body?.groups, studentIds: req.body?.studentIds });
+      if (!studentIds.length) return res.status(400).json({ error: 'اختر طالباً واحداً على الأقل' });
+      const chosen = pupils.filter((p) => studentIds.includes(p.id));
+      const dueAt = Number(req.body?.dueAt) || 0;
+
+      const session = launchFor({ activity, cls, chosen, dueAt, user: req.user });
+      const now = Date.now();
+      const item = {
+        id: storage.newId('hw_'),
+        ownerId: req.user.id,
+        classId: cls.id,
+        className: cls.name,
+        activityId: activity.id,
+        title: activity.title,
+        code: session.code,
+        codes: [session.code],
+        // مفتاح المضيف محفوظٌ مع الواجب لا في متصفّحٍ واحد: المعلّم يفتح
+        // متابعته الحيّة من أيّ جهازٍ يدخل منه حسابه
+        hostToken: session.hostToken,
+        groups: (req.body?.groups || []).map((g) => clean(g, 40)).filter(Boolean),
+        studentIds,
+        dueAt: session.settings.dueAt || 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.saveAssignment(item);
+      res.status(201).json({ assignment: { ...publicAssignment(item), hostToken: item.hostToken } });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّر إنشاء الواجب' });
+    }
+  });
+
+  /**
+   * جلسةُ الواجب: نسخةٌ من النشاط بإعداداتٍ يفرضها كونه واجباً.
+   *
+   * الوتيرة حرّة لأن الواجب يُحلّ في البيت لا أمام بروجكتر، والكشف مقصورٌ على
+   * المكلَّفين ليجد الطالب اسمه في سطرين، والسجل مربوطٌ بالفصل لتذهب النتيجة
+   * إلى ملفّه. وما عدا ذلك يبقى كما ضبطه المعلّم في نشاطه.
+   */
+  function launchFor({ activity, cls, chosen, dueAt, user }) {
+    const session = store.createSession({
+      title: activity.title,
+      questions: activity.questions,
+      settings: {
+        ...activity.settings,
+        pace: 'self',
+        requireName: true,
+        allowLateJoin: true,
+        roster: chosen.map((p) => p.name),
+        rosterGroups: chosen.map((p) => p.group || ''),
+        recordClassId: cls.id,
+        dueAt: dueAt || 0,
+        // موعدُ فتحٍ ورثه النشاط من إطلاقٍ قديم لا معنى له في واجبٍ يُرسل الآن
+        opensAt: 0,
+      },
+    });
+    session.ownerId = user.id;
+    session.ownerName = user.name;
+    session.activityId = activity.id;
+    return session;
+  }
+
+  /** تفصيل واجب: كلّ مُكلَّفٍ وحالته — سلّم، أو بدأ، أو لم يبدأ */
+  router.get('/assignments/:id', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownAssignment(req, res);
+      if (!item) return;
+      const db = storage.get();
+      const cls = await db.getClass(item.classId);
+      const rows = await db.listRecords(item.classId);
+      const { rows: students, totals } = homework.progress({
+        assignment: item,
+        pupils: cls?.pupils || [],
+        records: rows,
+        started: startedIn(item),
+      });
+      res.json({
+        assignment: { ...publicAssignment(item), className: cls?.name || item.className || '', hostToken: item.hostToken || '' },
+        students,
+        totals,
+        link: linkState(item),
+      });
+    } catch (err) {
+      console.error('assignment:', err);
+      res.status(500).json({ error: 'تعذّر جلب الواجب' });
+    }
+  });
+
+  /**
+   * إعادة الفتح — وهي تمديدُ الموعد نفسه.
+   *
+   * فالرابط جلسةٌ حيّة: ما دامت قائمة يكفي تحريك موعدها، وإن انتهت أو ذهبت مع
+   * إعادة نشرٍ أُنشئت جلسةٌ جديدة ورمزٌ جديد. ورمزُها القديم لا يُنسى — من
+   * سلّم قبل الإعادة سلّم، ولو نسيناه لظهر أنه لم يسلّم.
+   */
+  router.post('/assignments/:id/reopen', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownAssignment(req, res);
+      if (!item) return;
+      const db = storage.get();
+      const dueAt = Number(req.body?.dueAt) || 0;
+      const live = store.getSession(item.code);
+      let code = item.code;
+      let hostToken = item.hostToken || '';
+      let due = dueAt;
+
+      if (live && live.status !== 'ended') {
+        live.settings.dueAt = dueAt || 0;
+        live.armDeadline();
+        store.rewrite(live);
+        live.broadcastState();
+        due = live.settings.dueAt || 0;
+      } else {
+        const cls = await db.getClass(item.classId);
+        if (!cls || cls.ownerId !== req.user.id) return res.status(404).json({ error: 'الفصل غير موجود' });
+        const activity = await db.getActivity(item.activityId);
+        if (!activity || activity.ownerId !== req.user.id) {
+          return res.status(404).json({ error: 'النشاط لم يعد محفوظاً — أنشئ واجباً جديداً' });
+        }
+        premium.assertImagesAllowed(req.user, activity.questions);
+        const chosen = (cls.pupils || []).filter((p) => item.studentIds.includes(p.id));
+        const session = launchFor({ activity, cls, chosen, dueAt, user: req.user });
+        code = session.code;
+        hostToken = session.hostToken;
+        due = session.settings.dueAt || 0;
+      }
+
+      const updated = {
+        ...item,
+        code,
+        hostToken,
+        codes: [...new Set([...(item.codes || []), item.code, code])].filter(Boolean),
+        dueAt: due,
+        updatedAt: Date.now(),
+      };
+      await db.saveAssignment(updated);
+      res.json({ assignment: { ...publicAssignment(updated), hostToken }, link: linkState(updated) });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message || 'تعذّرت إعادة فتح الواجب' });
+    }
+  });
+
+  /**
+   * حذف الواجب: يُغلق رابطه ويُنسى تكليفه — ونتائجُ من سلّم تبقى في ملفّاتهم.
+   * فالسجل ملكُ الطالب لا ملحقُ الواجب، ولا يُمحى إلا من صفحة السجل صراحةً.
+   */
+  router.delete('/assignments/:id', auth.requireUser, async (req, res) => {
+    try {
+      const item = await ownAssignment(req, res);
+      if (!item) return;
+      for (const code of homework.codesOf(item)) {
+        const session = store.getSession(code);
+        if (!session) continue;
+        session.broadcast({ t: 'session:closed', reason: 'host' });
+        store.deleteSession(code);
+      }
+      await storage.get().deleteAssignment(item.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message || 'تعذّر حذف الواجب' });
     }
   });
 

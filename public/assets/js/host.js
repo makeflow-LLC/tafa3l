@@ -99,6 +99,13 @@
     // إدارة الطلاب: كل الفصول، أو فصلٌ بعينه (‎#/students?class=cl_…‎)
     const stu = hash.match(/^\/students(?:\?class=([^&]+))?$/);
     if (stu) return openStudents(stu[1] ? decodeURIComponent(stu[1]) : null);
+    // الواجبات: قائمة التكليفات، أو واجبٌ بعينه بمن سلّم ومن لم يسلّم
+    // (و‎?activity=‎ يفتح نموذج التكليف على نشاطٍ بعينه — قادمٌ من بطاقته)
+    const hwNew = hash.match(/^\/homework\?activity=([\w-]+)$/);
+    if (hwNew) return openHomework(decodeURIComponent(hwNew[1]));
+    if (hash === '/homework') return openHomework();
+    const hw = hash.match(/^\/homework\/([\w-]+)$/);
+    if (hw) return openAssignment(hw[1]);
     // سجلّ الطلاب: قائمة الفصول المسجَّلة، أو فصلٌ كامل، أو ملفّ طالبٍ واحد
     if (hash === '/records') return openRecordsHub();
     const rec = hash.match(/^\/class\/([\w-]+)\/record(?:\/([\w-]+))?$/);
@@ -202,6 +209,7 @@
     menu.append(UI.MenuRow({ label: t('hDashboard'), href: '#/' }));
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
     menu.append(UI.MenuRow({ label: t('hStuTitle'), href: '#/students' }));
+    menu.append(UI.MenuRow({ label: t('hwNav'), href: '#/homework' }));
     menu.append(UI.MenuRow({ label: t('hRecNav'), href: '#/records' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
@@ -352,6 +360,7 @@
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
+        UI.NavChip({ label: t('hwNav'), href: '#/homework' }),
         UI.NavChip({ label: t('hRecNav'), href: '#/records' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
@@ -997,6 +1006,17 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
             el('button', { class: 'btn accent sm', type: 'button', onclick: () => printPins(cls, students) }, t('hRecPrint')),
+            /*
+             * المراجعة والتكليف هنا لا في صفحةٍ ثالثة: المعلّم يقرأ النتائج
+             * فيقرّر — والقرار فعلٌ يليه، لا مسارٌ يبحث عنه بعد أن يغلق الصفحة.
+             */
+            withAttempts.length
+              ? el('button', {
+                  class: 'btn primary sm', type: 'button', title: t('hwRevHint'),
+                  onclick: (event) => buildReview(classId, {}, event.currentTarget),
+                }, t('hwRev'))
+              : null,
+            el('a', { class: 'btn ghost sm', href: '#/homework' }, t('hwNav')),
             withAttempts.length
               ? el('button', {
                   class: 'btn danger sm', type: 'button',
@@ -1034,10 +1054,17 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('div', { class: 'card stack' }, [
           el('h2', { style: { margin: 0 }, text: t('hRecGroups') }),
           el('div', { class: 'stack tight' }, groups.map((g) =>
-            el('div', { class: 'row between', style: { gap: '8px' } }, [
+            el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap' } }, [
               el('span', { class: 'grow', text: g.name || t('hRecNoGroup') }),
               el('span', { class: 'muted small', text: t('hRecGroupSize', { n: g.students }) }),
               pctBadge(g.avgPercent),
+              // مراجعةٌ لمجموعةٍ بعينها: «مجموعة الدعم» تُراجَع بما أخطأت فيه هي
+              g.name && g.attempts
+                ? el('button', {
+                    class: 'btn ghost sm', type: 'button', title: t('hwRevHint'),
+                    onclick: (event) => buildReview(classId, { group: g.name }, event.currentTarget),
+                  }, t('hwRevGroup'))
+                : null,
             ])
           )),
         ])
@@ -1125,6 +1152,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('hRecHubIntro') }),
         el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
           el('a', { class: 'btn ghost sm', href: '#/students' }, t('hRecHubManage')),
+          el('a', { class: 'btn ghost sm', href: '#/homework' }, t('hwNav')),
           items.some((c) => c.demo)
             ? null
             : el('button', {
@@ -1206,6 +1234,13 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
                   }
                 },
               }, t('hRecPreview'))
+            : null,
+          // مراجعةٌ لهذا الطالب وحده: أقربُ ما يكون إلى درسِ علاجٍ مُفصَّل عليه
+          rows.length
+            ? el('button', {
+                class: 'btn primary sm', type: 'button', title: t('hwRevHint'),
+                onclick: (event) => buildReview(classId, { studentId }, event.currentTarget),
+              }, t('hwRevStudent'))
             : null,
           el('button', {
             class: 'btn ghost sm', type: 'button',
@@ -1332,6 +1367,483 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       kids.push(el('span', { class: 'muted small', text: r.reveal === false ? t('meHidden') : t('meAllRight') }));
     }
     return el('div', { class: 'card stack tight' }, kids);
+  }
+
+  // ------------------------------------------------------------ الواجبات
+
+  /**
+   * الواجب — الجواب على سؤالٍ لا تجيب عنه الجلسة الحيّة: **من لم يسلّم؟**
+   *
+   * الجلسة تعرف من دخل، ولا تعرف من كان يُنتظر منه أن يدخل. والواجب يعرف:
+   * له كشفٌ مُكلَّف، فيصير الغياب رقماً يُقرأ لا فراغاً يُخمَّن. ونتائجه ليست
+   * نسخةً ثانية — تُقرأ من سجلّ الطلاب نفسه، فلا يفترق ما في الواجب عمّا في
+   * ملفّ الطالب أبداً.
+   */
+
+  /** رابط الواجب كما يُرسل للطالب */
+  const hwLink = (code) => `${location.origin}/j/${code}`;
+
+  /** موعد التسليم مقروءاً، ومعه حاله: مضى أم لم يمضِ */
+  function dueChip(dueAt) {
+    if (!dueAt) return el('span', { class: 'muted small', text: t('hwNoDue') });
+    const over = dueAt < Date.now();
+    return el('span', { class: 'badge ' + (over ? 'bad' : 'warn'), text: over ? t('hwOverdue') : t('hwDue', { date: recDate(dueAt) }) });
+  }
+
+  function hwStatusBadge(row) {
+    if (row.status === 'done') {
+      return el('span', { class: 'row', style: { gap: '4px', alignItems: 'center' } }, [
+        el('span', { class: 'badge ok', text: t('hwDone') }),
+        row.late ? el('span', { class: 'badge warn', text: t('hwLate') }) : null,
+      ]);
+    }
+    if (row.status === 'started') return el('span', { class: 'badge warn', text: t('hwStarted') });
+    return el('span', { class: 'badge', text: t('hwMissing') });
+  }
+
+  /** شريط تقدّم: كم سلّم من المكلَّفين */
+  function hwBar(totals) {
+    const pct = totals.assigned ? Math.round((totals.done / totals.assigned) * 100) : 0;
+    return el('div', { class: 'stack tight' }, [
+      el('div', { class: 'progress thin' }, el('i', { style: { width: pct + '%' } })),
+      el('span', { class: 'muted small', text: t('hwProgress', { done: totals.done, assigned: totals.assigned }) }),
+    ]);
+  }
+
+  /** يفتح متابعة الواجب الحيّة — نفس شاشة الجلسة، بمفتاح المضيف المحفوظ معه */
+  function followHomework(item) {
+    if (!item.hostToken) return toast(t('hwLinkGone'), 'bad');
+    rememberHost(item.code, item.hostToken, item.title);
+    location.hash = '#/live/' + item.code;
+  }
+
+  async function openHomework(presetActivity) {
+    blankPage();
+    let data;
+    try {
+      data = await api('/api/assignments');
+    } catch (err) {
+      app.replaceChildren(errorCard(err.message, '#/', t('hDashboard')));
+      return;
+    }
+    const items = data.assignments || [];
+    app.innerHTML = '';
+
+    const formBox = el('div', { class: 'stack' });
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'row between', style: { flexWrap: 'wrap', gap: '8px' } }, [
+          el('h1', { style: { margin: 0 }, text: t('hwTitle') }),
+          el('button', { class: 'btn accent sm', type: 'button', onclick: () => newHomeworkForm(formBox) }, t('hwNew')),
+        ]),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('hwIntro') }),
+        el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+          el('a', { class: 'btn ghost sm', href: '#/students' }, t('hRecHubManage')),
+          el('a', { class: 'btn ghost sm', href: '#/records' }, t('hRecNav')),
+        ]),
+        formBox,
+      ])
+    );
+
+    // قادمٌ من بطاقة نشاط: النموذج مفتوحٌ عليه، فلا يُطلب منه اختياره ثانيةً
+    if (presetActivity) newHomeworkForm(formBox, presetActivity);
+
+    if (!items.length) {
+      app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hwEmpty') })));
+      return;
+    }
+
+    items.forEach((item) => {
+      const totals = item.totals || { assigned: item.assigned, done: 0 };
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap' } }, [
+            el('div', { class: 'stack tight grow' }, [
+              el('a', { href: '#/homework/' + item.id, style: { fontWeight: '700' }, text: item.title }),
+              el('span', { class: 'muted small', text: t('hwClassLine', { cls: item.className, n: item.assigned }) }),
+            ]),
+            el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+              dueChip(item.dueAt),
+              el('span', {
+                class: 'badge ' + (item.link === 'open' ? 'ok' : 'bad'),
+                text: item.link === 'open' ? t('hwLinkOpen') : item.link === 'ended' ? t('hwLinkEnded') : t('hwLinkGone'),
+              }),
+            ]),
+          ]),
+          hwBar(totals),
+          el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+            el('a', { class: 'btn primary sm', href: '#/homework/' + item.id }, t('hwOpen')),
+            item.link === 'open'
+              ? el('button', {
+                  class: 'btn ghost sm', type: 'button',
+                  onclick: async () => {
+                    await copyLink(hwLink(item.code));
+                    toast(t('hwCopied'), 'ok');
+                  },
+                }, t('hwCopy'))
+              : null,
+          ]),
+        ])
+      );
+    });
+  }
+
+  /**
+   * نموذج التكليف: نشاطٌ، وفصلٌ مُسجَّل، ومن يُكلَّف منه.
+   *
+   * والاختيار بالمجموعة رقاقةٌ تُعلّم طلابها دفعةً واحدة، لا حقلٌ ثانٍ يُملأ:
+   * المعلّم يريد «مجموعة الدعم» ثم يستثني منها طالباً غاب — فالمرجع الوحيد
+   * صناديقُ الأسماء، والرقاقات مفاتيحُ سريعةٌ إليها.
+   */
+  async function newHomeworkForm(box, presetActivity) {
+    box.replaceChildren(el('div', { class: 'center' }, el('div', { class: 'spinner' })));
+    let activities = [];
+    let classes = [];
+    try {
+      [activities, classes] = await Promise.all([
+        api('/api/activities').then((d) => d.activities || []),
+        api('/api/classes').then((d) => (d.classes || []).filter((c) => c.record)),
+      ]);
+    } catch (err) {
+      box.replaceChildren(el('div', { class: 'note warn', text: err.message }));
+      return;
+    }
+    if (!activities.length) {
+      box.replaceChildren(
+        el('div', { class: 'stack' }, [
+          el('div', { class: 'note', text: t('hwNoActivities') }),
+          el('a', { class: 'btn primary sm', href: '#/new', style: { alignSelf: 'flex-start' } }, t('hnewActivity')),
+        ])
+      );
+      return;
+    }
+    if (!classes.length) {
+      box.replaceChildren(
+        el('div', { class: 'stack' }, [
+          el('div', { class: 'note warn', text: t('hwNoRecordClasses') }),
+          el('a', { class: 'btn primary sm', href: '#/students', style: { alignSelf: 'flex-start' } }, t('hRecHubManage')),
+        ])
+      );
+      return;
+    }
+
+    const activitySel = el('select', {}, activities.map((a) => el('option', { value: a.id, text: a.title })));
+    if (presetActivity && activities.some((a) => a.id === presetActivity)) activitySel.value = presetActivity;
+    const classSel = el('select', {}, classes.map((c) => el('option', { value: c.id, text: c.name })));
+    const due = el('input', { type: 'datetime-local' });
+    const groupChips = el('div', { class: 'chips' });
+    const list = el('div', { class: 'roster-pick' });
+    const count = el('span', { class: 'muted small' });
+    const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hwFormSave'));
+
+    /** يعيد بناء صناديق الأسماء عند تبديل الفصل */
+    function paintPupils() {
+      const cls = classes.find((c) => c.id === classSel.value) || classes[0];
+      const pupils = cls?.pupils || [];
+      list.replaceChildren(
+        ...pupils.map((p) =>
+          el('label', { class: 'roster-pick__row' }, [
+            el('input', { type: 'checkbox', value: p.id, checked: true, onchange: refreshCount }),
+            el('span', { class: 'grow', text: p.name }),
+            p.group ? el('span', { class: 'muted small', text: p.group }) : null,
+          ])
+        )
+      );
+      /*
+       * أفعالُ التحديد أزرارٌ والمجموعاتُ رقاقات: لو تساوى شكلُهما لَما عرف
+       * المعلّم أيُّ ما أمامه اسمُ مجموعةٍ في فصله وأيُّه فعلٌ نصنعه نحن.
+       * والرقاقة تُضاء حين تكون مجموعتها كاملةً في التحديد — فيُقرأ التكليف
+       * من أعلى الشاشة بلا عدّ صناديق.
+       */
+      const groups = [...new Set(pupils.map((p) => p.group || '').filter(Boolean))];
+      groupChips.replaceChildren(
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => setAll(true) }, t('hwFormAll')),
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => setAll(false) }, t('hwFormClear')),
+        ...groups.map((g) =>
+          el('button', {
+            class: 'chip', type: 'button', 'data-group': g,
+            onclick: () => {
+              // الرقاقة تُبدّل مجموعتها: مضاءةً وكلُّها محدَّدة تعني «انزعها»
+              const rows = boxesFor(g);
+              const allOn = rows.every((b) => b.checked);
+              rows.forEach((b) => (b.checked = !allOn));
+              refreshCount();
+            },
+          }, '👥 ' + g)
+        )
+      );
+      refreshCount();
+    }
+
+    const boxes = () => [...list.querySelectorAll('input[type=checkbox]')];
+    function boxesFor(group) {
+      const cls = classes.find((c) => c.id === classSel.value);
+      const ids = new Set((cls?.pupils || []).filter((p) => (p.group || '') === group).map((p) => p.id));
+      return boxes().filter((b) => ids.has(b.value));
+    }
+    function setAll(on) {
+      boxes().forEach((b) => (b.checked = on));
+      refreshCount();
+    }
+    function refreshCount() {
+      const n = boxes().filter((b) => b.checked).length;
+      count.textContent = t('hwSelected', { n });
+      save.disabled = n === 0;
+      groupChips.querySelectorAll('[data-group]').forEach((chip) => {
+        const rows = boxesFor(chip.getAttribute('data-group'));
+        chip.classList.toggle('on', rows.length > 0 && rows.every((b) => b.checked));
+      });
+    }
+
+    classSel.addEventListener('change', paintPupils);
+    paintPupils();
+
+    save.addEventListener('click', async () => {
+      const cls = classes.find((c) => c.id === classSel.value);
+      const studentIds = boxes().filter((b) => b.checked).map((b) => b.value);
+      const chosen = new Set(studentIds);
+      // المجموعة تُذكر في العنوان حين تكون كاملةً في التكليف — وصفٌ لا تكليف
+      const groups = [...new Set((cls?.pupils || []).map((p) => p.group || '').filter(Boolean))].filter((g) =>
+        (cls?.pupils || []).filter((p) => (p.group || '') === g).every((p) => chosen.has(p.id))
+      );
+      const dueAt = due.value ? new Date(due.value).getTime() : 0;
+      save.disabled = true;
+      try {
+        const made = await api('/api/assignments', {
+          method: 'POST',
+          body: { activityId: activitySel.value, classId: classSel.value, studentIds, groups, dueAt },
+        });
+        // مفتاح المضيف يُحفظ فور الإنشاء: المتابعة الحيّة تعمل بلا نداءٍ ثانٍ
+        rememberHost(made.assignment.code, made.assignment.hostToken, made.assignment.title);
+        toast(t('hwCreated'), 'ok');
+        location.hash = '#/homework/' + made.assignment.id;
+      } catch (err) {
+        toast(err.message, 'bad');
+        save.disabled = false;
+      }
+    });
+
+    box.replaceChildren(
+      el('div', { class: 'stack' }, [
+        el('div', {}, [el('label', { text: t('hwFormActivity') }), activitySel]),
+        el('div', {}, [el('label', { text: t('hwFormClass') }), classSel]),
+        el('div', { class: 'stack tight' }, [
+          el('label', { text: t('hwFormWho') }),
+          groupChips,
+          list,
+          count,
+        ]),
+        el('div', {}, [
+          el('label', { text: t('hwFormDue') }),
+          due,
+          el('span', { class: 'muted small', text: t('hwFormDueHint') }),
+        ]),
+        el('div', { class: 'row', style: { gap: '8px' } }, [
+          save,
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => box.replaceChildren() }, t('hwFormCancel')),
+        ]),
+      ])
+    );
+  }
+
+  /** تفصيل واجب: كلّ مُكلَّفٍ وحالته، ومن سلّم بكم */
+  async function openAssignment(id) {
+    blankPage();
+    let data;
+    try {
+      data = await api('/api/assignments/' + id);
+    } catch (err) {
+      app.replaceChildren(errorCard(err.message, '#/homework', t('hwBack')));
+      return;
+    }
+    const item = data.assignment;
+    const totals = data.totals;
+    const rows = data.students || [];
+    app.innerHTML = '';
+    const reopenBox = el('div', { class: 'stack' });
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('a', { class: 'btn ghost sm', href: '#/homework', style: { alignSelf: 'flex-start' } }, t('hwBack')),
+        el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap' } }, [
+          el('div', { class: 'stack tight' }, [
+            el('h1', { style: { margin: 0 }, text: item.title }),
+            el('span', { class: 'muted small', text: t('hwClassLine', { cls: item.className, n: item.assigned }) }),
+            el('span', { class: 'muted small', text: item.groups?.length ? t('hwWhoGroups', { list: item.groups.join('، ') }) : t('hwWhoAll') }),
+          ]),
+          el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+            dueChip(item.dueAt),
+            el('span', {
+              class: 'badge ' + (data.link === 'open' ? 'ok' : 'bad'),
+              text: data.link === 'open' ? t('hwLinkOpen') : data.link === 'ended' ? t('hwLinkEnded') : t('hwLinkGone'),
+            }),
+          ]),
+        ]),
+        el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+          data.link === 'open'
+            ? el('button', {
+                class: 'btn primary sm', type: 'button',
+                onclick: async () => {
+                  await copyLink(hwLink(item.code));
+                  toast(t('hwCopied'), 'ok');
+                },
+              }, t('hwCopy'))
+            : null,
+          data.link === 'open'
+            ? el('button', { class: 'btn accent sm', type: 'button', onclick: () => followHomework(item) }, t('hwLiveFollow'))
+            : null,
+          el('button', { class: 'btn ghost sm', type: 'button', onclick: () => reopenForm() }, t('hwReopen')),
+          el('a', { class: 'btn ghost sm', href: '#/edit/' + item.activityId }, t('hopenAndEdit')),
+          el('button', {
+            class: 'btn danger sm', type: 'button',
+            onclick: async () => {
+              if (!confirm(t('hwDeleteAsk'))) return;
+              try {
+                await api('/api/assignments/' + item.id, { method: 'DELETE' });
+                toast(t('hwDeleted'), 'ok');
+                location.hash = '#/homework';
+              } catch (err) {
+                toast(err.message, 'bad');
+              }
+            },
+          }, t('hwDelete')),
+        ]),
+        reopenBox,
+      ])
+    );
+
+    /**
+     * إعادة الفتح بموعدٍ جديد — حقلُ تاريخٍ لا سؤالُ متصفّح.
+     *
+     * الموعد يُكتب بالتقويم لا بالإملاء: `prompt` كان يطلب من المعلّم أن يكتب
+     * «2026-09-08T18:20» بيده، وذلك أسرع طريقٍ إلى موعدٍ خاطئ.
+     */
+    function reopenForm() {
+      if (reopenBox.childElementCount) return reopenBox.replaceChildren();
+      const guess = new Date(Date.now() + 3 * 86400000);
+      const local = (ms) => new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      const when = el('input', { type: 'datetime-local', value: local(item.dueAt || guess.getTime()) });
+      const go = el('button', { class: 'btn primary sm', type: 'button' }, t('hwReopen'));
+      go.addEventListener('click', async () => {
+        go.disabled = true;
+        const dueAt = when.value ? new Date(when.value).getTime() : 0;
+        try {
+          const res = await api('/api/assignments/' + item.id + '/reopen', { method: 'POST', body: { dueAt } });
+          if (res.assignment.hostToken) rememberHost(res.assignment.code, res.assignment.hostToken, res.assignment.title);
+          toast(t('hwReopened'), 'ok');
+          openAssignment(id);
+        } catch (err) {
+          toast(err.message, 'bad');
+          go.disabled = false;
+        }
+      });
+      reopenBox.replaceChildren(
+        el('div', { class: 'stack tight' }, [
+          el('label', { text: t('hwFormDue') }),
+          when,
+          el('span', { class: 'muted small', text: t('hwFormDueHint') }),
+          el('div', { class: 'row', style: { gap: '8px' } }, [
+            go,
+            el('button', { class: 'btn ghost sm', type: 'button', onclick: () => reopenBox.replaceChildren() }, t('hwFormCancel')),
+          ]),
+        ])
+      );
+      when.focus();
+    }
+
+    app.append(
+      el('div', { class: 'stats' }, [
+        stat(totals.assigned, t('hwStatAssigned')),
+        stat(totals.done, t('hwStatDone')),
+        stat(totals.started, t('hwStatStarted')),
+        stat(totals.missing, t('hwStatMissing')),
+        stat(totals.avgPercent === null ? '—' : totals.avgPercent + '%', t('hwStatAvg')),
+      ])
+    );
+
+    /*
+     * إجاباتٌ نصّية تنتظر تصحيح المعلّم: نتيجةُ من كتبها ناقصةٌ حتى يصحّحها،
+     * فلا يصحّ أن تمرّ في رقمٍ صغير — والتصحيح نفسه في شاشة المتابعة الحيّة.
+     */
+    if (totals.pending) {
+      app.append(
+        el('div', { class: 'card stack tight' }, [
+          el('div', { class: 'note warn', text: t('hwPendingNote', { n: totals.pending }) }),
+          data.link === 'open'
+            ? el('button', { class: 'btn accent sm', type: 'button', style: { alignSelf: 'flex-start' }, onclick: () => followHomework(item) }, t('hwLiveFollow'))
+            : null,
+        ])
+      );
+    }
+
+    const table = el('table', { class: 'rec-table hw-table' });
+    const tbody = el('tbody', {});
+    const groups = [...new Set(rows.map((r) => r.group).filter(Boolean))];
+    const heads = [t('hwColName'), t('hwColStatus'), t('hwColScore'), t('hwColWhen')];
+    if (groups.length) heads.push(t('hwColGroup'));
+    table.append(el('thead', {}, el('tr', {}, heads.map((h) => el('th', { text: h })))), tbody);
+
+    const draw = (filter) => {
+      const shown = rows.filter((r) => (filter === 'done' ? r.status === 'done' : filter === 'missing' ? r.status !== 'done' : true));
+      tbody.replaceChildren(
+        ...shown.map((r) => {
+          const cells = [
+            // الاسم ترويسةُ البطاقة على الجوّال، فلا عنوانَ فوقه
+            el('td', {}, el('a', { href: `#/class/${item.classId}/record/${r.id}`, style: { fontWeight: '700' }, text: r.name })),
+            // الحالة والنسبة شارتان تقولان نفسيهما: بلا عنوانٍ فوقهما على الجوّال
+            el('td', {}, hwStatusBadge(r)),
+            el('td', {}, [pctBadge(r.percent), r.pending ? el('span', { class: 'badge warn', text: t('hRecPending', { n: r.pending }) }) : null]),
+            el('td', { 'data-label': t('hwColWhen') }, el('span', { class: 'muted small', text: r.at ? recDate(r.at) : '—' })),
+          ];
+          if (groups.length) cells.push(el('td', { 'data-label': t('hwColGroup'), class: 'muted' }, el('span', { text: r.group || '—' })));
+          return el('tr', {}, cells);
+        })
+      );
+    };
+    draw('all');
+
+    const card = el('div', { class: 'card stack' });
+    const filter = el('div', { class: 'chips' });
+    [
+      { label: t('hwFilterAll'), value: 'all' },
+      { label: t('hwFilterMissing'), value: 'missing' },
+      { label: t('hwFilterDone'), value: 'done' },
+    ].forEach((entry, i) => {
+      const chip = el('button', { class: 'chip' + (i === 0 ? ' on' : ''), type: 'button', text: entry.label });
+      chip.addEventListener('click', () => {
+        [...filter.children].forEach((node) => node.classList.remove('on'));
+        chip.classList.add('on');
+        draw(entry.value);
+      });
+      filter.append(chip);
+    });
+    card.append(filter, el('div', { class: 'table-wrap' }, table));
+    app.append(card);
+  }
+
+  /**
+   * يبني نشاط مراجعةٍ لنطاقٍ من السجل ثم يفتحه في المحرّر.
+   *
+   * والفتح في المحرّر لا الإطلاق مقصود: المراجعة اقتراحٌ مبنيٌّ على أرقام،
+   * والمعلّم وحده يعرف أن سؤالاً منها شرحه أمس فلا داعي له.
+   */
+  async function buildReview(classId, scope, button) {
+    const label = button?.textContent;
+    if (button) {
+      button.disabled = true;
+      button.textContent = t('hwRevBuilding');
+    }
+    try {
+      const made = await api(`/api/classes/${classId}/review`, { method: 'POST', body: scope || {} });
+      toast(t('hwRevDone', { n: made.activity.questionCount }), 'ok');
+      location.hash = '#/edit/' + made.activity.id;
+    } catch (err) {
+      toast(err.message, 'bad');
+      if (button) {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
   }
 
   // ------------------------------------------------- ألعابي التفاعلية
@@ -2223,6 +2735,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         put('tileStudents', '');
         put('tileRecords', '');
       });
+    api('/api/assignments')
+      .then((data) => {
+        const n = (data.assignments || []).length;
+        put('tileHomework', n ? t('hwTileCount', { n }) : t('hTileNone'));
+      })
+      .catch(() => put('tileHomework', ''));
     if (state.user) {
       api('/api/games?limit=1&teacher=' + encodeURIComponent(state.user.id))
         .then((data) => put('tileGames', data.total ? t('hTileGamesCount', { n: data.total }) : t('hTileNone')))
@@ -2247,6 +2765,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
+        UI.NavChip({ label: t('hwNav'), href: '#/homework' }),
         UI.NavChip({ label: t('hRecNav'), href: '#/records' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
@@ -2336,6 +2855,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         tile('👤', t('profNav'), t('hTileProfile'), '#/profile', 'tileProfile'),
         tile('📚', t('hmyActivities'), t('hTileActivities'), '#/mine', 'tileActivities'),
         tile('🧑‍🏫', t('hStuTitle'), t('hTileStudents'), '#/students', 'tileStudents'),
+        tile('📝', t('hwNav'), t('hwTile'), '#/homework', 'tileHomework'),
         tile('📒', t('hRecNav'), t('hTileRecords'), '#/records', 'tileRecords'),
         tile('🎮', t('gMine'), t('hTileGames'), '#/games', 'tileGames'),
         tile('🌍', t('lNav'), t('hTileLibrary'), '#/library'),
@@ -2530,7 +3050,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('span', {}, [t('hlastEdited'), UI.ltr({ text: when })]),
       ].filter(Boolean),
       actions: [primary, UI.Button({ label: t('hopenAndEdit'), href: '#/edit/' + activity.id, kind: 'outline' })],
-      links: [duplicate, share, paper, remove],
+      /*
+       * «كلّف به» في بطاقة النشاط لا في صفحة الواجبات وحدها: المعلّم ينظر إلى
+       * النشاط فيقرّر أن يرسله واجباً — فالطريق من حيث نشأ القرار، لا رجوعٌ
+       * إلى قائمةٍ ليختار من جديد ما هو أمامه الآن.
+       */
+      links: [duplicate, UI.TextLink({ label: t('hwAssignThis'), href: '#/homework?activity=' + activity.id }), share, paper, remove],
       slot,
     });
   }
