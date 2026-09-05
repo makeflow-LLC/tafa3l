@@ -22,11 +22,12 @@ const stripeApi = require('./stripe');
 const sharePage = require('./share-page');
 const ai = require('./ai');
 const premium = require('./premium');
+const records = require('./records');
 
 // بصمة النسخة — تُمكّن المدرب من التأكد أن النشر الأخير وصل فعلاً
 const BUILD = {
   version: require('../package.json').version,
-  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun', 'homeworkDueDate', 'classRosters', 'darkModeEverywhere', 'cardPayments', 'gameSocialShare'],
+  features: ['pace:host/self', 'scoring:speed/flat/none', 'badges', 'reactions', 'countdown', 'accounts', 'savedActivities', 'autoSaveOnLaunch', 'duplicateActivity', 'sliderScale', 'dashboardResults', 'shareCard', 'googleLogin', 'screenDisplay', 'teamMode', 'rebrandTapio', 'i18n:full', 'i18n:activityLang', 'screenLiveResults', 'aiDesigner', 'premium', 'adminPanel', 'exportXlsxPdf', 'pdfRichPrint', 'pdfDirectDownload', 'resultsRecordExport', 'manualGrading', 'questionImages:premium', 'fillBlank', 'analytics', 'richReports', 'helpGuide', 'scheduledStart', 'timedQuiz', 'teacherNameInReports', 'siteFooter', 'legalPages', 'pwaInstall', 'assessedOnlyBadges', 'typeOrder', 'typeMatch', 'partialAutoGrading', 'shuffleQuestions', 'shuffleOptions', 'contentSlides', 'sheetImport', 'questionVideo', 'studentReview', 'publicLibrary', 'pollPanel', 'a11yFocus', 'marks', 'gradeBands', 'selfPacedDefault', 'autoNext', 'gamesHub', 'gameCovers', 'gameFullscreen', 'gameShareLinks', 'subjectGradeCatalog', 'gameTeacherDirectory', 'gamesDarkMode', 'gamesOfflinePlay', 'teacherProfile', 'aiFreshChat', 'aiAutoGradedDefault', 'markSplitEqualCustom', 'timeWindowModes', 'questionWizard', 'threeStageBuilder', 'joinPageAtSlashC', 'launchRequiresAccount', 'aiDraftOpensAtReview', 'finishForEveryone', 'sessionStructurePersistence', 'finishBarForStudents', 'demoWithoutAccount', 'reuseMyQuestions', 'autoAdvanceAsToggle', 'noStreakMultiplier', 'paperPrintout', 'guidedFirstRun', 'homeworkDueDate', 'classRosters', 'darkModeEverywhere', 'cardPayments', 'gameSocialShare', 'studentRecords'],
 };
 
 // PORT=0 صالح (منفذ عشوائي) لذا لا نستخدم `||`
@@ -216,6 +217,7 @@ app.post('/api/sessions', auth.requireUser, async (req, res) => {
     // صور الأسئلة للمشتركين فقط
     premium.assertImagesAllowed(req.user, req.body?.questions);
     const session = store.createSession(req.body || {});
+    await vetRecordClass(session, req.user);
     let activityId = null;
     // المدرب المسجّل: تُحفظ أسئلته تلقائياً في نشاطاته مع كل إطلاق —
     // فلا يضيع نشاط لمجرد أنه نسي زر الحفظ، وإنهاء الجلسة لا يحذفه
@@ -286,6 +288,8 @@ app.get('/api/sessions/:code', (req, res) => {
      * ولا رقم ولا درجة — لأن الكشف أسماءٌ فقط لا سجلّ طلاب.
      */
     roster: session.settings.roster || [],
+    // سجلّ الطلاب مفعّل: من يختار اسمه من الكشف يُدخل رمزه الشخصي معه
+    record: Boolean(session.settings.recordClassId),
     participants: session.participants.size,
     questionCount: session.questions.length,
     joinUrl: joinUrl(req, session.code),
@@ -293,7 +297,7 @@ app.get('/api/sessions/:code', (req, res) => {
 });
 
 /** تعديل الأسئلة قبل بدء الجلسة */
-app.put('/api/sessions/:code', (req, res) => {
+app.put('/api/sessions/:code', async (req, res) => {
   const session = requireHost(req, res);
   if (!session) return;
   if (session.status !== 'lobby') {
@@ -304,6 +308,7 @@ app.put('/api/sessions/:code', (req, res) => {
     premium.assertImagesAllowed(req.user, req.body?.questions);
     const quiz = normalizeQuiz(req.body || {});
     session.applyEdit(quiz);
+    await vetRecordClass(session, req.user);
     // كتابةٌ كاملة لا خفيفة: الأسئلة والعنوان لا تكتبهما التحديثات الخفيفة،
     // فكانت إعادةُ النشر تُعيد الجلسة بأسئلتها القديمة
     store.rewrite(session);
@@ -426,6 +431,23 @@ app.use((err, req, res, next) => {
 function fail(res, err) {
   const status = err?.status || 400;
   res.status(status).json({ error: err?.message || 'طلب غير صالح' });
+}
+
+/**
+ * سجلّ الطلاب لا يُكتب إلا في فصلٍ **يملكه المُطلِق وشغّل عليه السجل**.
+ * الواجهة لا ترسل المعرّف إلا حينها، لكن الخادم لا يثق بالواجهة: معرّفُ
+ * فصلٍ لغير صاحبه، أو فصلٍ أُطفئ سجلّه بعد حفظ المسودة، يُسقَط بصمت.
+ */
+async function vetRecordClass(session, user) {
+  const id = session.settings.recordClassId;
+  if (!id) return;
+  let cls = null;
+  try {
+    cls = await storage.get().getClass(id);
+  } catch {
+    cls = null;
+  }
+  if (!cls || !cls.record || !user || cls.ownerId !== user.id) session.settings.recordClassId = null;
 }
 
 function requireHost(req, res) {
@@ -561,25 +583,47 @@ function handleMessage(socket, msg) {
     if (session.status === 'live' && !session.settings.allowLateJoin) {
       return sendTo(socket, { t: 'error', code: 'closed', message: 'بدأت الجلسة ولا يُسمح بالدخول المتأخر' });
     }
-    let participant;
-    try {
-      participant = session.addParticipant({
-        name: session.settings.requireName ? msg.name : 'مشارك مجهول',
-        avatar: msg.avatar,
-      });
-    } catch (err) {
-      // الاسم المكرّر ليس امتلاءً: رمزُه يخصّه كي تعرف الواجهة أن تُعيد السؤال
-      return sendTo(socket, { t: 'error', code: err.code || 'full', message: err.message });
-    }
-    attachParticipant(socket, session, participant);
-    sendTo(socket, {
-      t: 'joined',
-      participantId: participant.id,
-      participantToken: participant.token,
-      code: session.code,
-    });
-    sendTo(socket, session.participantState(participant));
-    pushHost(session);
+    const name = session.settings.requireName ? msg.name : 'مشارك مجهول';
+    /**
+     * سجلّ الطلاب: إن كان للجلسة فصلٌ مُسجَّل والاسمُ من كشفه، فالرمز الشخصي
+     * شرطٌ — وإلا كتب أحدُهم في ملفّ زميله. والاسم الذي ليس في الكشف يدخل
+     * ضيفاً كما كان دائماً: الكشف دليلٌ لا بوّابة، والسجل لا يغيّر ذلك.
+     * (القراءة من التخزين غير متزامنة، فيُعاد التحقّق من المقبس بعدها.)
+     */
+    const finishJoin = (studentId, cls, pupil) => {
+      if (socket.ctx || socket.readyState !== 1) return;
+      let participant;
+      try {
+        participant = session.addParticipant({ name, avatar: msg.avatar });
+      } catch (err) {
+        // الاسم المكرّر ليس امتلاءً: رمزُه يخصّه كي تعرف الواجهة أن تُعيد السؤال
+        return sendTo(socket, { t: 'error', code: err.code || 'full', message: err.message });
+      }
+      participant.studentId = studentId || null;
+      attachParticipant(socket, session, participant);
+      const joined = {
+        t: 'joined',
+        participantId: participant.id,
+        participantToken: participant.token,
+        code: session.code,
+      };
+      // رمزُ صفحته «سجلّي»: يعيش على جهازه، ولا يُرسل إلا لمن دخل بملفّه
+      if (studentId) joined.recordToken = records.tokenFor(cls.id, pupil);
+      sendTo(socket, joined);
+      sendTo(socket, session.participantState(participant));
+      pushHost(session);
+    };
+    if (!session.settings.recordClassId || !session.settings.requireName) return finishJoin(null);
+    records
+      .identify(session.settings.recordClassId, name, msg.pin)
+      .then((found) => {
+        if (found.ok) return finishJoin(found.pupil.id, found.cls, found.pupil);
+        if (found.reason === 'pin') {
+          return sendTo(socket, { t: 'error', code: 'pin', message: 'الرمز الشخصي غير صحيح — اسأل معلّمك عن رمزك' });
+        }
+        return finishJoin(null);
+      })
+      .catch(() => finishJoin(null));
     return;
   }
 
@@ -640,6 +684,8 @@ function handleMessage(socket, msg) {
       }
       for (const s of participant.sockets) sendTo(s, session.participantState(participant));
       pushHost(session);
+      // في الوضع الحرّ يُنهي كلٌّ بنفسه — فتُكتب نتيجته في سجلّه حينها لا عند إغلاق المعلّم الجلسة
+      if (participant.phase === 'done' && participant.studentId) records.capture(session, participant).catch(() => {});
       return;
     }
     if (type === 'review') {
@@ -718,6 +764,11 @@ function handleMessage(socket, msg) {
       // تصحيح إجابة نصّية: علامة كاملة أو جزئية أو صفر
       const result = session.grade(String(msg.participantId), String(msg.questionId), msg.points);
       if (!result.ok) return sendTo(socket, { t: 'error', code: 'grade', message: result.error });
+      // تصحيحٌ بعد أن كُتب السطر في السجل (طالبٌ أنهى، أو جلسةٌ انتهت) يُحدّثه
+      {
+        const graded = session.participants.get(String(msg.participantId));
+        if (graded?.studentId && (session.status === 'ended' || graded.phase === 'done')) records.capture(session, graded).catch(() => {});
+      }
       break;
     }
     default:
