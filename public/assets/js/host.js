@@ -172,6 +172,7 @@
     menu.append(UI.MenuRow({ label: t('hhome'), href: '/' }));
     menu.append(UI.MenuRow({ label: t('hDashboard'), href: '#/' }));
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
+    menu.append(UI.MenuRow({ label: t('hStuTitle'), href: '#/students' }));
     menu.append(UI.MenuRow({ label: t('hRecNav'), href: '#/records' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
@@ -459,6 +460,9 @@
    * طالبٌ جديد في منتصف الفصل، واسمٌ فيه خطأٌ مطبعي، وطالبٌ ينتقل بين
    * مجموعتين، كلّها كانت تُقضى بإعادة كتابة القائمة كلّها من الذاكرة.
    */
+  /** رايةٌ يرفعها من أنشأ فصلاً: أوّل ما يريده بعدها كتابةُ اسم طالب */
+  let wantsStudentFocus = false;
+
   async function openStudents(classId) {
     blankPage();
     let items = [];
@@ -484,8 +488,13 @@
         try {
           const made = await api('/api/classes', { method: 'POST', body: { name: nameInput.value.trim(), students: namesInput.value } });
           toast(t('hClassSaved'), 'ok');
+          /*
+           * البؤرة تُطلب ولا تُوضع هنا: تغييرُ العنوان يستدعي `route()` فيُعاد
+           * الرسم بعد سطرنا هذا، فأيّ بؤرةٍ نضعها الآن تذهب مع العقدة القديمة.
+           * فترفع الرايةَ ويضعها الراسمُ في آخره.
+           */
+          wantsStudentFocus = true;
           location.hash = '#/students?class=' + encodeURIComponent(made.class.id);
-          reload(made.class.id);
         } catch (err) {
           toast(err.message, 'bad');
           save.disabled = false;
@@ -531,6 +540,12 @@
     app.append(head);
 
     if (!items.length) {
+      /*
+       * لا فصل بعد: الطلاب يعيشون داخل فصل، فالخطوة الأولى إنشاؤه — ونقولها
+       * صراحةً. ومن يفتح الشاشة باحثاً عن «إضافة طالب» فلا يجد إلا نموذج فصلٍ
+       * بلا كلمةٍ تشرح، يظنّ الميزة غائبة.
+       */
+      head.append(el('div', { class: 'note', text: t('hStuFirstClass') }));
       newClassForm(formBox);
       return;
     }
@@ -574,6 +589,14 @@
           el('span', { class: 'muted small', text: classLine(current) }),
         ]),
         el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+          el('button', {
+            class: 'btn primary sm', type: 'button',
+            onclick: () => {
+              const field = document.getElementById('stuNameField');
+              field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              field?.focus({ preventScroll: true });
+            },
+          }, t('hStuJump')),
           el('button', { class: 'btn ghost sm', type: 'button', onclick: () => renameClass() }, t('hStuRename')),
           current.record ? el('a', { class: 'btn primary sm', href: `#/class/${current.id}/record` }, t('hRecOpen')) : null,
           el('button', { class: 'btn ghost sm', type: 'button', onclick: () => pasteList() }, t('hStuPaste')),
@@ -590,13 +613,6 @@
               }
             },
           }, t('hClassDelete')),
-        ]),
-        el('label', { class: 'switch-row' }, [
-          recordToggle,
-          el('span', { class: 'stack tight' }, [
-            el('strong', { class: 'small', text: t('hRecSwitch') }),
-            el('span', { class: 'muted small', text: t('hRecSwitchHint') }),
-          ]),
         ]),
       ])
     );
@@ -704,7 +720,7 @@
           el('div', { class: 'grow', style: { minWidth: '140px' } }, [el('label', { text: t('hStuGroup') }), addGroup, groupList]),
           addBtn,
         ]),
-        el('details', {}, [
+        el('details', { open: true }, [
           el('summary', { class: 'muted small', style: { cursor: 'pointer' }, text: t('hStuAddGroupTitle') }),
           el('div', { class: 'stack tight', style: { marginTop: '8px' } }, [
             el('div', {}, [el('label', { text: t('hStuGroupName') }), bulkGroup]),
@@ -714,6 +730,27 @@
         ]),
       ])
     );
+
+    /*
+     * مفتاح السجل بعد بطاقة الإضافة لا قبلها: الإضافة فعلٌ يوميّ، والسجل
+     * قرارٌ يُتّخذ مرّة — فما يُفعل كل يوم يسبق ما يُقرَّر مرّة.
+     */
+    app.append(
+      el('div', { class: 'card' }, [
+        el('label', { class: 'switch-row' }, [
+          recordToggle,
+          el('span', { class: 'stack tight' }, [
+            el('strong', { class: 'small', text: t('hRecSwitch') }),
+            el('span', { class: 'muted small', text: t('hRecSwitchHint') }),
+          ]),
+        ]),
+      ])
+    );
+
+    if (wantsStudentFocus) {
+      wantsStudentFocus = false;
+      addName.focus({ preventScroll: true });
+    }
 
     // ---- الكشف: الطلاب تحت عناوين مجموعاتهم، ولكلٍّ تعديلٌ وحذف
     if (!current.students.length) {
