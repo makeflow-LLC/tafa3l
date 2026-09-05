@@ -269,13 +269,15 @@
 
     const people = peopleRows(participants, data);
 
+    // عمود المهارة بعد النوع: به يُصفّى الجدول في Excel فيُقرأ أداءُ مهارةٍ بعينها
     const qRows = [
-      ['#', t('xType'), t('xQuestion'), t('xOptions'), t('xCorrectAnswer'), t('xScoreCol'), t('xResponses'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xAccuracyCol'), t('xAvgSecCol')],
+      ['#', t('xType'), t('bSkillLabel'), t('xQuestion'), t('xOptions'), t('xCorrectAnswer'), t('xScoreCol'), t('xResponses'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xAccuracyCol'), t('xAvgSecCol')],
     ];
     questions.forEach((q) => {
       qRows.push([
         q.index,
         (TYPE_AR[q.type] ? t(TYPE_AR[q.type]) : q.type),
+        q.skill || '',
         q.text,
         (q.options || []).join(' | '),
         (q.correct || []).join(' | ') || (q.blanks || []).filter(Boolean).join(' | '),
@@ -1047,7 +1049,9 @@ ${marksTableHtml(data)}
       .map((q) => {
         k += 1;
         const exp = q.explanation ? `<div class="exp">${esc(q.explanation)}</div>` : '';
-        return `<li value="${k}">${paperAnswer(q)}${exp}</li>`;
+        // المهارة في مفتاح الإجابة: ورقةُ المعلّم تقول ما يقيسه كل سؤال
+        const skill = q.skill ? `<div class="exp">🎯 ${esc(q.skill)}</div>` : '';
+        return `<li value="${k}">${paperAnswer(q)}${skill}${exp}</li>`;
       })
       .join('');
 

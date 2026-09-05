@@ -1563,6 +1563,8 @@
             ])
           : null,
         item.explanation ? el('p', { class: 'muted small', style: { margin: 0 }, text: '💡 ' + item.explanation }) : null,
+        // المهارة التي يقيسها السؤال إن وسمها المعلّم — الطالب يعرف ما يراجعه لا أي سؤالٍ أخطأ فيه
+        item.skill ? el('span', { class: 'badge', text: '🎯 ' + item.skill }) : null,
       ]);
 
       const flip = el('button', { class: 'btn ghost sm', type: 'button' }, t('pReviewShow'));

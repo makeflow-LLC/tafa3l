@@ -171,6 +171,9 @@ function entryFor(session, participant) {
     items.push({
       text: short(q.text),
       type: q.type,
+      // المهارة تُحفظ مع الخطأ لا مع السؤال وحده: بها يُقال «ضعيفٌ في جمع
+      // الكسور» بدل تعداد أسئلةٍ لن تتكرّر بنصّها في اختبارٍ آخر
+      skill: short(q.skill || ''),
       ok: ok === undefined ? null : ok,
       mine: a ? short(readable(q, a.value)) : '',
       right: short(rightAnswer(q)),
@@ -311,8 +314,31 @@ function weakSpots(records, limit = 8) {
   return [...count.values()].sort((a, b) => b.times - a.times).slice(0, limit);
 }
 
+/**
+ * المهارات التي يتعثّر فيها طالبٌ عبر محاولاته.
+ *
+ * وهي أنفع من «ما يتكرّر خطؤه» حين يسم المعلّم أسئلته: السؤال بنصّه لا
+ * يتكرّر بين اختبارَين، أما المهارة فتتكرّر — فيقرأ المعلّم «أخطأ في جمع
+ * الكسور ٤ مرّات من ٥ محاولات» بدل أربعة أسئلةٍ متفرّقة لا يجمعها شيء ظاهر.
+ * والأسئلة غير الموسومة لا تُحسب هنا أصلاً: لا نخترع لها وسماً.
+ */
+function weakSkills(records, limit = 6) {
+  const map = new Map();
+  for (const r of records) {
+    for (const it of r.items || []) {
+      const skill = (it.skill || '').trim();
+      if (!skill || (it.ok !== false && it.ok !== 'partial')) continue;
+      const row = map.get(skill) || { skill, misses: 0 };
+      row.misses += 1;
+      map.set(skill, row);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.misses - a.misses).slice(0, limit);
+}
+
 module.exports = {
   PIN_LENGTH,
+  weakSkills,
   newPin,
   syncPupils,
   publicPupil,

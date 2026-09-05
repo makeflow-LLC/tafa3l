@@ -70,6 +70,39 @@
       .sort((a, b) => a.responses - b.responses)
       .filter((q) => q.responses < participants.length)[0] || null;
 
+    /**
+     * الأداء حسب المهارة — إن وسم المعلّم أسئلته.
+     *
+     * وهو أنفع ما في التقرير لمن يخطّط حصّته القادمة: «السؤال ٧ صعب» لا
+     * يُبنى عليه درس، و«الصفّ ٤٠٪ في جمع الكسور» هو الدرس القادم نفسه.
+     * والدقّة تُحسب من مجموع الإجابات لا من متوسّط نسب الأسئلة: سؤالٌ أجابه
+     * ثلاثون لا يساوي سؤالاً أجابه ثلاثة.
+     */
+    const skillMap = new Map();
+    scored.forEach((q) => {
+      const skill = String(q.skill || '').trim();
+      if (!skill) return;
+      const row = skillMap.get(skill) || { skill, questions: 0, correct: 0, graded: 0, seconds: 0, responses: 0 };
+      row.questions += 1;
+      // المصحَّح = الصحيح + الجزئي + الخطأ؛ والمعلّق خارج الحساب حتى يُقرأ
+      const graded = (q.correctCount || 0) + (q.partialCount || 0) + (q.wrongCount || 0);
+      row.graded += graded;
+      row.correct += (q.correctCount || 0) + (q.partialCount || 0) * 0.5;
+      row.responses += q.responses || 0;
+      row.seconds += (q.avgSeconds || 0) * (q.responses || 0);
+      skillMap.set(skill, row);
+    });
+    const skills = [...skillMap.values()]
+      .map((row) => ({
+        skill: row.skill,
+        questions: row.questions,
+        responses: row.responses,
+        accuracy: row.graded ? Math.round((row.correct / row.graded) * 100) : null,
+        avgSeconds: row.responses ? Math.round((row.seconds / row.responses) * 10) / 10 : 0,
+      }))
+      .sort((a, b) => (a.accuracy ?? 101) - (b.accuracy ?? 101));
+    const weakSkills = skills.filter((s) => s.accuracy !== null && s.accuracy < 60);
+
     const needsReview = withAccuracy.filter((q) => q.accuracy < 50).sort((a, b) => a.accuracy - b.accuracy);
     const strugglers = participants.filter((p) => p.percent !== null && p.percent < 50);
     const top = participants.slice(0, 3);
@@ -105,6 +138,8 @@
       slowest,
       mostSkipped,
       needsReview,
+      skills,
+      weakSkills,
       strugglers,
       top,
       recommendations: recommend({
@@ -113,6 +148,7 @@
         avgPercent,
         participation,
         needsReview,
+        weakSkills,
         strugglers,
         hardest,
         easiest,
@@ -157,6 +193,15 @@
           text: t('aRecLow', { pct: ctx.avgPercent }),
         });
       }
+    }
+
+    /*
+     * المهارة قبل السؤال في التوصيات: «راجع جمع الكسور» عملٌ يُخطَّط له،
+     * و«راجع السؤال الرابع» ملاحظةٌ تُقرأ ثم تُنسى.
+     */
+    if (ctx.weakSkills && ctx.weakSkills.length) {
+      const list = ctx.weakSkills.slice(0, 3).map((s) => `«${s.skill}» (${s.accuracy}${t('pctSuffix')})`).join(T('listSep'));
+      out.push({ tone: 'bad', text: t('aRecWeakSkills', { list }) });
     }
 
     if (ctx.needsReview.length) {
@@ -291,6 +336,19 @@
       .filter((q) => q.responses > 0)
       .map((q) => ({ label: `${q.index}. ${q.text}`, value: q.avgSeconds, display: q.avgSeconds + T('aSecShort'), tone: 'brand2' }));
 
+    /*
+     * الأداء حسب المهارة: أضعفها أولاً — أول سطرٍ يقع عليه بصر المعلّم هو
+     * ما يجب أن يفعله غداً. ولا يظهر القسم أصلاً إن لم يسم أسئلته.
+     */
+    const skillRows = (a.skills || [])
+      .filter((s) => s.accuracy !== null)
+      .map((s) => ({
+        label: `${s.skill} · ${t('aSkillQuestions', { n: s.questions })}`,
+        value: s.accuracy,
+        display: s.accuracy + T('pctSuffix'),
+        tone: s.accuracy >= 80 ? 'ok' : s.accuracy >= 50 ? 'warn' : 'bad',
+      }));
+
     const bandRows = a.bands.map((b) => ({
       label: b.label,
       value: b.count,
@@ -331,6 +389,11 @@
       ${highlight(a.mostSkipped, t('aMostSkipped'), 'warn', a.mostSkipped ? t('aAnsweredBy', { n: a.mostSkipped.responses, total: a.participantCount }) : '')}
     </div>
 
+    ${
+      skillRows.length
+        ? `<div class="chart-card"><h3>${t('aBySkill')}</h3><p class="muted small">${t('aBySkillNote')}</p>${barsHtml(skillRows)}</div>`
+        : ''
+    }
     ${accuracyRows.length ? `<div class="chart-card"><h3>${t('aAccuracyPerQuestion')}</h3>${barsHtml(accuracyRows)}</div>` : ''}
     ${timeRows.length ? `<div class="chart-card"><h3>${t('aAvgAnswerTime')}</h3>${barsHtml(timeRows)}</div>` : ''}
 

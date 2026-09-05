@@ -78,6 +78,8 @@ const LIMITS = {
   itemText: 100,
   questionText: 300,
   explanation: 400,
+  // وسم المهارة أو الهدف: عبارةٌ قصيرة تُقرأ في جدول لا جملةٌ تشرح
+  skill: 60,
   optionText: 120,
   // نصّ شريحة المحتوى: فقرة شرح لا سؤال، فهي أطول
   slideBody: 1200,
@@ -213,6 +215,14 @@ function normalizeQuestion(raw, index) {
     text: clean(raw?.text, LIMITS.questionText) || `سؤال ${index + 1}`,
     // شرح أو سبب يظهر مع الإجابة الصحيحة (اختياري)
     explanation: clean(raw?.explanation, LIMITS.explanation),
+    /**
+     * المهارة أو الهدف الذي يقيسه السؤال — **اختياريّ بالكامل**.
+     *
+     * وبه يتحوّل التحليل من «السؤال ٧ صعب» إلى «الصفّ ضعيف في جمع الكسور»:
+     * الأول لا يُبنى عليه درسٌ قادم، والثاني هو الدرس القادم. ولذلك هو نصٌّ
+     * حرّ لا قائمةٌ مغلقة — مناهج المعلّمين تختلف، وقائمةٌ نفرضها تُترك.
+     */
+    skill: clean(raw?.skill, LIMITS.skill),
     /**
      * مؤقّت السؤال الواحد لم يعد موجوداً: الوقت — إن وُضع — واحدٌ لكل
      * الأسئلة في `settings.timeMode`. يبقى الحقل ليُقرأ من نشاطٍ قديم
@@ -1351,6 +1361,7 @@ class Session {
         index: index + 1,
         type: q.type,
         text: q.text,
+        skill: q.skill || '',
         explanation: reveal ? q.explanation || '' : '',
         mine: a ? readable(a.value) : '',
         answered: !!a,
@@ -1846,6 +1857,8 @@ class Session {
         index: i,
         id: q.id,
         text: q.text,
+        // وسم المهارة يظهر في جدول اللوحة: المعلّم يرى أثناء الحصة أيّ مهارةٍ تتعثّر
+        skill: q.skill || '',
         content: CONTENT_TYPES.has(q.type),
         type: q.type,
         asked: selfPaced ? reached > 0 : i <= this.currentIndex,
@@ -2000,6 +2013,8 @@ class Session {
         index: i + 1,
         text: q.text,
         type: q.type,
+        // المهارة في التقرير كما هي في السؤال: منها يُبنى «الأداء حسب المهارة»
+        skill: q.skill || '',
         options: q.options.map((o) => o.text),
         correct: q.correct.map((c) => q.options.find((o) => o.id === c)?.text).filter(Boolean),
         // «أكمل الفراغ»: الإجابات المتوقعة تُصدَّر مكان الإجابة الصحيحة
@@ -2396,6 +2411,8 @@ function publicQuestion(q, revealCorrect, code, view, seconds) {
     imageUrl: q.image && code ? `/api/sessions/${code}/questions/${q.id}/image` : null,
     // الشرح لا يُرسل إلا مع كشف الإجابة
     explanation: revealCorrect ? q.explanation || '' : '',
+    // الوسم يصل دائماً: عنوانُ ما يقيسه السؤال لا مفتاحُ إجابته
+    skill: q.skill || '',
     // الثواني الفعلية بعد تطبيق وضع الوقت — لا حقل السؤال وحده
     timeLimit: seconds === undefined ? q.timeLimit : seconds,
     points: q.points,

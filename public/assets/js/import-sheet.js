@@ -75,6 +75,8 @@
     points: ['points', 'score', 'mark', 'marks', 'العلامة', 'الدرجة', 'النقاط', 'علامة'],
     time: ['time', 'seconds', 'timelimit', 'الوقت', 'المدة', 'الزمن', 'الثواني'],
     explanation: ['explanation', 'why', 'note', 'الشرح', 'التفسير', 'ملاحظة'],
+    // وسم المهارة أو الهدف — عمودٌ اختياري في ورقة المعلّم
+    skill: ['skill', 'objective', 'goal', 'tag', 'standard', 'المهارة', 'مهارة', 'الهدف', 'هدف', 'الوسم'],
   };
 
   const OPTION_RE = /^(?:option|choice|opt|answer)\s*([1-8])$|^([a-h])$|^خيار\s*([1-8])$|^(?:الخيار)\s*([1-8])$/i;
@@ -209,6 +211,7 @@
         type,
         text: textValue,
         explanation: cell(map.explanation) || undefined,
+        skill: cell(map.skill) || undefined,
       };
       if (Number.isFinite(points) && cell(map.points)) question.points = Math.max(0, Math.round(points));
       if (Number.isFinite(time) && cell(map.time)) question.timeLimit = Math.max(0, Math.round(time));

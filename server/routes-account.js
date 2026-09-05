@@ -455,6 +455,36 @@ function accountRoutes(store) {
     }
   });
 
+  /**
+   * وسومُ المهارات التي استعملها هذا المعلّم من قبل — لقائمة اقتراحٍ في المحرّر.
+   *
+   * وسمٌ حرٌّ بلا اقتراحٍ يتشتّت: «جمع الكسور» و«جمع كسور» و«الكسور - جمع»
+   * ثلاثةُ وسومٍ لمهارةٍ واحدة، فيصير التحليلُ حسب المهارة بلا معنى. فنعرض
+   * عليه ما كتبه سابقاً مرتّباً بالأكثر استعمالاً، ليختار لا ليكتب.
+   */
+  router.get('/my-skills', auth.requireUser, async (req, res) => {
+    try {
+      const db = storage.get();
+      const [activities, bank] = await Promise.all([db.listActivities(req.user.id), db.listBankQuestions(req.user.id)]);
+      const counts = new Map();
+      const add = (question) => {
+        const skill = String(question?.skill || '').replace(/\s+/g, ' ').trim();
+        if (!skill) return;
+        counts.set(skill, (counts.get(skill) || 0) + 1);
+      };
+      for (const item of bank) add(item.question);
+      for (const activity of activities) for (const question of activity.questions || []) add(question);
+      const skills = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ar'))
+        .slice(0, 200)
+        .map(([skill, times]) => ({ skill, times }));
+      res.json({ skills });
+    } catch (err) {
+      console.error('my-skills:', err);
+      res.status(500).json({ error: 'تعذّر جلب مهاراتك' });
+    }
+  });
+
   // ---------------------------------------------------------------- الفصول
   //
   // أسماءُ طلاب المعلّم كما يكتبها هو، **اختيارية بالكامل**، وغرضها واحد:
@@ -680,7 +710,13 @@ function accountRoutes(store) {
       const pupil = (item.pupils || []).find((p) => p.id === req.params.sid);
       if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
       const rows = await storage.get().listRecords(item.id, pupil.id);
-      res.json({ student: records.publicPupil(pupil), demo: Boolean(item.demo), records: rows, weak: records.weakSpots(rows) });
+      res.json({
+        student: records.publicPupil(pupil),
+        demo: Boolean(item.demo),
+        records: rows,
+        weak: records.weakSpots(rows),
+        weakSkills: records.weakSkills(rows),
+      });
     } catch (err) {
       console.error('student record:', err);
       res.status(500).json({ error: 'تعذّر جلب ملفّ الطالب' });
