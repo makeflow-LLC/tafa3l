@@ -2539,6 +2539,63 @@ html.dark .cloud .c6 { color: #22d3ee; }
   gap: 8px;
 }
 
+/**
+ * بلاطات أقسام اللوحة: صفٌّ لكل قسم على الجوّال، وشبكةٌ على الشاشة الأوسع.
+ * كلٌّ منها رابطٌ كامل الارتفاع — الهدفُ اللمسيّ هو البطاقة لا كلمةٌ فيها.
+ */
+.tp-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tp-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.tp-tile:hover {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+}
+
+.tp-tile__em {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.tp-tile__body {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tp-tile__note {
+  color: var(--muted);
+  font-size: 0.78rem;
+  /* سطرٌ واحد لا يكسر ارتفاع البلاطات فتتفاوت في الشبكة */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-tile__meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* مجموعةٌ في كشف الدخول: عنوانٌ صغير فوق أسمائها — الطالب يجد اسمه بنظرة */
 .roster-group {
   display: grid;

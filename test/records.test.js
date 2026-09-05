@@ -463,6 +463,96 @@ test('فصلٌ بلا مجموعات لا يُصنَّف: القائمة فار�
   assert.deepEqual(rec.data.groups, []);
 });
 
+// ------------------------------------------------------ إدارة الطلاب
+
+test('إضافة طالب: يُدرَج آخر مجموعته لا آخر القائمة، والاسم المكرّر يُرفض', async () => {
+  const teacher = client();
+  await teacher.login('أ. فادي');
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\n# ب\nكريم', record: true })).data.class;
+
+  const added = await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: 'ليان', group: 'أ' });
+  assert.equal(added.status, 201);
+  assert.deepEqual(added.data.class.students, ['سارة', 'ليان', 'كريم']);
+  assert.deepEqual(added.data.class.groups, ['أ', 'أ', 'ب']);
+
+  const tail = await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: 'رنا' });
+  assert.deepEqual(tail.data.class.students, ['سارة', 'ليان', 'كريم', 'رنا']);
+  assert.equal(tail.data.class.groups[3], '');
+
+  assert.equal((await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: ' ليان ' })).status, 409);
+  assert.equal((await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: '  ' })).status, 400);
+});
+
+test('تعديل اسم طالب يحفظ ملفّه ورمزه — تصحيحُ حرفٍ لا يُفقده سجلّه', async () => {
+  const teacher = client();
+  await teacher.login('أ. رنيم');
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: 'سارة احمد\nكريم', record: true })).data.class;
+  const before = cls.pupils.find((p) => p.name === 'سارة احمد');
+
+  const fixed = await teacher.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة احمد')}`, { name: 'سارة أحمد' });
+  assert.equal(fixed.status, 200);
+  const after = fixed.data.class.pupils.find((p) => p.name === 'سارة أحمد');
+  assert.equal(after.id, before.id, 'المعرّف كما هو');
+  assert.equal(after.pin, before.pin, 'والرمز كما هو');
+  assert.deepEqual(fixed.data.class.students, ['سارة أحمد', 'كريم']);
+});
+
+test('نقل طالبٍ بين المجموعات ينقله إلى موضع مجموعته، والحذف يُزيله بمجموعته', async () => {
+  const teacher = client();
+  await teacher.login('أ. بشار');
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\nليان\n# ب\nكريم' })).data.class;
+
+  const moved = await teacher.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`, { group: 'ب' });
+  assert.deepEqual(moved.data.class.students, ['ليان', 'كريم', 'سارة']);
+  assert.deepEqual(moved.data.class.groups, ['أ', 'ب', 'ب']);
+
+  const out = await teacher.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`, { group: '' });
+  assert.equal(out.data.class.groups[out.data.class.students.indexOf('سارة')], '');
+
+  const gone = await teacher.request('DELETE', `/api/classes/${cls.id}/students/${encodeURIComponent('ليان')}`);
+  assert.deepEqual(gone.data.class.students, ['كريم', 'سارة']);
+  assert.deepEqual(gone.data.class.groups, ['ب', '']);
+  assert.equal((await teacher.request('DELETE', `/api/classes/${cls.id}/students/${encodeURIComponent('لا أحد')}`)).status, 404);
+});
+
+test('مجموعةٌ بأسمائها دفعةً واحدة: الاسم الموجود يُنقل إليها ولا يتكرّر', async () => {
+  const teacher = client();
+  await teacher.login('أ. علا');
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\nليان' })).data.class;
+  const made = await teacher.request('POST', `/api/classes/${cls.id}/groups`, { name: 'ب', students: 'ليان\nكريم\nرنا' });
+  assert.equal(made.status, 201);
+  assert.deepEqual(made.data.class.students, ['سارة', 'ليان', 'كريم', 'رنا']);
+  assert.deepEqual(made.data.class.groups, ['أ', 'ب', 'ب', 'ب']);
+  assert.equal((await teacher.request('POST', `/api/classes/${cls.id}/groups`, { name: '  ' })).status, 400);
+});
+
+test('إعادة تسمية مجموعة وحلّها — والطلاب يبقون', async () => {
+  const teacher = client();
+  await teacher.login('أ. مازن');
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\nليان\n# ب\nكريم' })).data.class;
+  const renamed = await teacher.request('PATCH', `/api/classes/${cls.id}/groups/${encodeURIComponent('أ')}`, { name: 'مجموعة الدعم' });
+  assert.deepEqual(renamed.data.class.groups, ['مجموعة الدعم', 'مجموعة الدعم', 'ب']);
+
+  const dissolved = await teacher.request('PATCH', `/api/classes/${cls.id}/groups/${encodeURIComponent('ب')}`, { name: '' });
+  assert.deepEqual(dissolved.data.class.groups, ['مجموعة الدعم', 'مجموعة الدعم', '']);
+  assert.equal(dissolved.data.class.students.length, 3, 'حلُّ المجموعة لا يحذف أحداً');
+  assert.equal((await teacher.request('PATCH', `/api/classes/${cls.id}/groups/${encodeURIComponent('لا وجود')}`, { name: 'س' })).status, 404);
+});
+
+test('إدارة الطلاب معزولةٌ لكل معلّم', async () => {
+  const a = client();
+  const b = client();
+  await a.login('أ. أيمن');
+  await b.login('أ. لمى');
+  const cls = (await a.request('POST', '/api/classes', { name: 'صفّ أيمن', students: 'سارة' })).data.class;
+  assert.equal((await b.request('POST', `/api/classes/${cls.id}/students`, { name: 'دخيل' })).status, 404);
+  assert.equal((await b.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`, { name: 'x' })).status, 404);
+  assert.equal((await b.request('DELETE', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`)).status, 404);
+  assert.equal((await b.request('POST', `/api/classes/${cls.id}/groups`, { name: 'ج' })).status, 404);
+  assert.equal((await client().request('POST', `/api/classes/${cls.id}/students`, { name: 'x' })).status, 401);
+  assert.deepEqual((await a.request('GET', '/api/classes')).data.classes[0].students, ['سارة']);
+});
+
 // ----------------------------------------------------------- النموذج
 
 test('السجل التجريبي: فصلٌ بطلاب وهميين في ثلاث مجموعات ونتائجَ عبر خمسة أنشطة', async () => {
