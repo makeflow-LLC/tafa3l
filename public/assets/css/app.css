@@ -4086,3 +4086,31 @@ details.card[open] > summary::after {
     transition: none;
   }
 }
+
+/**
+ * شريط «نسختك قديمة»: أسفل الشاشة، فوق كل شيء، ولا يحجب فعلاً — رسالةٌ
+ * وزرّ. ويظهر مرّةً واحدة حين يختلف إصدار الصفحة عن إصدار الخادم.
+ */
+.stale-bar {
+  position: fixed;
+  inset-inline: 12px;
+  bottom: 12px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font-size: 0.85rem;
+}
+
+/* رقم النسخة في التذييل: صغيرٌ لا يزاحم، ولاتينيّ الاتجاه */
+.site-footer-version {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}

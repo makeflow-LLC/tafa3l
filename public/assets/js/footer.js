@@ -79,6 +79,75 @@
     return btn;
   }
 
+  /**
+   * نسخةُ الصفحة كما حُمّلت — من بصمة الإصدار على أول وسمٍ يحملها.
+   * (كل صفحات التطبيق تُصدر أصولها بـ`?v=<version>`، وهي بصمة النشر نفسها.)
+   */
+  function pageVersion() {
+    const tag = document.querySelector('script[src*="?v="], link[href*="?v="]');
+    const src = tag ? tag.getAttribute('src') || tag.getAttribute('href') : '';
+    return (String(src).match(/\?v=([\d.]+)/) || [])[1] || '';
+  }
+
+  /**
+   * تحديثٌ قسريّ: يُسقط عامل الخدمة ومخبأ القشرة ثم يعيد التحميل.
+   *
+   * ومخبأ الألعاب المحفوظة **لا يُمسّ**: الطالب حفظها ليلعبها بلا إنترنت،
+   * ولا ذنب لها في نسخةِ واجهةٍ قديمة.
+   */
+  async function hardReload() {
+    try {
+      const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+      await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+    } catch {
+      /* لا عامل خدمة: لا شيء نُسقطه */
+    }
+    try {
+      const keys = (await caches?.keys?.()) || [];
+      await Promise.all(keys.filter((k) => k.startsWith('tapio-shell')).map((k) => caches.delete(k).catch(() => {})));
+    } catch {
+      /* لا مخبأ */
+    }
+    location.reload();
+  }
+
+  /**
+   * نسخةٌ قديمة في المتصفّح — نقولها بدل أن يكتشفها المعلّم كعطل.
+   *
+   * بعد كل نشرٍ يبقى عند بعض المتصفحات ملفٌّ قديم في ذاكرتها، فيرى صاحبها
+   * زرّاً جديداً يعمل بمنطقٍ قديم — أو مساراً لا تعرفه نسخته فيهبط على
+   * اللوحة بلا تفسير. والفرق بين «عطلٌ في المنصة» و«نسختك قديمة» هو الفرق
+   * بين شكوى وبين ضغطةِ تحديث.
+   */
+  function staleBanner(latest) {
+    const bar = document.createElement('div');
+    bar.className = 'stale-bar';
+    const text = document.createElement('span');
+    text.textContent = t('fStale', { version: latest });
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn accent sm';
+    btn.textContent = t('fStaleBtn');
+    btn.addEventListener('click', hardReload);
+    bar.append(text, btn);
+    return bar;
+  }
+
+  function checkVersion() {
+    const mine = pageVersion();
+    if (!mine || !navigator.onLine) return;
+    fetch('/api/health', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.version || data.version === mine) return;
+        if (document.querySelector('.stale-bar')) return;
+        document.body.append(staleBanner(data.version));
+      })
+      .catch(() => {
+        /* الخادم لا يردّ: ليست لحظة الحديث عن الإصدارات */
+      });
+  }
+
   /** يبني عقدة التذييل */
   function build() {
     const foot = document.createElement('footer');
@@ -110,6 +179,15 @@
       link(MAKEFLOW_URL, 'makeflow', { external: true }),
       document.createTextNode(' · ' + t('fRights', { year: new Date().getFullYear() }))
     );
+    // رقمُ النسخة: سطرٌ صغير يحسم «هل وصلك التحديث؟» بلا تخمين
+    const version = pageVersion();
+    if (version) {
+      const tag = document.createElement('span');
+      tag.className = 'site-footer-version';
+      tag.dir = 'ltr';
+      tag.textContent = 'v' + version;
+      by.append(document.createTextNode(' · '), tag);
+    }
 
     foot.append(actions, support, legal, by);
     return foot;
@@ -118,6 +196,7 @@
   /** يركّب التذييل في نهاية الصفحة (مرة واحدة) */
   function mount(target) {
     registerWorker();
+    checkVersion();
     if (document.querySelector('.site-footer')) return null;
     const foot = build();
     (target || document.body).append(foot);
@@ -135,5 +214,5 @@
     });
   }
 
-  global.SiteFooter = { mount, build, registerWorker, MAKEFLOW_URL, SUPPORT_WHATSAPP };
+  global.SiteFooter = { mount, build, registerWorker, checkVersion, pageVersion, hardReload, MAKEFLOW_URL, SUPPORT_WHATSAPP };
 })(window);
