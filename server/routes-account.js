@@ -89,6 +89,23 @@ function clean(value, max) {
 }
 
 /**
+ * نصٌّ **بأسطره** — للشهادات والمدارس في صفحة المعلّم العامّة.
+ *
+ * `clean` تسحق الأسطر في سطرٍ واحد، فتصير ثلاث شهاداتٍ جملةً واحدة لا تُقرأ.
+ * وهنا يُشذَّب كلُّ سطرٍ على حدة، ويُسقط الفارغ، ويُحدّ عددها — فلا يصير
+ * الحقل صفحةً كاملة على صفحةٍ عامّة.
+ */
+function cleanLines(value, max, maxLines = 8) {
+  return String(value ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[^\S\n]+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, maxLines)
+    .join('\n')
+    .slice(0, max);
+}
+
+/**
  * الاسم الأول وحده يُنسب إليه النشاط في المكتبة. المعلّم نشر درساً لا سيرةً
  * ذاتية، والاسم الكامل مع المادة والصف يكفي للتعرّف عليه شخصياً.
  */
@@ -1409,6 +1426,8 @@ function accountRoutes(store) {
         subject: clean(req.query.subject, 40),
         grade: clean(req.query.grade, 40),
         lang: req.query.lang === 'en' ? 'en' : req.query.lang === 'ar' ? 'ar' : '',
+        // معلّمٌ بعينه — صفحتُه العامّة تعرض ما نشره هو
+        owner: clean(req.query.teacher, 40),
         limit,
         offset: page * limit,
       });
@@ -1641,6 +1660,12 @@ function accountRoutes(store) {
     country: u.country || '',
     links: Array.isArray(u.links) ? u.links : [],
     publicName: publicNameOf(u),
+    // صفحة المعلّم العامّة
+    subjects: Array.isArray(u.subjects) ? u.subjects : [],
+    years: Number(u.years) || 0,
+    credentials: u.credentials || '',
+    schools: u.schools || '',
+    sampleId: u.sampleId || '',
     // ما ينقص البروفايل — تسألُه الواجهة لتدعو المعلّم إلى إكماله بلا إلزام
     missing: ['displayName', 'photo', 'bio', 'country'].filter((key) =>
       key === 'photo' ? !u.hasPhoto : !String(u[key] || '').trim()
@@ -1691,6 +1716,27 @@ function accountRoutes(store) {
       }
       // الروابط تُنشر على صفحةٍ يفتحها طلاب: `http(s)` وحدهما يمرّان (social-links.js)
       if (body.links !== undefined) patch.links = social.cleanList(body.links);
+      /*
+       * حقول الصفحة العامّة. والمواد **معرّفاتٌ** لا أسماء (`math`, `arabic`…)
+       * كما في المكتبة والألعاب: يترجمها المتصفّح لقارئه، ومعرّفٌ خارج القائمة
+       * يُعرض كما كُتب بلا كسر — وهذا ما يفعله باقي المنصّة، فلا نخالفه هنا.
+       */
+      if (body.subjects !== undefined) {
+        patch.subjects = (Array.isArray(body.subjects) ? body.subjects : []).map((s) => clean(s, 40)).filter(Boolean).slice(0, 6);
+      }
+      if (body.years !== undefined) patch.years = Math.max(0, Math.min(60, Math.round(Number(body.years) || 0)));
+      // بأسطرها: «سطرٌ لكل شهادة» وعدٌ في الواجهة، فلا تُسحق الأسطر هنا
+      if (body.credentials !== undefined) patch.credentials = cleanLines(body.credentials, MAX_BIO_CHARS);
+      if (body.schools !== undefined) patch.schools = cleanLines(body.schools, MAX_BIO_CHARS);
+      // العيّنة نشاطٌ يملكه هو — والنشر يُفحص عند العرض لا هنا (قد يُنشر لاحقاً)
+      if (body.sampleId !== undefined) {
+        const id = String(body.sampleId || '');
+        if (id) {
+          const a = await storage.get().getActivity(id);
+          if (!a || a.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
+        }
+        patch.sampleId = id;
+      }
       const updated = await storage.get().updateProfile(req.user.id, patch);
       if (!updated) return res.status(404).json({ error: 'الحساب غير موجود' });
       res.json({ profile: myProfile(updated) });
@@ -1707,6 +1753,18 @@ function accountRoutes(store) {
     try {
       const u = await storage.get().findUserById(req.params.id);
       if (!u) return res.status(404).json({ error: 'المعلّم غير موجود' });
+      /*
+       * عيّنةٌ من درسه: نشاطٌ **منشورٌ في المكتبة** يختاره بنفسه. والاشتراط
+       * ليس تشدّداً — الصفحة عامّة، ونشاطٌ غير منشورٍ يُعرض فيها يكشف أسئلةً
+       * واختباراتٍ لم يقرّر صاحبها كشفها.
+       */
+      let sample = null;
+      if (u.sampleId) {
+        const a = await storage.get().getActivity(u.sampleId);
+        if (a && a.ownerId === u.id && a.published) {
+          sample = { id: a.id, title: a.title, questionCount: (a.questions || []).length, subject: a.subject || '', grade: a.grade || '' };
+        }
+      }
       res.json({
         teacher: {
           id: u.id,
@@ -1717,6 +1775,14 @@ function accountRoutes(store) {
           links: social.publicList(u.links),
           // الرقم يُحجب على الخادم لا في الواجهة: ما لا يُرسل لا يُكشف بفتح الأدوات
           phone: phoneIsPublic(u) ? u.phone || '' : '',
+          // ما يملؤه لصفحته العامّة — وما لم يُملأ لا يُرسل فلا يُعرض
+          subjects: Array.isArray(u.subjects) ? u.subjects : [],
+          years: Number(u.years) || 0,
+          credentials: u.credentials || '',
+          schools: u.schools || '',
+          sample,
+          // هل يستقبل حجوزات؟ الميزة في الباقة الاحترافية وحدها
+          booking: premium.limitsFor(u).booking === true,
         },
       });
     } catch (err) {

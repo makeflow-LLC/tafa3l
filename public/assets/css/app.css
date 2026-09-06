@@ -2658,6 +2658,106 @@ html.dark .cloud .c6 { color: #22d3ee; }
   background: color-mix(in srgb, var(--brand) 8%, transparent);
 }
 
+/* ------------------------------------------------------------ المواعيد */
+
+/*
+ * شبكةُ الأوقات — أزرارٌ كما في Calendly.
+ *
+ * وشبكةٌ تملأ نفسها بحسب العرض لا عمودان ثابتان: المعلّم يفتح أوقاته من
+ * حاسوبه فيرى يومه كلّه في نظرة، والطالب يختار من جوّاله فيرى عمودين
+ * مريحين — والقاعدة واحدة لا نسختان.
+ */
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.slot {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  /* هدفُ لمسٍ كامل (DESIGN.md): الوقت يُضغط من الجوّال لا من فأرة */
+  min-height: 52px;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.slot:hover:not(:disabled) {
+  border-color: var(--brand);
+}
+
+.slot.on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  font-weight: 700;
+}
+
+/* وقتٌ مفتوحٌ سلفاً: يُرى ولا يُضغط — حذفُه من قائمة «مواعيدي» لا من هنا */
+.slot:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* الجرس: عددُ ما ينتظر ردّاً فوق أيقونته */
+.bell {
+  position: relative;
+  text-decoration: none;
+}
+
+.bell__n {
+  position: absolute;
+  inset-block-start: -2px;
+  inset-inline-end: -2px;
+  min-width: 17px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+
+/* ✕ داخل رقاقة الموعد: حذفٌ في مكانه بلا صفٍّ ثانٍ من الأزرار */
+.chip__x {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 2px;
+  margin-inline-start: 4px;
+}
+
+.chip__x:hover {
+  color: var(--bad);
+}
+
+/* وجهُ المعلّم في صفحته العامّة */
+.tp-face {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+  background: var(--brand-soft);
+}
+
+.tp-face--empty {
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--brand);
+}
+
 /* ------------------------------------------------------------ الواجبات */
 
 /*

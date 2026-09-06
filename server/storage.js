@@ -52,7 +52,7 @@ function sortGames(sort) {
 function fileDriver() {
   /** @type {{users:Object, activities:Object, authSessions:Object, bankQuestions:Object, games:Object, liveSessions:Object}} */
   const empty = () => Object.create(null);
-  let db = { users: empty(), activities: empty(), authSessions: empty(), bankQuestions: empty(), games: empty(), liveSessions: empty(), classes: empty(), records: empty(), assignments: empty(), meta: {} };
+  let db = { users: empty(), activities: empty(), authSessions: empty(), bankQuestions: empty(), games: empty(), liveSessions: empty(), classes: empty(), records: empty(), assignments: empty(), slots: empty(), bookings: empty(), meta: {} };
   let writeTimer = null;
   let writing = false;
   let dirty = false;
@@ -178,6 +178,8 @@ function fileDriver() {
           classes: bare(parsed.classes),
           records: bare(parsed.records),
           assignments: bare(parsed.assignments),
+          slots: bare(parsed.slots),
+          bookings: bare(parsed.bookings),
           meta: parsed.meta || {},
         };
       } catch (err) {
@@ -260,9 +262,12 @@ function fileDriver() {
       const u = db.users[userId];
       if (!u) return null;
       // undefined = «لم يُرسَل هذا الحقل»؛ السلسلة الفارغة = «امسحه»
-      for (const key of ['displayName', 'phone', 'photo', 'country', 'bio']) {
+      for (const key of ['displayName', 'phone', 'photo', 'country', 'bio', 'credentials', 'schools', 'sampleId']) {
         if (patch[key] !== undefined) u[key] = patch[key] || '';
       }
+      // صفحةُ المعلّم العامّة: موادُّه وسنوات خبرته
+      if (patch.subjects !== undefined) u.subjects = Array.isArray(patch.subjects) ? patch.subjects : [];
+      if (patch.years !== undefined) u.years = Number(patch.years) || 0;
       /*
        * بلدٌ **اختاره صاحبه** لا بلدٌ افترضناه عنه.
        *
@@ -341,10 +346,12 @@ function fileDriver() {
       schedule();
     },
 
-    async listPublished({ q = '', subject = '', grade = '', lang = '', limit = 24, offset = 0 } = {}) {
+    async listPublished({ q = '', subject = '', grade = '', lang = '', owner = '', limit = 24, offset = 0 } = {}) {
       const needle = q.trim().toLowerCase();
       const all = Object.values(db.activities)
         .filter((a) => a.published)
+        // مصفاةُ المعلّم: صفحتُه العامّة تعرض ما نشره هو وحده
+        .filter((a) => !owner || a.ownerId === owner)
         .filter((a) => !subject || a.subject === subject)
         .filter((a) => !grade || a.grade === grade)
         .filter((a) => !lang || (a.settings?.lang || 'ar') === lang)
@@ -450,6 +457,45 @@ function fileDriver() {
     },
     async deleteAssignment(id) {
       delete db.assignments[id];
+      schedule();
+    },
+
+    // ------------------------------------------------------------- المواعيد
+
+    async listSlots(ownerId) {
+      return Object.values(db.slots)
+        .filter((s) => s.ownerId === ownerId)
+        .sort((a, b) => a.at - b.at);
+    },
+    async getSlot(id) {
+      return db.slots[id] || null;
+    },
+    async saveSlots(rows) {
+      for (const row of rows) db.slots[row.id] = row;
+      schedule();
+      return rows;
+    },
+    async deleteSlot(id) {
+      delete db.slots[id];
+      schedule();
+    },
+    async listBookings(ownerId) {
+      return Object.values(db.bookings)
+        .filter((b) => b.ownerId === ownerId)
+        .sort((a, b) => a.at - b.at);
+    },
+    async getBooking(id) {
+      return db.bookings[id] || null;
+    },
+    async saveBooking(item) {
+      db.bookings[item.id] = item;
+      schedule();
+      return item;
+    },
+    /** تنظيفٌ دوريّ: مواعيدُ مضت وطلباتٌ عليها — لا تُقرأ ولا تُعرض */
+    async sweepBookings(before) {
+      for (const [id, s] of Object.entries(db.slots)) if (s.at < before) delete db.slots[id];
+      for (const [id, b] of Object.entries(db.bookings)) if (b.at < before) delete db.bookings[id];
       schedule();
     },
 
@@ -612,6 +658,7 @@ function postgresDriver(connectionString) {
    */
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
                         premium_until, trial_granted_at, created_at, tier, grandfathered_at, country_chosen_at,
+                        subjects, years, credentials, schools, sample_id,
                         games_built, games_month, games_month_key, bio, phone_public,
                         stripe_customer_id, links,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
@@ -632,6 +679,12 @@ function postgresDriver(connectionString) {
     grandfatheredAt: r.grandfathered_at == null ? null : Number(r.grandfathered_at),
     // هل اختار بلده بنفسه؟ فراغٌ = بلدٌ افترضناه، فيُسأل عنه مرّة
     countryChosenAt: r.country_chosen_at == null ? null : Number(r.country_chosen_at),
+    // صفحة المعلّم العامّة — كلّها اختيارية، وما لم يُملأ لا يُعرض
+    subjects: Array.isArray(r.subjects) ? r.subjects : [],
+    years: Number(r.years) || 0,
+    credentials: r.credentials || '',
+    schools: r.schools || '',
+    sampleId: r.sample_id || '',
     country: r.country || '',
     bio: r.bio || '',
     // غيرُ مضبوطةٍ = أظهره: حساباتٌ كتبت رقمها قبل وجود الراية لا يختفي رقمها فجأة
@@ -770,6 +823,13 @@ function postgresDriver(connectionString) {
         -- لحظةُ اختيار المعلّم بلده بنفسه. وفراغُها يعني بلداً افترضناه عنه
         -- (ترحيلُ «كلّهم فلسطينيون») فيُسأل عنه مرّةً — عليه تُبنى عملةُ السعر.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS country_chosen_at BIGINT;
+        -- صفحة المعلّم العامّة: موادُّه وسنوات خبرته وشهاداته ومدارسه، ونشاطٌ
+        -- يختاره عيّنةً من درسه. كلّها اختيارية — وما لم يُملأ لا يُعرض.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS subjects JSONB;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS years INTEGER;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS credentials TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS schools TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS sample_id TEXT;
         CREATE INDEX IF NOT EXISTS users_stripe_customer_idx ON users(stripe_customer_id);
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
@@ -875,6 +935,25 @@ function postgresDriver(connectionString) {
           data JSONB NOT NULL
         );
         CREATE INDEX IF NOT EXISTS assignments_owner_idx ON assignments(owner_id, created_at DESC);
+        -- المواعيد: أوقاتٌ يفتحها المعلّم، وطلباتٌ يرسلها الطلاب عليها.
+        -- الوقت مطلقٌ بالمللي ثانية — لا منطقةَ زمنية تُخزَّن (انظر booking.js).
+        CREATE TABLE IF NOT EXISTS slots (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          at BIGINT NOT NULL,
+          minutes INTEGER NOT NULL,
+          created_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS slots_owner_idx ON slots(owner_id, at);
+        CREATE TABLE IF NOT EXISTS bookings (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          slot_id TEXT NOT NULL,
+          at BIGINT NOT NULL,
+          status TEXT NOT NULL,
+          data JSONB NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS bookings_owner_idx ON bookings(owner_id, at);
         -- علاماتٌ تُكتب مرّةً: ترحيلاتٌ جرت، فلا تُعاد عند كل إقلاع
         CREATE TABLE IF NOT EXISTS app_meta (
           key TEXT PRIMARY KEY,
@@ -1002,10 +1081,27 @@ function postgresDriver(connectionString) {
     async updateProfile(userId, patch) {
       const sets = [];
       const params = [userId];
-      for (const [key, col] of [['displayName', 'display_name'], ['phone', 'phone'], ['photo', 'photo'], ['country', 'country'], ['bio', 'bio']]) {
+      for (const [key, col] of [
+        ['displayName', 'display_name'],
+        ['phone', 'phone'],
+        ['photo', 'photo'],
+        ['country', 'country'],
+        ['bio', 'bio'],
+        ['credentials', 'credentials'],
+        ['schools', 'schools'],
+        ['sampleId', 'sample_id'],
+      ]) {
         if (patch[key] === undefined) continue;
         params.push(patch[key] || null);
         sets.push(`${col} = $${params.length}`);
+      }
+      if (patch.subjects !== undefined) {
+        params.push(JSON.stringify(Array.isArray(patch.subjects) ? patch.subjects : []));
+        sets.push(`subjects = $${params.length}::jsonb`);
+      }
+      if (patch.years !== undefined) {
+        params.push(Number(patch.years) || 0);
+        sets.push(`years = $${params.length}`);
       }
       if (patch.links !== undefined) {
         params.push(JSON.stringify(Array.isArray(patch.links) ? patch.links : []));
@@ -1084,7 +1180,7 @@ function postgresDriver(connectionString) {
       await pool.query('DELETE FROM activities WHERE id = $1', [id]);
     },
 
-    async listPublished({ q = '', subject = '', grade = '', lang = '', limit = 24, offset = 0 } = {}) {
+    async listPublished({ q = '', subject = '', grade = '', lang = '', owner = '', limit = 24, offset = 0 } = {}) {
       // البحث بـ ILIKE على العنوان وحده: المكتبة بمئات الصفوف لا ملايينها،
       // وفهرس نصّي كامل بالعربية يحتاج قاموساً لا يستحقه هذا الحجم بعد.
       const where = ['a.published'];
@@ -1094,6 +1190,8 @@ function postgresDriver(connectionString) {
       if (subject) add('a.subject = $?', subject);
       if (grade) add('a.grade = $?', grade);
       if (lang) add("COALESCE(a.settings->>'lang', 'ar') = $?", lang);
+      // مصفاةُ المعلّم: صفحتُه العامّة تعرض ما نشره هو وحده
+      if (owner) add('a.owner_id = $?', owner);
       const clause = where.join(' AND ');
       const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int AS n FROM activities a WHERE ${clause}`, params);
       const { rows } = await pool.query(
@@ -1216,6 +1314,51 @@ function postgresDriver(connectionString) {
     },
     async deleteAssignment(id) {
       await pool.query('DELETE FROM assignments WHERE id = $1', [id]);
+    },
+
+    // ------------------------------------------------------------- المواعيد
+
+    async listSlots(ownerId) {
+      const { rows } = await pool.query('SELECT * FROM slots WHERE owner_id = $1 ORDER BY at', [ownerId]);
+      return rows.map((r) => ({ id: r.id, ownerId: r.owner_id, at: Number(r.at), minutes: Number(r.minutes), createdAt: Number(r.created_at) }));
+    },
+    async getSlot(id) {
+      const { rows } = await pool.query('SELECT * FROM slots WHERE id = $1', [id]);
+      const r = rows[0];
+      return r ? { id: r.id, ownerId: r.owner_id, at: Number(r.at), minutes: Number(r.minutes), createdAt: Number(r.created_at) } : null;
+    },
+    async saveSlots(items) {
+      for (const s of items) {
+        await pool.query(
+          `INSERT INTO slots (id, owner_id, at, minutes, created_at) VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (id) DO UPDATE SET at = $3, minutes = $4`,
+          [s.id, s.ownerId, s.at, s.minutes, s.createdAt]
+        );
+      }
+      return items;
+    },
+    async deleteSlot(id) {
+      await pool.query('DELETE FROM slots WHERE id = $1', [id]);
+    },
+    async listBookings(ownerId) {
+      const { rows } = await pool.query('SELECT data FROM bookings WHERE owner_id = $1 ORDER BY at', [ownerId]);
+      return rows.map((r) => r.data);
+    },
+    async getBooking(id) {
+      const { rows } = await pool.query('SELECT data FROM bookings WHERE id = $1', [id]);
+      return rows[0]?.data || null;
+    },
+    async saveBooking(item) {
+      await pool.query(
+        `INSERT INTO bookings (id, owner_id, slot_id, at, status, data) VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (id) DO UPDATE SET status = $5, data = $6`,
+        [item.id, item.ownerId, item.slotId, item.at, item.status, JSON.stringify(item)]
+      );
+      return item;
+    },
+    async sweepBookings(before) {
+      await pool.query('DELETE FROM bookings WHERE at < $1', [before]);
+      await pool.query('DELETE FROM slots WHERE at < $1', [before]);
     },
 
     // ------------------------------------------------------------- الألعاب

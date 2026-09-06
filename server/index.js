@@ -18,6 +18,7 @@ const { accountRoutes, syncLaunchedActivity } = require('./routes-account');
 const { aiRoutes } = require('./routes-ai');
 const { gameAiRoutes } = require('./routes-game-ai');
 const billing = require('./routes-billing');
+const { bookingRoutes, sweep: sweepBookings } = require('./routes-booking');
 const stripeApi = require('./stripe');
 const sharePage = require('./share-page');
 const ai = require('./ai');
@@ -129,6 +130,7 @@ app.use('/api', accountRoutes(store));
 app.use('/api', aiRoutes());
 app.use('/api', gameAiRoutes());
 app.use('/api', billing.billingRoutes());
+app.use('/api', bookingRoutes());
 
 // ------------------------------------------------------------------ واجهة REST
 
@@ -373,6 +375,16 @@ app.get('/api/qr', async (req, res) => {
 
 app.get('/j/:code', (req, res) => {
   res.redirect(`/play.html?code=${encodeURIComponent(req.params.code)}`);
+});
+
+/**
+ * صفحةُ المعلّم العامّة — عنوانٌ قصير يُنشر على فيسبوك وواتساب.
+ *
+ * و«‎/t/‎» لا «‎/teacher.html?id=‎»: الرابط يُلصق في منشورٍ ويُقرأ بالعين،
+ * فطولُه وشكلُه جزءٌ من كونه صالحاً للنشر.
+ */
+app.get('/t/:id', (req, res) => {
+  res.redirect(`/teacher.html?id=${encodeURIComponent(req.params.id)}`);
 });
 
 /**
@@ -890,6 +902,14 @@ const ready = storage
         server.listen(PORT, () => {
           log(`Tapio — يعمل على http://localhost:${server.address().port}`);
           startKeepAlive(store);
+          /*
+           * تنظيفُ المواعيد الماضية: مرّةً عند الإقلاع ثم كل ساعة. جدولُ
+           * معلّمٍ نشِطٍ يمتلئ بمئات المواعيد في شهر، وقراءتُها كلّها عند كل
+           * فتحٍ للصفحة العامّة ثمنٌ يُدفع بلا مقابل — ما مضى لا يُعرض.
+           */
+          sweepBookings();
+          const timer = setInterval(sweepBookings, 60 * 60 * 1000);
+          timer.unref?.();
           resolve();
         });
       })
