@@ -148,6 +148,21 @@ test('المنع على الزيادة وحدها: من تجاوز سقفه يس
   assert.throws(() => premium.assertStudentsAllowed(pro, 201, 200), /احذف/);
 });
 
+test('ترقيةُ القدامى: من بقي له أكثر من أحد عشر يوماً يصير في الأعلى، والتجربةُ لا تُرقّى', () => {
+  const now = Date.UTC(2026, 0, 1);
+  const days = (n) => now + n * 86400000;
+  assert.equal(premium.PRO_UPGRADE_DAYS, 11);
+  assert.equal(premium.deservesProUpgrade({ premiumUntil: days(30) }, now), true);
+  assert.equal(premium.deservesProUpgrade({ premiumUntil: days(12) }, now), true);
+  // الحدُّ نفسه ليس «أكثر من»
+  assert.equal(premium.deservesProUpgrade({ premiumUntil: days(11) }, now), false);
+  // منحة التسجيل عشرة أيام: لم تُشترَ بعد فلا تُرقّى
+  assert.equal(premium.deservesProUpgrade({ premiumUntil: days(10) }, now), false);
+  assert.equal(premium.deservesProUpgrade({ premiumUntil: days(-5) }, now), false);
+  assert.equal(premium.deservesProUpgrade({ premiumUntil: null }, now), false);
+  assert.equal(premium.deservesProUpgrade(null, now), false);
+});
+
 test('حصّة الألعاب: خمس عشرة للأساسية، وخمسٌ وثلاثون للاحترافية', () => {
   assert.equal(quota.monthlyFor('basic'), 15);
   assert.equal(quota.monthlyFor('pro'), 35);

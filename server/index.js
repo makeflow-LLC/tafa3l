@@ -165,8 +165,15 @@ app.get('/api/health', (_req, res) => {
       card: stripeApi.configured(),
       mode: stripeApi.mode(),
       webhookReady: Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || '').trim()),
-      pricePinned: Boolean(String(process.env.STRIPE_PRICE_ID || '').trim()),
+      pricePinned: Boolean(String(process.env.STRIPE_PRICE_ID_BASIC || process.env.STRIPE_PRICE_ID || '').trim()),
       priceUsd: premium.PLAN.priceUsd,
+      /*
+       * والاحترافية: سعرٌ مثبّت في لوحة Stripe أو مبنيٌّ من الرقم عند كل
+       * جلسة. كلاهما يعمل — والفرق أن المثبّت يظهر في تقارير Stripe باسمه،
+       * فتُقرأ إيراداتُ كل باقةٍ على حدة.
+       */
+      proPricePinned: Boolean(String(process.env.STRIPE_PRICE_ID_PRO || '').trim()),
+      proPriceUsd: premium.planFor('pro').priceUsd,
     },
   });
 });

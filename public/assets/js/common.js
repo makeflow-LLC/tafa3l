@@ -89,7 +89,14 @@
       history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
     }
 
-    const needsCountry = Boolean(user && !user.country);
+    /*
+     * البلد إجباريّ، و«افترضناه عنه» ليس جواباً.
+     *
+     * ترحيلٌ قديم ختم كل حسابٍ قائم بفلسطين، فمعلّمٌ خارجها كان يرى السعر
+     * بالشيكل ومحفظةً محلّية لا تعمل عنده — وهو لم يُسأل أصلاً. فمن لم يختر
+     * بنفسه يُسأل مرّةً واحدة، وبلدُه الحاليّ مُختارٌ سلفاً فيؤكّده بضغطة.
+     */
+    const needsCountry = Boolean(user && (!user.country || !user.countryChosen));
     const showWelcome = justSignedUp && premium?.onSignupTrial;
     if (!needsCountry && !showWelcome) return null;
     if (document.querySelector('.welcome-pop')) return null;
@@ -112,10 +119,11 @@
     }
 
     if (needsCountry) {
-      const select = countrySelect('', { placeholder: t('cnPick') });
+      // من له بلدٌ مفترض يجده مُختاراً فيؤكّده، ومن لا بلد له يختار من فارغ
+      const select = countrySelect(user.country || '', { placeholder: t('cnPick') });
       const note = el('span', { class: 'muted small', text: t('cnWhy') });
       // الزرّ مقفلٌ حتى يُختار بلد: زرٌّ يُضغط ولا يفعل شيئاً أسوأ من زرٍّ مقفل
-      const go = el('button', { class: 'btn primary', type: 'button', disabled: true }, t('cnContinue'));
+      const go = el('button', { class: 'btn primary', type: 'button', disabled: !select.value }, t('cnContinue'));
       select.addEventListener('change', () => {
         go.disabled = !select.value;
       });
@@ -126,7 +134,11 @@
         go.textContent = t('cnSaving');
         try {
           await api('/api/profile', { method: 'PUT', body: { country: select.value } });
-          if (user) user.country = select.value;
+          if (user) {
+            user.country = select.value;
+            // صار مختاراً لا مفترضاً — فلا يُسأل مرّةً ثانية في هذه الجلسة
+            user.countryChosen = true;
+          }
           // الحساب الجديد لا يخرج من البطاقة إلى فراغ: بعد أن يجيب، تصير
           // البطاقة دعوةً إلى أول ما يستحقّ أن يجرّبه. ولولا هذا لابتلع
           // سؤالُ البلد دعوةَ «ابدأ بالمساعد الذكي» التي هي غرض التهنئة.

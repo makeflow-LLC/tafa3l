@@ -63,6 +63,20 @@ const LOCAL_PAY = {
 const TIERS = ['free', 'basic', 'pro'];
 
 /**
+ * ترقيةٌ تجري **مرّةً واحدة** يوم إطلاق الباقات: من بقي في اشتراكه أكثر من
+ * أحد عشر يوماً يصير في الباقة الأعلى بلا زيادةِ ثمن.
+ *
+ * وهؤلاء هم من اشتروا حين كانت الباقة واحدة، فلا يصحّ أن يجدوا أنفسهم فجأة
+ * في «الأدنى» من اثنتين. والحدُّ أحد عشر يوماً لا أقلّ لأن منحة التسجيل عشرة
+ * أيام: بها تُميَّز الاشتراكاتُ المدفوعة من التجارب التي لم تُشترَ بعد.
+ */
+const PRO_UPGRADE_DAYS = 11;
+
+function deservesProUpgrade(user, at = Date.now()) {
+  return Boolean(user?.premiumUntil && user.premiumUntil > at + PRO_UPGRADE_DAYS * 86400000);
+}
+
+/**
  * حدود كل مستوى.
  *
  * `students` مجموعُ الطلاب في **كل** فصول المعلّم لا في الفصل الواحد: الحدّ
@@ -365,6 +379,8 @@ module.exports = {
   PLANS,
   TIERS,
   LIMITS,
+  PRO_UPGRADE_DAYS,
+  deservesProUpgrade,
   LOCAL_PAY,
   localPayFor,
   payMethodFor,

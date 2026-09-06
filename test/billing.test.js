@@ -366,7 +366,16 @@ test('المنح لا ينقص اشتراكاً قائماً مهما تأخّر
 
 test('فحصُ الصحة يفصل أعطال الدفع الثلاثة — بلا كشف قيمةٍ من أي مفتاح', async () => {
   const res = await client().request('GET', '/api/health');
-  assert.deepEqual(res.data.payments, { card: true, mode: 'test', webhookReady: true, pricePinned: false, priceUsd: 5 });
+  assert.deepEqual(res.data.payments, {
+    card: true,
+    mode: 'test',
+    webhookReady: true,
+    pricePinned: false,
+    priceUsd: 5,
+    // والاحترافية معها: بلا معرّف سعرٍ مثبّت تُبنى من الرقم عند كل جلسة
+    proPricePinned: false,
+    proPriceUsd: 12,
+  });
   // المفاتيح نفسها لا تظهر في الردّ مهما كانت الراية
   const body = JSON.stringify(res.data);
   assert.equal(body.includes('sk_test_do_not_use'), false);
