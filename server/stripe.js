@@ -23,7 +23,15 @@ const TOLERANCE_SEC = 300;
 
 const secretKey = () => String(process.env.STRIPE_SECRET_KEY || '').trim();
 const webhookSecret = () => String(process.env.STRIPE_WEBHOOK_SECRET || '').trim();
-const priceId = () => String(process.env.STRIPE_PRICE_ID || '').trim();
+/**
+ * معرّف السعر عند Stripe لكل مستوى.
+ *
+ * والقديم `STRIPE_PRICE_ID` يبقى سعرَ الأساسية: خادمٌ مضبوطٌ من قبل لا ينكسر
+ * دفعُه لأن الباقات صارت ثلاثاً. ومن لا سعرَ لمستواه يُبنى له سعرٌ من الرقم
+ * مباشرةً (price_data) كما كان.
+ */
+const priceId = (tier = 'basic') =>
+  String((tier === 'pro' ? process.env.STRIPE_PRICE_ID_PRO : process.env.STRIPE_PRICE_ID_BASIC || process.env.STRIPE_PRICE_ID) || '').trim();
 
 /** هل الدفع بالبطاقة مُفعَّل على هذا الخادم؟ */
 function configured() {
@@ -108,10 +116,14 @@ async function call(pathname, body, opts = {}) {
  * ومعرّفٌ في `metadata` ومثلُه في بيانات الاشتراك. فالخطّاف الذي يصل بعد
  * شهرٍ (فاتورةُ تجديد) لا يحمل الجلسة أصلاً، ووسمُ الاشتراك هو ما يبقى معه.
  *
- * @param {{user:object, origin:string, priceUsd:number}} opts
+ * والمستوى يُوسم في الموضعين نفسيهما: فاتورةُ التجديد بعد شهرٍ هي التي تقول
+ * على أيّ باقةٍ يُجدَّد، ولولا وسمها لعاد المشترك في الاحترافية أساسياً عند
+ * أول تجديد.
+ *
+ * @param {{user:object, origin:string, priceUsd:number, tier:string}} opts
  */
-async function createCheckout({ user, origin, priceUsd }) {
-  const price = priceId();
+async function createCheckout({ user, origin, priceUsd, tier = 'basic' }) {
+  const price = priceId(tier);
   const item = price
     ? { price, quantity: 1 }
     : {
@@ -120,7 +132,7 @@ async function createCheckout({ user, origin, priceUsd }) {
           currency: 'usd',
           unit_amount: Math.round(Number(priceUsd) * 100),
           recurring: { interval: 'month' },
-          product_data: { name: 'Tapio Premium' },
+          product_data: { name: tier === 'pro' ? 'Tapio Pro' : 'Tapio Premium' },
         },
       };
 
@@ -144,8 +156,8 @@ async function createCheckout({ user, origin, priceUsd }) {
        * منها ما يدعمه، فلا تُرفض جلسةٌ بسبب لغةٍ مهما كانت لغة القارئ.
        */
       locale: 'auto',
-      metadata: { userId: user.id },
-      subscription_data: { metadata: { userId: user.id } },
+      metadata: { userId: user.id, tier },
+      subscription_data: { metadata: { userId: user.id, tier } },
       allow_promotion_codes: 'true',
     },
     { idempotencyKey: `checkout_${user.id}_${Math.floor(Date.now() / 60000)}` }

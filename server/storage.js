@@ -105,6 +105,23 @@ function fileDriver() {
     schedule();
   }
 
+  /**
+   * ترحيلٌ يجري **مرّةً واحدة**: كل حسابٍ كان موجوداً يوم وُضع سقفُ الطلاب
+   * يُعفى منه.
+   *
+   * هؤلاء بنوا فصولهم حين لم يكن للطلاب سقفٌ أصلاً، فسحبُ ما بُني على وعدٍ
+   * سابق أسوأ من ألّا نضع سقفاً. والعلامة ضرورية: بدونها يجري الترحيل عند كل
+   * إقلاع فيُعفى منه كلُّ حسابٍ جديد، ولا يبقى للسقف معنى.
+   */
+  function backfillGrandfather() {
+    if (db.meta?.studentCapAt) return;
+    for (const u of Object.values(db.users)) {
+      if (!u.grandfatheredAt) u.grandfatheredAt = u.createdAt || Date.now();
+    }
+    db.meta = { ...(db.meta || {}), studentCapAt: Date.now() };
+    schedule();
+  }
+
   return {
     kind: 'file',
     location: DATA_FILE,
@@ -135,6 +152,7 @@ function fileDriver() {
         if (err.code !== 'ENOENT') console.error('ملف البيانات غير قابل للقراءة، سنبدأ فارغاً:', err.message);
       }
       backfillCountry();
+      backfillGrandfather();
     },
 
     async findUserByEmail(email) {
@@ -170,10 +188,17 @@ function fileDriver() {
       return user;
     },
     /** تاريخ انتهاء اشتراك بريميوم (ms) أو null لإلغائه */
-    async setPremiumUntil(userId, until) {
+    /**
+     * تاريخُ انتهاء الاشتراك، ومعه مستواه إن حُدِّد.
+     *
+     * المستوى يُكتب مع التاريخ في خطوةٍ واحدة عمداً: كتابتُه في نداءٍ ثانٍ
+     * تترك نافذةً يكون فيها الحساب مشتركاً بمستوى اشتراكه السابق.
+     */
+    async setPremiumUntil(userId, until, tier) {
       const user = db.users[userId];
       if (!user) return null;
       user.premiumUntil = until;
+      if (tier !== undefined) user.tier = tier || null;
       schedule();
       return user;
     },
@@ -543,7 +568,7 @@ function postgresDriver(connectionString) {
    * و`*` غير واردة: الصورة data URI ثقيلة، وهذه الدالة تُنادى مع كل طلبٍ مُصادق.
    */
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
-                        premium_until, trial_granted_at, created_at,
+                        premium_until, trial_granted_at, created_at, tier, grandfathered_at,
                         games_built, games_month, games_month_key, bio, phone_public,
                         stripe_customer_id, links,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
@@ -558,6 +583,10 @@ function postgresDriver(connectionString) {
     googleId: r.google_id,
     premiumUntil: r.premium_until == null ? null : Number(r.premium_until),
     trialGrantedAt: r.trial_granted_at == null ? null : Number(r.trial_granted_at),
+    // مستوى الاشتراك المدفوع، ولا يعمل إلا ما دام التاريخ سارياً (premium.js)
+    tier: r.tier || '',
+    // إعفاءُ الحسابات التي سبقت سقف الطلاب
+    grandfatheredAt: r.grandfathered_at == null ? null : Number(r.grandfathered_at),
     country: r.country || '',
     bio: r.bio || '',
     // غيرُ مضبوطةٍ = أظهره: حساباتٌ كتبت رقمها قبل وجود الراية لا يختفي رقمها فجأة
@@ -688,6 +717,11 @@ function postgresDriver(connectionString) {
         -- روابط المعلّم على وسائل التواصل: قائمةُ نصوصٍ لا عمودان، فالعدد
         -- المسموح قرارُ منتجٍ يتغيّر ولا يصحّ أن تتغيّر معه بنية الجدول.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS links JSONB;
+        -- مستوى الاشتراك المدفوع (basic | pro). فارغٌ مع اشتراكٍ ساري المفعول
+        -- يُقرأ «الأساسية»: هي ما كانت المنصّة تبيعه قبل أن تصير الباقات ثلاثاً.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT;
+        -- إعفاءُ من سبق سقفَ الطلاب — يُختم مرّةً في الترحيل أدناه
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS grandfathered_at BIGINT;
         CREATE INDEX IF NOT EXISTS users_stripe_customer_idx ON users(stripe_customer_id);
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
@@ -812,6 +846,18 @@ function postgresDriver(connectionString) {
           String(Date.now()),
         ]);
       }
+
+      // ومثلُه لسقف الطلاب: من كان له حسابٌ يوم وُضع السقف يُعفى منه — بنى
+      // فصوله حين لم يكن ثمّة سقف، ولا يُسحب ما بُني على وعدٍ سابق. والعلامة
+      // هي التي تمنع إعفاء كل حسابٍ جديد بعدها.
+      const capped = await pool.query('SELECT 1 FROM app_meta WHERE key = $1', ['student_cap_at']);
+      if (!capped.rowCount) {
+        await pool.query('UPDATE users SET grandfathered_at = created_at WHERE grandfathered_at IS NULL');
+        await pool.query('INSERT INTO app_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [
+          'student_cap_at',
+          String(Date.now()),
+        ]);
+      }
     },
 
     async findUserByEmail(email) {
@@ -829,8 +875,13 @@ function postgresDriver(connectionString) {
       const { rows } = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
       return rows.map(userRow);
     },
-    async setPremiumUntil(userId, until) {
-      const { rows } = await pool.query('UPDATE users SET premium_until = $2 WHERE id = $1 RETURNING *', [userId, until]);
+    async setPremiumUntil(userId, until, tier) {
+      // `COALESCE($3, tier)` تُبقي المستوى كما هو حين لا يُمرَّر، وتغيّره حين
+      // يُمرَّر — فنداءٌ واحد يكفي للحالتين بلا قراءةٍ سابقة
+      const { rows } =
+        tier === undefined
+          ? await pool.query('UPDATE users SET premium_until = $2 WHERE id = $1 RETURNING *', [userId, until])
+          : await pool.query('UPDATE users SET premium_until = $2, tier = $3 WHERE id = $1 RETURNING *', [userId, until, tier || null]);
       return rows[0] ? userRow(rows[0]) : null;
     },
 
