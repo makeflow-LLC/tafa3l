@@ -183,7 +183,7 @@ test('وسمُ الباقة في دفعة Stripe يُقرأ من مواضعه ك
   assert.equal(billing.tierIn({}), '');
 });
 
-test('الباقات المعروضة: ثلاثٌ بأرقامها، والاحترافية تقول «قريباً» عن الحجز', () => {
+test('الباقات المعروضة: ثلاثٌ بأرقامها، والحجز ميزةٌ في الاحترافية لا وعداً', () => {
   const ids = premium.PLANS.map((p) => p.id);
   assert.deepEqual(ids, ['free', 'basic', 'pro']);
   assert.equal(premium.planFor('free').students, 20);
@@ -192,7 +192,11 @@ test('الباقات المعروضة: ثلاثٌ بأرقامها، والاح�
   assert.equal(premium.planFor('pro').students, 200);
   assert.equal(premium.planFor('pro').priceUsd, 12);
   assert.equal(premium.planFor('pro').gamesMonthly, 35);
-  assert.ok(premium.planFor('pro').soon?.length, 'الحجز مكتوبٌ «قريباً» لا موعوداً به');
+  assert.ok(
+    premium.planFor('pro').perks.some((line) => line.includes('حجز مواعيد')),
+    'الحجز صار ميزةً منجزة تُعدّ في الباقة'
+  );
+  assert.ok(!premium.planFor('pro').soon?.length, 'ولم يبقَ فيها ما يُوعد به «قريباً»');
   // المحفظة المحلّية: مبلغٌ لكل مستوى
   assert.equal(premium.LOCAL_PAY.PS.amounts.basic, 15);
   assert.equal(premium.LOCAL_PAY.PS.amounts.pro, 40);
