@@ -122,6 +122,38 @@ function fileDriver() {
     schedule();
   }
 
+  /**
+   * من أجاب عن بلده بنفسه يُختم بأنه اختاره، ومن افترضناه عنه يُسأل مرّة.
+   *
+   * والفاصلُ لحظةُ الترحيل القديم: كلُّ حسابٍ كان موجوداً حينها خُتم بفلسطين
+   * بلا أن يُسأل — فيهم من هو خارجها، وقد كان يرى السعر بالشيكل ومحفظةً
+   * محلّية لا تعنيه. وكلُّ حسابٍ أُنشئ بعدها مرّ ببوّابة السؤال فاختار.
+   */
+  function backfillCountryChoice() {
+    if (db.meta?.countryAskAt) return;
+    const askedSince = Number(db.meta?.countryBackfillAt) || 0;
+    for (const u of Object.values(db.users)) {
+      if (!u.countryChosenAt && u.country && u.createdAt > askedSince) u.countryChosenAt = u.createdAt;
+    }
+    db.meta = { ...(db.meta || {}), countryAskAt: Date.now() };
+    schedule();
+  }
+
+  /**
+   * ومثلُها للباقة الأعلى: من بقي في اشتراكه أكثر من أحد عشر يوماً لحظةَ
+   * إطلاق الباقات يصير في الأعلى — اشترى حين كانت الباقة واحدة، فلا يُوضع
+   * في «الأدنى» من اثنتين بلا أن يُسأل. (انظر premium.deservesProUpgrade)
+   */
+  function backfillProTier() {
+    if (db.meta?.proUpgradeAt) return;
+    const at = Date.now();
+    for (const u of Object.values(db.users)) {
+      if (premium.deservesProUpgrade(u, at)) u.tier = 'pro';
+    }
+    db.meta = { ...(db.meta || {}), proUpgradeAt: at };
+    schedule();
+  }
+
   return {
     kind: 'file',
     location: DATA_FILE,
@@ -151,8 +183,11 @@ function fileDriver() {
       } catch (err) {
         if (err.code !== 'ENOENT') console.error('ملف البيانات غير قابل للقراءة، سنبدأ فارغاً:', err.message);
       }
+      // الترتيب مقصود: `backfillCountryChoice` تقرأ علامةَ `backfillCountry`
       backfillCountry();
+      backfillCountryChoice();
       backfillGrandfather();
+      backfillProTier();
     },
 
     async findUserByEmail(email) {
@@ -228,6 +263,14 @@ function fileDriver() {
       for (const key of ['displayName', 'phone', 'photo', 'country', 'bio']) {
         if (patch[key] !== undefined) u[key] = patch[key] || '';
       }
+      /*
+       * بلدٌ **اختاره صاحبه** لا بلدٌ افترضناه عنه.
+       *
+       * والفرق بينهما ثمنٌ بعملةٍ خاطئة: الترحيل القديم ختم كل حسابٍ قائم
+       * بفلسطين، فمعلّمٌ خارجها كان يرى الشيكل ومحفظةً محلّية لا تعنيه. فما
+       * لم يُختر صراحةً يُسأل عنه مرّةً (انظر afterLogin).
+       */
+      if (patch.country) u.countryChosenAt = Date.now();
       // الروابط قائمةٌ لا نصّ: الفارغةُ منها «امسح روابطي» لا «لم تُرسل»
       if (patch.links !== undefined) u.links = Array.isArray(patch.links) ? patch.links : [];
       // رايةٌ لا نصّ: الفارغُ فيها اختيارٌ صريح («لا تُظهر رقمي») لا حقلٌ لم يُملأ
@@ -568,7 +611,7 @@ function postgresDriver(connectionString) {
    * و`*` غير واردة: الصورة data URI ثقيلة، وهذه الدالة تُنادى مع كل طلبٍ مُصادق.
    */
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
-                        premium_until, trial_granted_at, created_at, tier, grandfathered_at,
+                        premium_until, trial_granted_at, created_at, tier, grandfathered_at, country_chosen_at,
                         games_built, games_month, games_month_key, bio, phone_public,
                         stripe_customer_id, links,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
@@ -587,6 +630,8 @@ function postgresDriver(connectionString) {
     tier: r.tier || '',
     // إعفاءُ الحسابات التي سبقت سقف الطلاب
     grandfatheredAt: r.grandfathered_at == null ? null : Number(r.grandfathered_at),
+    // هل اختار بلده بنفسه؟ فراغٌ = بلدٌ افترضناه، فيُسأل عنه مرّة
+    countryChosenAt: r.country_chosen_at == null ? null : Number(r.country_chosen_at),
     country: r.country || '',
     bio: r.bio || '',
     // غيرُ مضبوطةٍ = أظهره: حساباتٌ كتبت رقمها قبل وجود الراية لا يختفي رقمها فجأة
@@ -722,6 +767,9 @@ function postgresDriver(connectionString) {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT;
         -- إعفاءُ من سبق سقفَ الطلاب — يُختم مرّةً في الترحيل أدناه
         ALTER TABLE users ADD COLUMN IF NOT EXISTS grandfathered_at BIGINT;
+        -- لحظةُ اختيار المعلّم بلده بنفسه. وفراغُها يعني بلداً افترضناه عنه
+        -- (ترحيلُ «كلّهم فلسطينيون») فيُسأل عنه مرّةً — عليه تُبنى عملةُ السعر.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS country_chosen_at BIGINT;
         CREATE INDEX IF NOT EXISTS users_stripe_customer_idx ON users(stripe_customer_id);
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
@@ -847,6 +895,26 @@ function postgresDriver(connectionString) {
         ]);
       }
 
+      /*
+       * ومثلُه للبلد: من أُنشئ حسابه **بعد** الترحيل القديم مرّ ببوّابة
+       * السؤال فاختار بلده، ومن كان قبله خُتم بفلسطين بلا أن يُسأل — فيهم من
+       * هو خارجها وكان يرى السعر بالشيكل. فيُختم الأوّلون، ويُسأل الباقون
+       * مرّةً واحدة عند أول دخول.
+       */
+      const asked = await pool.query('SELECT 1 FROM app_meta WHERE key = $1', ['country_ask_at']);
+      if (!asked.rowCount) {
+        const since = await pool.query('SELECT value FROM app_meta WHERE key = $1', ['country_backfill_at']);
+        const at = Number(since.rows[0]?.value) || 0;
+        await pool.query(
+          "UPDATE users SET country_chosen_at = created_at WHERE country_chosen_at IS NULL AND country IS NOT NULL AND country <> '' AND created_at > $1",
+          [at]
+        );
+        await pool.query('INSERT INTO app_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [
+          'country_ask_at',
+          String(Date.now()),
+        ]);
+      }
+
       // ومثلُه لسقف الطلاب: من كان له حسابٌ يوم وُضع السقف يُعفى منه — بنى
       // فصوله حين لم يكن ثمّة سقف، ولا يُسحب ما بُني على وعدٍ سابق. والعلامة
       // هي التي تمنع إعفاء كل حسابٍ جديد بعدها.
@@ -855,6 +923,20 @@ function postgresDriver(connectionString) {
         await pool.query('UPDATE users SET grandfathered_at = created_at WHERE grandfathered_at IS NULL');
         await pool.query('INSERT INTO app_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [
           'student_cap_at',
+          String(Date.now()),
+        ]);
+      }
+
+      // وترقيةٌ لمرّةٍ واحدة إلى الباقة الأعلى: من بقي في اشتراكه أكثر من أحد
+      // عشر يوماً اشترى حين كانت الباقة واحدة، فلا يُوضع في «الأدنى» من اثنتين.
+      // والحدُّ يتجاوز منحة التسجيل (عشرة أيام) فلا تُرقّى تجربةٌ لم تُشترَ.
+      const upgraded = await pool.query('SELECT 1 FROM app_meta WHERE key = $1', ['pro_upgrade_at']);
+      if (!upgraded.rowCount) {
+        await pool.query("UPDATE users SET tier = 'pro' WHERE premium_until > $1", [
+          Date.now() + premium.PRO_UPGRADE_DAYS * 86400000,
+        ]);
+        await pool.query('INSERT INTO app_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [
+          'pro_upgrade_at',
           String(Date.now()),
         ]);
       }
@@ -932,6 +1014,11 @@ function postgresDriver(connectionString) {
       if (patch.phonePublic !== undefined) {
         params.push(Boolean(patch.phonePublic));
         sets.push(`phone_public = $${params.length}`);
+      }
+      // بلدٌ اختاره صاحبه لا بلدٌ افترضناه عنه — انظر سائق الملف أعلاه
+      if (patch.country) {
+        params.push(Date.now());
+        sets.push(`country_chosen_at = $${params.length}`);
       }
       if (!sets.length) return this.findUserById(userId);
       const { rows } = await pool.query(
