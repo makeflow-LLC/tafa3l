@@ -158,11 +158,12 @@ test('الجدولُ العامّ: المحجوز يختفي، والمرفوض 
     { slotId: 'sl_1', status: 'pending' },
     { slotId: 'sl_2', status: 'declined' },
   ];
-  const days = booking.openDays(slots, bookings, { now });
-  const ids = days.flatMap((d) => d.slots.map((s) => s.id));
-  assert.deepEqual(ids, ['sl_2', 'sl_3'], 'المعلّق يحجز، والمرفوض يعود متاحاً');
+  const open = booking.openSlots(slots, bookings, { now });
+  assert.deepEqual(open.map((s) => s.id), ['sl_2', 'sl_3'], 'المعلّق يحجز، والمرفوض يعود متاحاً');
   // ولا يُرسل عن المحجوز شيء: لا اسمَ ولا أنّه محجوز أصلاً
-  assert.equal(JSON.stringify(days).includes('sl_1'), false);
+  assert.equal(JSON.stringify(open).includes('sl_1'), false);
+  // ولا تجميعَ بالأيام على الخادم: لحظاتٌ مطلقة يجمعها المتصفّح بتقويم قارئه
+  assert.ok(open.every((s) => typeof s.at === 'number'));
 });
 
 test('طلبُ الموعد: الاسم والرقم والمادة شرطٌ، والموضوع اختياري', () => {
@@ -217,7 +218,7 @@ test('المسار كاملاً: يفتح موعداً، يحجزه زائر، �
 
   const open = await guest().request('GET', `/api/teachers/${me.id}/slots`);
   assert.equal(open.data.booking, true);
-  const slot = open.data.days.flatMap((d) => d.slots)[0];
+  const slot = open.data.slots[0];
   assert.ok(slot, 'الجدول العام يعرض الموعد');
 
   const asked = await guest().request('POST', `/api/teachers/${me.id}/bookings`, {
@@ -232,7 +233,7 @@ test('المسار كاملاً: يفتح موعداً، يحجزه زائر، �
 
   // الموعد اختفى من الجدول العام فوراً
   const after = await guest().request('GET', `/api/teachers/${me.id}/slots`);
-  assert.equal(after.data.days.flatMap((d) => d.slots).some((s) => s.id === slot.id), false);
+  assert.equal(after.data.slots.some((s) => s.id === slot.id), false);
 
   // وعند المعلّم: كل ما يحتاجه للقرار
   const inbox = await teacher.request('GET', '/api/bookings');
@@ -259,7 +260,7 @@ test('موعدٌ واحد لا يُحجز مرّتين، ورقمٌ واحد ل�
   await setTier(mail, 'pro');
   const me = (await teacher.request('GET', '/api/auth/me')).data.user;
   await teacher.request('POST', '/api/slots', { slots: [{ at: soon(72), minutes: 30 }, { at: soon(73), minutes: 30 }] });
-  const slots = (await guest().request('GET', `/api/teachers/${me.id}/slots`)).data.days.flatMap((d) => d.slots);
+  const slots = (await guest().request('GET', `/api/teachers/${me.id}/slots`)).data.slots;
 
   const ask = (slotId, phone) =>
     guest().request('POST', `/api/teachers/${me.id}/bookings`, { slotId, name: 'طالب', phone, subject: 'علوم' });
@@ -279,7 +280,7 @@ test('الرفضُ يعيد الموعد إلى الجدول، والمحجوز 
   await setTier(mail, 'pro');
   const me = (await teacher.request('GET', '/api/auth/me')).data.user;
   await teacher.request('POST', '/api/slots', { slots: [{ at: soon(96), minutes: 30 }] });
-  const slot = (await guest().request('GET', `/api/teachers/${me.id}/slots`)).data.days.flatMap((d) => d.slots)[0];
+  const slot = (await guest().request('GET', `/api/teachers/${me.id}/slots`)).data.slots[0];
   await guest().request('POST', `/api/teachers/${me.id}/bookings`, { slotId: slot.id, name: 'طالب', phone: '0599111222', subject: 'عربي' });
 
   // محجوز: لا يُحذف قبل الردّ
@@ -289,7 +290,7 @@ test('الرفضُ يعيد الموعد إلى الجدول، والمحجوز 
   const row = (await teacher.request('GET', '/api/bookings')).data.bookings[0];
   await teacher.request('POST', `/api/bookings/${row.id}/decide`, { status: 'declined' });
   const back = await guest().request('GET', `/api/teachers/${me.id}/slots`);
-  assert.equal(back.data.days.flatMap((d) => d.slots).some((s) => s.id === slot.id), true, 'المرفوض يعود متاحاً');
+  assert.equal(back.data.slots.some((s) => s.id === slot.id), true, 'المرفوض يعود متاحاً');
   assert.equal((await teacher.request('DELETE', '/api/slots/' + slot.id)).status, 200);
 });
 
@@ -299,7 +300,7 @@ test('رابطُ اللقاء يُنشر على صفحةٍ عامّة: http(s) �
   await setTier(mail, 'pro');
   const me = (await teacher.request('GET', '/api/auth/me')).data.user;
   await teacher.request('POST', '/api/slots', { slots: [{ at: soon(120), minutes: 30 }] });
-  const slot = (await guest().request('GET', `/api/teachers/${me.id}/slots`)).data.days.flatMap((d) => d.slots)[0];
+  const slot = (await guest().request('GET', `/api/teachers/${me.id}/slots`)).data.slots[0];
   await guest().request('POST', `/api/teachers/${me.id}/bookings`, { slotId: slot.id, name: 'طالب', phone: '0599333444', subject: 'فيزياء' });
   const row = (await teacher.request('GET', '/api/bookings')).data.bookings[0];
 
@@ -330,24 +331,51 @@ test('صفحة المعلّم: موادّه وخبرته وعيّنته — وا
     displayName: 'أ. هدى سليم',
     subjects: ['math', 'science'],
     years: 12,
-    credentials: 'بكالوريوس رياضيات',
-    schools: 'مدرسة الأمل',
-    sampleId: activity.id,
+    schools: 'مدرسة الأمل\nمركز الإبداع',
+    bookingTerms: 'الدرس ساعة\nاللقاء عبر Meet',
+    samples: [
+      { title: 'شرح الكسور', url: 'https://youtube.com/watch?v=abc' },
+      { title: 'بلا رابط', url: '' },
+      { title: '', url: 'https://drive.example/lesson' },
+      { title: 'مخطّطٌ خبيث', url: 'javascript:alert(1)' },
+    ],
   });
   assert.equal(saved.status, 200);
   assert.deepEqual(saved.data.profile.subjects, ['math', 'science']);
   assert.equal(saved.data.profile.years, 12);
+  // العيّنات روابطُ خارجية: ما لا رابط له يسقط، وما ليس http(s) يسقط
+  assert.equal(saved.data.profile.samples.length, 2);
+  assert.equal(saved.data.profile.samples[0].title, 'شرح الكسور');
+  // وبلا عنوانٍ يُشتقّ من نطاق الرابط فلا يظهر رابطٌ عارٍ بلا اسم
+  assert.ok(saved.data.profile.samples[1].title.includes('drive.example'));
+  // والأسطر تبقى أسطراً
+  assert.ok(saved.data.profile.schools.includes('\n'));
 
   const page = await guest().request('GET', '/api/teachers/' + me.id);
-  assert.equal(page.data.teacher.years, 12);
-  assert.equal(page.data.teacher.credentials, 'بكالوريوس رياضيات');
-  assert.equal(page.data.teacher.sample, null, 'نشاطٌ غير منشور لا يُعرض في صفحةٍ عامّة');
+  assert.equal(page.data.teacher.years, 12, 'سنوات الخبرة تصل الصفحة العامّة');
+  assert.equal(page.data.teacher.samples.length, 2);
+  assert.equal(page.data.teacher.credentials, undefined, 'الشهادات أُزيلت من الصفحة');
+  // وشروطُ الحجز تصل مع الجدول لتُقرأ قبل الطلب
+  const schedule = await guest().request('GET', `/api/teachers/${me.id}/slots`);
+  assert.match(schedule.data.terms, /الدرس ساعة/);
 
   await teacher.request('POST', `/api/activities/${activity.id}/publish`, { subject: 'math', grade: 'g7' });
-  const after = await guest().request('GET', '/api/teachers/' + me.id);
-  assert.equal(after.data.teacher.sample.title, 'درس الكسور');
   // ونشاطاته المنشورة تُصفّى باسمه
   const mine = await guest().request('GET', '/api/library?teacher=' + me.id);
   assert.equal(mine.data.items.length, 1);
   assert.equal(mine.data.items[0].title, 'درس الكسور');
+});
+
+test('اسمُ المعلّم العامّ: اللقب وحده لا يدلّ على أحد', async () => {
+  const teacher = client();
+  await teacher.login('أ. سامي درويش');
+  const me = (await teacher.request('GET', '/api/auth/me')).data.user;
+  const page = await guest().request('GET', '/api/teachers/' + me.id);
+  assert.equal(page.data.teacher.name, 'أ. سامي', 'اللقب يجرّ الاسم بعده');
+
+  const plain = client();
+  await plain.login('سلمى درويش');
+  const her = (await plain.request('GET', '/api/auth/me')).data.user;
+  const hers = await guest().request('GET', '/api/teachers/' + her.id);
+  assert.equal(hers.data.teacher.name, 'سلمى', 'وبلا لقبٍ يبقى الاسم الأول وحده');
 });

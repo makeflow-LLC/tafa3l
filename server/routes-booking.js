@@ -42,9 +42,14 @@ function bookingRoutes() {
       const db = storage.get();
       const teacher = await db.findUserById(req.params.id);
       if (!teacher) return res.status(404).json({ error: 'المعلّم غير موجود' });
-      if (!booksAllowed(teacher)) return res.json({ booking: false, days: [] });
+      if (!booksAllowed(teacher)) return res.json({ booking: false, slots: [] });
       const [slots, bookings] = await Promise.all([db.listSlots(teacher.id), db.listBookings(teacher.id)]);
-      res.json({ booking: true, days: booking.openDays(slots, bookings) });
+      res.json({
+        booking: true,
+        // شروطُ المعلّم تُقرأ قبل الطلب لا بعده، فتُرسل مع الجدول نفسه
+        terms: teacher.bookingTerms || '',
+        slots: booking.openSlots(slots, bookings),
+      });
     } catch (err) {
       console.error('teacher slots:', err);
       res.status(500).json({ error: 'تعذّر جلب المواعيد' });

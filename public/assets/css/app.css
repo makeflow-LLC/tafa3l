@@ -2740,6 +2740,53 @@ html.dark .cloud .c6 { color: #22d3ee; }
   color: var(--bad);
 }
 
+/* يومٌ فيه اختيارٌ لم يُحفظ بعد: نقطةٌ تقول «هنا شيء» بلا أن تُشبه المختار */
+.chip.has::after {
+  content: '•';
+  color: var(--brand);
+  font-weight: 700;
+  margin-inline-start: 4px;
+}
+
+/* عيّنةُ درسٍ: رابطٌ خارجيّ يُقرأ سطراً كاملاً لا كلمةً في جملة */
+.sample-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sample-link:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+/* صفّ العيّنة في البروفايل: عنوانٌ ثم رابط، ويتراصّان على الجوّال */
+.sample-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 6px;
+  margin-block-end: 6px;
+}
+
+/* نموذجُ الحجز في صفحته الواسعة: حقلان في السطر حيث يتّسع */
+.book-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 560px) {
+  .sample-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* وجهُ المعلّم في صفحته العامّة */
 .tp-face {
   width: 72px;

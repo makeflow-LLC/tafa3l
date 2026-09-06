@@ -262,11 +262,12 @@ function fileDriver() {
       const u = db.users[userId];
       if (!u) return null;
       // undefined = «لم يُرسَل هذا الحقل»؛ السلسلة الفارغة = «امسحه»
-      for (const key of ['displayName', 'phone', 'photo', 'country', 'bio', 'credentials', 'schools', 'sampleId']) {
+      for (const key of ['displayName', 'phone', 'photo', 'country', 'bio', 'schools', 'bookingTerms']) {
         if (patch[key] !== undefined) u[key] = patch[key] || '';
       }
       // صفحةُ المعلّم العامّة: موادُّه وسنوات خبرته
       if (patch.subjects !== undefined) u.subjects = Array.isArray(patch.subjects) ? patch.subjects : [];
+      if (patch.samples !== undefined) u.samples = Array.isArray(patch.samples) ? patch.samples : [];
       if (patch.years !== undefined) u.years = Number(patch.years) || 0;
       /*
        * بلدٌ **اختاره صاحبه** لا بلدٌ افترضناه عنه.
@@ -658,7 +659,7 @@ function postgresDriver(connectionString) {
    */
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
                         premium_until, trial_granted_at, created_at, tier, grandfathered_at, country_chosen_at,
-                        subjects, years, credentials, schools, sample_id,
+                        subjects, years, schools, samples, booking_terms,
                         games_built, games_month, games_month_key, bio, phone_public,
                         stripe_customer_id, links,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
@@ -682,9 +683,9 @@ function postgresDriver(connectionString) {
     // صفحة المعلّم العامّة — كلّها اختيارية، وما لم يُملأ لا يُعرض
     subjects: Array.isArray(r.subjects) ? r.subjects : [],
     years: Number(r.years) || 0,
-    credentials: r.credentials || '',
     schools: r.schools || '',
-    sampleId: r.sample_id || '',
+    samples: Array.isArray(r.samples) ? r.samples : [],
+    bookingTerms: r.booking_terms || '',
     country: r.country || '',
     bio: r.bio || '',
     // غيرُ مضبوطةٍ = أظهره: حساباتٌ كتبت رقمها قبل وجود الراية لا يختفي رقمها فجأة
@@ -827,9 +828,11 @@ function postgresDriver(connectionString) {
         -- يختاره عيّنةً من درسه. كلّها اختيارية — وما لم يُملأ لا يُعرض.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS subjects JSONB;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS years INTEGER;
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS credentials TEXT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS schools TEXT;
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS sample_id TEXT;
+        -- عيّناتُ دروسه: روابطُ خارجية يضعها بنفسه {title, url}
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS samples JSONB;
+        -- شروطُ الحجز التي يكتبها بنفسه، تُقرأ قبل إرسال الطلب
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS booking_terms TEXT;
         CREATE INDEX IF NOT EXISTS users_stripe_customer_idx ON users(stripe_customer_id);
         CREATE TABLE IF NOT EXISTS activities (
           id TEXT PRIMARY KEY,
@@ -1087,9 +1090,8 @@ function postgresDriver(connectionString) {
         ['photo', 'photo'],
         ['country', 'country'],
         ['bio', 'bio'],
-        ['credentials', 'credentials'],
         ['schools', 'schools'],
-        ['sampleId', 'sample_id'],
+        ['bookingTerms', 'booking_terms'],
       ]) {
         if (patch[key] === undefined) continue;
         params.push(patch[key] || null);
@@ -1098,6 +1100,10 @@ function postgresDriver(connectionString) {
       if (patch.subjects !== undefined) {
         params.push(JSON.stringify(Array.isArray(patch.subjects) ? patch.subjects : []));
         sets.push(`subjects = $${params.length}::jsonb`);
+      }
+      if (patch.samples !== undefined) {
+        params.push(JSON.stringify(Array.isArray(patch.samples) ? patch.samples : []));
+        sets.push(`samples = $${params.length}::jsonb`);
       }
       if (patch.years !== undefined) {
         params.push(Number(patch.years) || 0);

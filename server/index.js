@@ -387,6 +387,11 @@ app.get('/t/:id', (req, res) => {
   res.redirect(`/teacher.html?id=${encodeURIComponent(req.params.id)}`);
 });
 
+/** وصفحةُ الحجز عنوانٌ مستقلّ: تُشارَك وحدها لمن يريد موعداً لا تعريفاً */
+app.get('/book/:id', (req, res) => {
+  res.redirect(`/book.html?id=${encodeURIComponent(req.params.id)}`);
+});
+
 /**
  * الدخول بالرمز صار صفحةً مستقلّة لا حقلاً في الواجهة: زائرٌ لا رمز معه كان
  * يظنّ أن عليه إدخال شيء ليتصفّح. و«‎/c‎» عنوانٌ قصير يُملى على الطلاب شفهياً.
