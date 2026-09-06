@@ -144,9 +144,7 @@ const PLANS = [
     priceUsd: PRO_PRICE_USD,
     students: LIMITS.pro.students,
     gamesMonthly: LIMITS.pro.gamesMonthly,
-    perks: ['كل ما في الأساسية'],
-    // ميزةٌ تُباع قبل أن تُبنى تُكتب «قريباً» صراحةً — لا وعدَ مبهم
-    soon: ['حجز مواعيد مع طلابك'],
+    perks: ['كل ما في الأساسية', 'صفحةٌ عامّة تشاركها', 'حجز مواعيد مع طلابك'],
   },
 ];
 
