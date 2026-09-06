@@ -1604,10 +1604,22 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     minutes.value = '30';
     const repeat = el('select', {}, [1, 2, 3, 4, 6, 8].map((n) => el('option', { value: String(n), text: n === 1 ? t('bkRepeatOnce') : t('bkRepeatN', { n }) })));
     const save = el('button', { class: 'btn primary', type: 'button', disabled: true }, t('bkSave'));
+    const count = el('span', { class: 'muted small' });
 
     let day = nextDays(1)[0];
     /** الأوقات المختارة في هذه الجلسة — مفاتيحها طوابع زمنية */
     const picked = new Set();
+
+    /** ماذا اخترتُ حتى الآن؟ عدٌّ ظاهر، وعلامةٌ على كل يومٍ فيه اختيار */
+    const refresh = () => {
+      save.disabled = picked.size === 0;
+      save.textContent = picked.size ? t('bkSaveN', { n: picked.size }) : t('bkSave');
+      count.textContent = picked.size ? t('bkPickedIn', { n: picked.size, d: new Set([...picked].map((at) => dayKey(new Date(at)))).size }) : '';
+      days.querySelectorAll('.chip').forEach((chip) => {
+        const key = chip.dataset.day;
+        chip.classList.toggle('has', [...picked].some((at) => dayKey(new Date(at)) === key));
+      });
+    };
 
     const paintGrid = () => {
       grid.replaceChildren();
@@ -1624,8 +1636,8 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             onclick: () => {
               if (picked.has(at)) picked.delete(at);
               else picked.add(at);
-              save.disabled = picked.size === 0;
               paintGrid();
+              refresh();
             },
           }, [
             el('strong', { text: `${String(h).padStart(2, '0')}:${m ? '30' : '00'}` }),
@@ -1643,9 +1655,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           type: 'button',
           'data-day': dayKey(d),
           onclick: () => {
+            /*
+             * الاختيار **يبقى** عبر الأيام: المعلّم يفتح جدوله أياماً في جلسة
+             * واحدة («يوميّاً من ٤ إلى ٦»)، وتفريغُ ما اختاره كلّما بدّل اليوم
+             * كان يحصره في يومٍ واحدٍ لكلّ حفظ.
+             */
             day = d;
-            picked.clear();
-            save.disabled = true;
             days.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.dataset.day === dayKey(d)));
             paintGrid();
           },
@@ -1654,6 +1669,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       )
     );
     paintGrid();
+    refresh();
 
     save.addEventListener('click', async () => {
       const weeks = Number(repeat.value) || 1;
@@ -1686,6 +1702,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('div', { class: 'stack tight' }, [el('label', { text: t('bkDuration') }), minutes]),
         el('div', { class: 'stack tight' }, [el('label', { text: t('bkRepeat') }), repeat]),
         save,
+        count,
       ])
     );
     return card;
@@ -2551,19 +2568,23 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       return chip;
     }));
     const years = el('input', { type: 'number', min: '0', max: '60', dir: 'ltr', value: String(profile.years || '') });
-    const credentials = el('textarea', { rows: 2, maxlength: 300, placeholder: t('profCredentialsPh') });
-    credentials.value = profile.credentials || '';
     const schools = el('textarea', { rows: 2, maxlength: 300, placeholder: t('profSchoolsPh') });
     schools.value = profile.schools || '';
-    // العيّنة من **المنشور** وحده: الصفحة عامّة، ونشاطٌ غير منشورٍ يُعرض فيها
-    // يكشف أسئلةً لم يقرّر صاحبها كشفها
-    const sample = el('select', {}, [el('option', { value: '', text: t('profSampleNone') })]);
-    api('/api/activities')
-      .then(({ activities }) => {
-        (activities || []).filter((a) => a.published).forEach((a) => sample.append(el('option', { value: a.id, text: a.title })));
-        sample.value = profile.sampleId || '';
-      })
-      .catch(() => {});
+
+    /*
+     * عيّناتُ الدروس **روابطُ خارجية**: فيديو على يوتيوب، ملفٌّ على درايف،
+     * منشورٌ فيه شرح. والدرسُ الذي يفخر به المعلّم قد لا يكون نشاطاً في
+     * المنصّة أصلاً — فلا نحصره فيما عندنا.
+     */
+    const savedSamples = Array.isArray(profile.samples) ? profile.samples : [];
+    const sampleRows = [0, 1, 2].map((i) => ({
+      title: el('input', { maxlength: 80, placeholder: t('profSampleTitlePh'), value: savedSamples[i]?.title || '' }),
+      url: el('input', { type: 'url', dir: 'ltr', maxlength: 300, placeholder: t('profSampleUrlPh'), value: savedSamples[i]?.url || '' }),
+    }));
+
+    // شروطُ الحجز: يكتبها بنفسه فيقرأها الطالب قبل أن يرسل طلبه
+    const bookingTerms = el('textarea', { rows: 3, maxlength: 300, placeholder: t('profTermsPh') });
+    bookingTerms.value = profile.bookingTerms || '';
 
     const face = el('div', { class: 'profile-face' });
     // حقلُ الملفّ مخفيّ خلف زرٍّ بلغة الصفحة: «Choose File / No file chosen»
@@ -2618,9 +2639,9 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           links: linkInputs.map((box) => box.value.trim()).filter(Boolean),
           subjects: [...subjectPicks],
           years: Number(years.value) || 0,
-          credentials: credentials.value,
           schools: schools.value,
-          sampleId: sample.value,
+          samples: sampleRows.map((row) => ({ title: row.title.value.trim(), url: row.url.value.trim() })).filter((row) => row.url),
+          bookingTerms: bookingTerms.value,
         };
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
@@ -2679,9 +2700,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('profPageHint') }),
         el('div', { class: 'stack tight' }, [el('span', { class: 'small', text: t('profSubjects') }), subjectChips]),
         el('label', {}, [el('span', { class: 'small', text: t('profYears') }), years]),
-        el('label', {}, [el('span', { class: 'small' }, [t('profCredentials'), ' ', window.T.hintDot(t('profCredentialsHint'))]), credentials]),
         el('label', {}, [el('span', { class: 'small', text: t('profSchools') }), schools]),
-        el('label', {}, [el('span', { class: 'small' }, [t('profSample'), ' ', window.T.hintDot(t('profSampleHint'))]), sample]),
+        el('div', { class: 'stack tight' }, [
+          el('span', { class: 'small' }, [t('profSample'), ' ', window.T.hintDot(t('profSampleHint'))]),
+          ...sampleRows.map((row) => el('div', { class: 'sample-row' }, [row.title, row.url])),
+        ]),
+        el('label', {}, [el('span', { class: 'small' }, [t('profTerms'), ' ', window.T.hintDot(t('profTermsHint'))]), bookingTerms]),
         el('p', { class: 'note warn small', style: { margin: 0 }, text: t('profPublicWarning') }),
         el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
           save,

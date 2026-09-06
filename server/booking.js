@@ -74,24 +74,19 @@ function isTaken(slotId, bookings) {
 }
 
 /**
- * ما يراه الطالب: المواعيد الفارغة القادمة، مجموعةً بأيّامها.
+ * ما يراه الطالب: المواعيد الفارغة القادمة، **قائمةً مرتّبة**.
  *
- * والتجميع باليوم لا بالقائمة الطويلة: «الثلاثاء ٤ و٥ و٦» تُقرأ بنظرة،
- * وأربعون زرّاً متتابعاً لا تُقرأ. والترتيب زمنيّ في الحالتين.
+ * والتجميع باليوم يقع في المتصفّح لا هنا: «الثلاثاء» يومٌ يختلف أوّله وآخره
+ * باختلاف منطقة القارئ الزمنية، فتجميعُه على الخادم بتوقيت UTC يضع موعد
+ * الحادية عشرة ليلاً في يوم الغد عند من هو شرقيّ غرينتش. والخادم يرسل لحظاتٍ
+ * مطلقة، والمتصفّح يعرف تقويم صاحبه.
  */
-function openDays(slots, bookings, { now = Date.now(), days = HORIZON_DAYS } = {}) {
+function openSlots(slots, bookings, { now = Date.now(), days = HORIZON_DAYS } = {}) {
   const limit = now + days * 86400000;
-  const free = (slots || [])
+  return (slots || [])
     .filter((s) => s.at > now && s.at <= limit && !isTaken(s.id, bookings))
-    .sort((a, b) => a.at - b.at);
-  const byDay = new Map();
-  for (const slot of free) {
-    // المفتاح يومٌ بتوقيت UTC — والعرض يتولّاه المتصفّح بتوقيت قارئه
-    const key = new Date(slot.at).toISOString().slice(0, 10);
-    if (!byDay.has(key)) byDay.set(key, { day: key, slots: [] });
-    byDay.get(key).slots.push({ id: slot.id, at: slot.at, minutes: slot.minutes });
-  }
-  return [...byDay.values()];
+    .sort((a, b) => a.at - b.at)
+    .map((s) => ({ id: s.id, at: s.at, minutes: s.minutes }));
 }
 
 /**
@@ -141,7 +136,7 @@ module.exports = {
   cleanSlots,
   overlaps,
   isTaken,
-  openDays,
+  openSlots,
   cleanRequest,
   publicBooking,
 };

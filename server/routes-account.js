@@ -109,8 +109,13 @@ function cleanLines(value, max, maxLines = 8) {
  * الاسم الأول وحده يُنسب إليه النشاط في المكتبة. المعلّم نشر درساً لا سيرةً
  * ذاتية، والاسم الكامل مع المادة والصف يكفي للتعرّف عليه شخصياً.
  */
+const HONORIFICS = /^(أ|د|م|ا|أ\.|د\.|م\.|ا\.|الأستاذ|الاستاذ|الأستاذة|الاستاذة|المعلم|المعلّم|المعلمة|المعلّمة|الدكتور|الدكتورة)$/;
 function firstNameOf(name) {
-  return String(name || '').trim().split(/\s+/)[0] || '';
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '';
+  // «أ. سامي» لقبٌ واسم لا اسمان: اللقب وحده لا يدلّ على أحد، فيلزمه ما بعده
+  if (parts.length > 1 && HONORIFICS.test(parts[0])) return `${parts[0]} ${parts[1]}`;
+  return parts[0];
 }
 
 /**
@@ -1663,9 +1668,9 @@ function accountRoutes(store) {
     // صفحة المعلّم العامّة
     subjects: Array.isArray(u.subjects) ? u.subjects : [],
     years: Number(u.years) || 0,
-    credentials: u.credentials || '',
     schools: u.schools || '',
-    sampleId: u.sampleId || '',
+    samples: Array.isArray(u.samples) ? u.samples : [],
+    bookingTerms: u.bookingTerms || '',
     // ما ينقص البروفايل — تسألُه الواجهة لتدعو المعلّم إلى إكماله بلا إلزام
     missing: ['displayName', 'photo', 'bio', 'country'].filter((key) =>
       key === 'photo' ? !u.hasPhoto : !String(u[key] || '').trim()
@@ -1725,18 +1730,22 @@ function accountRoutes(store) {
         patch.subjects = (Array.isArray(body.subjects) ? body.subjects : []).map((s) => clean(s, 40)).filter(Boolean).slice(0, 6);
       }
       if (body.years !== undefined) patch.years = Math.max(0, Math.min(60, Math.round(Number(body.years) || 0)));
-      // بأسطرها: «سطرٌ لكل شهادة» وعدٌ في الواجهة، فلا تُسحق الأسطر هنا
-      if (body.credentials !== undefined) patch.credentials = cleanLines(body.credentials, MAX_BIO_CHARS);
       if (body.schools !== undefined) patch.schools = cleanLines(body.schools, MAX_BIO_CHARS);
-      // العيّنة نشاطٌ يملكه هو — والنشر يُفحص عند العرض لا هنا (قد يُنشر لاحقاً)
-      if (body.sampleId !== undefined) {
-        const id = String(body.sampleId || '');
-        if (id) {
-          const a = await storage.get().getActivity(id);
-          if (!a || a.ownerId !== req.user.id) return res.status(404).json({ error: 'النشاط غير موجود' });
-        }
-        patch.sampleId = id;
+      /*
+       * عيّناتُ دروسه **روابطُ خارجية** يضعها بنفسه: فيديو على يوتيوب، ملفٌّ
+       * على درايف، منشورٌ فيه شرحُ درس. وهي أصدق ممّا نستطيع نحن انتقاءه من
+       * داخل المنصّة — الدرسُ الذي يفخر به قد لا يكون نشاطاً هنا أصلاً.
+       * وتُنشر على صفحةٍ يفتحها طلاب، فـ`http(s)` وحدهما يمرّان.
+       */
+      if (body.samples !== undefined) {
+        patch.samples = (Array.isArray(body.samples) ? body.samples : [])
+          .map((row) => ({ title: clean(row?.title, 80), url: String(row?.url || '').trim().slice(0, 300) }))
+          .filter((row) => /^https?:\/\//i.test(row.url))
+          .map((row) => ({ title: row.title || row.url.replace(/^https?:\/\//i, '').slice(0, 60), url: row.url }))
+          .slice(0, 6);
       }
+      // شروط الحجز: يكتبها المعلّم بنفسه فتُقرأ قبل أن يُرسل الطالب طلبه
+      if (body.bookingTerms !== undefined) patch.bookingTerms = cleanLines(body.bookingTerms, MAX_BIO_CHARS, 12);
       const updated = await storage.get().updateProfile(req.user.id, patch);
       if (!updated) return res.status(404).json({ error: 'الحساب غير موجود' });
       res.json({ profile: myProfile(updated) });
@@ -1753,18 +1762,6 @@ function accountRoutes(store) {
     try {
       const u = await storage.get().findUserById(req.params.id);
       if (!u) return res.status(404).json({ error: 'المعلّم غير موجود' });
-      /*
-       * عيّنةٌ من درسه: نشاطٌ **منشورٌ في المكتبة** يختاره بنفسه. والاشتراط
-       * ليس تشدّداً — الصفحة عامّة، ونشاطٌ غير منشورٍ يُعرض فيها يكشف أسئلةً
-       * واختباراتٍ لم يقرّر صاحبها كشفها.
-       */
-      let sample = null;
-      if (u.sampleId) {
-        const a = await storage.get().getActivity(u.sampleId);
-        if (a && a.ownerId === u.id && a.published) {
-          sample = { id: a.id, title: a.title, questionCount: (a.questions || []).length, subject: a.subject || '', grade: a.grade || '' };
-        }
-      }
       res.json({
         teacher: {
           id: u.id,
@@ -1778,9 +1775,10 @@ function accountRoutes(store) {
           // ما يملؤه لصفحته العامّة — وما لم يُملأ لا يُرسل فلا يُعرض
           subjects: Array.isArray(u.subjects) ? u.subjects : [],
           years: Number(u.years) || 0,
-          credentials: u.credentials || '',
           schools: u.schools || '',
-          sample,
+          // عيّناتُ دروسه: روابطُ خارجية يضعها بنفسه
+          samples: Array.isArray(u.samples) ? u.samples : [],
+          bookingTerms: u.bookingTerms || '',
           // هل يستقبل حجوزات؟ الميزة في الباقة الاحترافية وحدها
           booking: premium.limitsFor(u).booking === true,
         },

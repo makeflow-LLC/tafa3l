@@ -2,29 +2,23 @@
  * صفحة المعلّم العامّة — رابطٌ يشاركه على فيسبوك وواتساب.
  *
  * وهي أوّل ما يراه من لا يعرف المعلّم: صورتُه واسمه وموادُّه وسنواتُ خبرته
- * وشهاداتُه والمدارس التي درّس فيها، وعيّنةٌ من درسه، وتحتها ما نشره من
- * أنشطة وما بناه من ألعاب — ثم **زرُّ حجز موعد**.
+ * والمدارس التي درّس فيها، وروابطُ عيّناتٍ من دروسه، وما نشره من أنشطة وما
+ * بناه من ألعاب — ثم زرٌّ يفتح **صفحة الحجز** (book.js).
  *
- * بلا حساب: من يفتحها زائرٌ غالباً، واشتراطُ تسجيلٍ قبل أن يطلب موعداً يقتل
- * الغرض. فيكفي اسمُه ورقم واتسابه — وهو الرقم الذي سيردّ عليه المعلّم.
+ * بلا حساب: من يفتحها زائرٌ غالباً، فلا تطلب تسجيلاً ولا تعرف من يقرؤها.
  */
 (function () {
   'use strict';
 
-  const { $, el, api, toast, store, copyLink } = window.T;
+  const { $, el, api, toast, copyLink } = window.T;
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   const tagLabel = (kind, id) => (window.I18n ? window.I18n.tagLabel(kind, id) : id);
   const app = $('#app');
   const id = new URLSearchParams(location.search).get('id') || '';
-  /** طلباتي على هذا الجهاز — بها أعود لأرى إن قُبل الموعد */
-  const MINE_KEY = 'tafa3l:bookings';
 
   // الشريط يحمل «الرئيسية» بنفسه — ولا نكرّرها
   window.SiteTopbar?.mount({});
 
-  const dayName = (day) => new Date(day + 'T12:00:00Z').toLocaleDateString('ar', { weekday: 'long', day: 'numeric', month: 'long' });
-  const hour = (at) => new Date(at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' });
-  const when = (at) => new Date(at).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' });
 
   function fail(message) {
     app.replaceChildren(
@@ -90,15 +84,16 @@
     ]);
     app.append(head);
 
-    // ---- الخبرة: الشهادات والمدارس — وما لم يُملأ لا يُعرض أصلاً
-    if (teacher.credentials || teacher.schools) {
+    // ---- الخبرة: سنواتُها والمدارس. والسنوات سطرٌ صريح لا شارةً وحدها —
+    // شارةٌ بين شاراتٍ تُقرأ بالعين ولا تُقرأ بالانتباه، وهي أوّل ما يُسأل عنه
+    if (teacher.years || teacher.schools) {
       app.append(
         el('div', { class: 'card stack' }, [
           el('h2', { style: { margin: 0 }, text: t('tpExperience') }),
-          teacher.credentials
-            ? el('div', { class: 'stack tight' }, [
-                el('strong', { class: 'small', text: t('tpCredentials') }),
-                el('p', { class: 'muted', style: { margin: 0, whiteSpace: 'pre-wrap' }, text: teacher.credentials }),
+          teacher.years
+            ? el('div', { class: 'row between', style: { gap: '8px' } }, [
+                el('span', { class: 'muted small', text: t('profYears') }),
+                el('strong', { text: t('tpYears', { n: teacher.years }) }),
               ])
             : null,
           teacher.schools
@@ -111,176 +106,54 @@
       );
     }
 
-    // ---- عيّنة من درسه
-    if (teacher.sample) {
+    /*
+     * عيّناتٌ من دروسه — **روابطُ خارجية** يضعها بنفسه: فيديو على يوتيوب،
+     * ملفٌّ على درايف، منشورٌ فيه شرح. وهي أصدق ممّا ننتقيه له من داخل
+     * المنصّة: الدرسُ الذي يفخر به قد لا يكون نشاطاً هنا أصلاً.
+     */
+    if ((teacher.samples || []).length) {
       app.append(
         el('div', { class: 'card stack' }, [
           el('h2', { style: { margin: 0 }, text: t('tpSample') }),
-          el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap' } }, [
-            el('div', { class: 'stack tight grow' }, [
-              el('strong', { text: teacher.sample.title }),
-              el('span', { class: 'muted small', text: t('hQuestionCount', { count: teacher.sample.questionCount }) }),
-            ]),
-            el('a', { class: 'btn primary sm', href: '/host.html#/library/' + teacher.sample.id }, t('tpOpenSample')),
-          ]),
+          ...teacher.samples.map((sample) =>
+            el('a', {
+              class: 'sample-link',
+              href: sample.url,
+              target: '_blank',
+              rel: 'noopener noreferrer nofollow ugc',
+            }, [
+              el('span', { class: 'grow', text: sample.title }),
+              el('span', { class: 'muted small', style: { direction: 'ltr' }, text: hostOf(sample.url) }),
+              el('span', { 'aria-hidden': 'true', text: '↗' }),
+            ])
+          ),
         ])
       );
     }
 
-    if (teacher.booking) app.append(bookingCard(teacher));
-    mineCard();
+    /*
+     * الحجز صفحةٌ مستقلّة لا بطاقةٌ في ذيل هذه: فيها شروط المعلّم وأوقاته
+     * في شبكةٍ واسعة، وهي **فعل** لا تعريف — فتُفتح بقرارٍ من الطالب.
+     */
+    if (teacher.booking) {
+      app.append(
+        el('div', { class: 'card stack center' }, [
+          el('h2', { style: { margin: 0 }, text: t('tpBookTitle') }),
+          el('p', { class: 'muted small', style: { margin: 0, textAlign: 'center' }, text: t('tpBookIntro', { name: teacher.name }) }),
+          el('a', { class: 'btn primary', href: '/book/' + encodeURIComponent(id) }, t('tpBookCta')),
+        ])
+      );
+    }
     listsCard();
   }
 
-  /**
-   * الحجز: أيّامٌ أزرارها أوقات — كما في Calendly.
-   *
-   * والترتيب مقصود: يختار اليوم فيرى أوقاته، ثم يملأ اسمه ورقمه ومادّته.
-   * ولا يُطلب منه شيءٌ قبل أن يعرف أنّ ثمّة وقتاً يناسبه أصلاً.
-   */
-  function bookingCard(teacher) {
-    const card = el('div', { class: 'card stack' }, [
-      el('h2', { style: { margin: 0 }, text: t('tpBookTitle') }),
-      el('p', { class: 'muted small', style: { margin: 0 }, text: t('tpBookIntro', { name: teacher.name }) }),
-    ]);
-    const days = el('div', { class: 'chips' });
-    const times = el('div', { class: 'slot-grid' });
-    const formBox = el('div', { class: 'stack' });
-    card.append(days, times, formBox);
-
-    let chosenDay = null;
-    let chosenSlot = null;
-
-    api('/api/teachers/' + encodeURIComponent(id) + '/slots')
-      .then((data) => {
-        const list = data.days || [];
-        if (!list.length) {
-          days.replaceChildren(el('span', { class: 'muted small', text: t('tpNoSlots') }));
-          return;
-        }
-        const paintTimes = () => {
-          const day = list.find((d) => d.day === chosenDay);
-          times.replaceChildren(
-            ...(day?.slots || []).map((slot) => {
-              const btn = el('button', {
-                class: 'slot' + (chosenSlot?.id === slot.id ? ' on' : ''),
-                type: 'button',
-                onclick: () => {
-                  chosenSlot = slot;
-                  paintTimes();
-                  paintForm();
-                },
-              }, [
-                el('strong', { text: hour(slot.at) }),
-                el('span', { class: 'muted small', text: t('tpMinutes', { n: slot.minutes }) }),
-              ]);
-              return btn;
-            })
-          );
-        };
-        days.replaceChildren(
-          ...list.map((d) =>
-            el('button', {
-              class: 'chip' + (d.day === chosenDay ? ' on' : ''),
-              type: 'button',
-              onclick: () => {
-                chosenDay = d.day;
-                chosenSlot = null;
-                days.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.dataset.day === d.day));
-                paintTimes();
-                formBox.replaceChildren();
-              },
-              'data-day': d.day,
-              text: dayName(d.day) + ' · ' + d.slots.length,
-            })
-          )
-        );
-        // اليوم الأول مفتوحٌ سلفاً: صفحةٌ تُفتح على أوقاتٍ جاهزة أقربُ إلى الحجز
-        days.querySelector('.chip')?.click();
-      })
-      .catch(() => days.replaceChildren(el('span', { class: 'muted small', text: t('tpNoSlots') })));
-
-    function paintForm() {
-      if (!chosenSlot) return formBox.replaceChildren();
-      const name = el('input', { maxlength: 40, placeholder: t('tpNamePh'), value: store.local.get('tafa3l:name', '') || '' });
-      const phone = el('input', { type: 'tel', inputmode: 'tel', maxlength: 24, placeholder: t('tpPhonePh') });
-      const subject = el('input', { maxlength: 60, placeholder: t('tpSubjectPh'), value: (teacher.subjects || []).length === 1 ? tagLabel('subj', teacher.subjects[0]) : '' });
-      const topic = el('textarea', { rows: 2, maxlength: 200, placeholder: t('tpTopicPh') });
-      const send = el('button', { class: 'btn primary', type: 'button' }, t('tpSend'));
-
-      send.addEventListener('click', async () => {
-        send.disabled = true;
-        try {
-          const res = await api('/api/teachers/' + encodeURIComponent(id) + '/bookings', {
-            method: 'POST',
-            body: { slotId: chosenSlot.id, name: name.value, phone: phone.value, subject: subject.value, topic: topic.value },
-          });
-          store.local.set('tafa3l:name', name.value.trim());
-          remember(res.booking, teacher.name);
-          toast(t('tpSent'), 'ok');
-          boot();
-        } catch (err) {
-          toast(err.message, 'bad');
-          send.disabled = false;
-        }
-      });
-
-      formBox.replaceChildren(
-        el('div', { class: 'note', text: t('tpChosen', { when: when(chosenSlot.at) }) }),
-        el('div', {}, [el('label', { text: t('tpName') }), name]),
-        el('div', {}, [el('label', { text: t('tpPhone') }), phone, el('span', { class: 'muted small', text: t('tpPhoneHint') })]),
-        el('div', {}, [el('label', { text: t('tpSubject') }), subject]),
-        el('div', {}, [el('label', { text: t('tpTopic') }), topic]),
-        send
-      );
+  /** نطاقُ الرابط — يقول للطالب إلى أين يذهب قبل أن يضغط */
+  function hostOf(url) {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return '';
     }
-
-    return card;
-  }
-
-  /** يحفظ الطلب على الجهاز — به يعود صاحبه ليرى إن قُبل */
-  function remember(bk, teacherName) {
-    const all = store.local.get(MINE_KEY, {}) || {};
-    all[bk.id] = { id: bk.id, teacher: id, teacherName, at: bk.at };
-    store.local.set(MINE_KEY, all);
-  }
-
-  /** طلباتي عند هذا المعلّم: حالتُها ورابط اللقاء إن قُبلت */
-  function mineCard() {
-    const all = store.local.get(MINE_KEY, {}) || {};
-    const mine = Object.values(all).filter((b) => b.teacher === id);
-    if (!mine.length) return;
-    const card = el('div', { class: 'card stack' }, [el('h2', { style: { margin: 0 }, text: t('tpMine') })]);
-    app.append(card);
-    mine
-      .sort((a, b) => a.at - b.at)
-      .forEach((row) => {
-        const line = el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap', padding: '6px 0', borderTop: '1px solid var(--border)' } }, [
-          el('span', { class: 'grow', text: when(row.at) }),
-          el('span', { class: 'muted small', text: '…' }),
-        ]);
-        card.append(line);
-        api('/api/bookings/' + encodeURIComponent(row.id) + '/status')
-          .then(({ booking }) => {
-            const tone = booking.status === 'confirmed' ? 'ok' : booking.status === 'declined' ? 'bad' : 'warn';
-            /*
-             * `replaceChildren` تكتب «null» نصّاً حين يمرّ عليها فراغ — بخلاف
-             * `el` التي تُسقطه. فالقائمة تُبنى ثم تُصفّى قبل أن تُمرَّر.
-             */
-            const parts = [
-              el('div', { class: 'stack tight grow' }, [
-                el('strong', { text: when(booking.at) }),
-                booking.subject ? el('span', { class: 'muted small', text: booking.subject }) : null,
-              ]),
-              el('span', { class: 'badge ' + tone, text: t('tpStatus_' + booking.status) }),
-            ];
-            if (booking.link) {
-              parts.push(el('a', { class: 'btn primary sm', href: booking.link, target: '_blank', rel: 'noopener' }, t('tpJoinMeet')));
-            }
-            line.replaceChildren(...parts);
-          })
-          .catch(() => line.remove());
-      });
   }
 
   /** ما نشره وما بناه: أنشطته في المكتبة وألعابه */
