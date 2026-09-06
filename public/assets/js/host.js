@@ -94,7 +94,9 @@
     if (hash === '/game-ai') return openGameBuilder();
     if (hash === '/new') return openBuilder();
     if (hash === '/upgrade') return openUpgrade();
-    if (hash === '/pay') return openPayment();
+    // الدفع، ومعه الباقة المقصودة: ‎#/pay?tier=pro‎ — وبلا وسمٍ فالأساسية
+    const payHash = hash.match(/^\/pay(?:\?tier=(\w+))?$/);
+    if (payHash) return openPayment(payHash[1] || 'basic');
     if (hash === '/admin') return openAdmin();
     // إدارة الطلاب: كل الفصول، أو فصلٌ بعينه (‎#/students?class=cl_…‎)
     const stu = hash.match(/^\/students(?:\?class=([^&]+))?$/);
@@ -501,6 +503,27 @@
   /** رايةٌ يرفعها من أنشأ فصلاً: أوّل ما يريده بعدها كتابةُ اسم طالب */
   let wantsStudentFocus = false;
 
+  /**
+   * سطرُ سقف الطلاب: كم استعمل من كم، وزرُّ ترقيةٍ حين يقترب.
+   *
+   * وفصلُ العرض التجريبي خارج العدّ كما هو خارجه في الخادم — طلابه أسماءٌ
+   * اخترعناها، فعدُّها من حصّة المعلّم يجعل «جرّب النموذج» عقوبة.
+   */
+  function studentCapNote(classes) {
+    const limit = state.premium?.limits?.students;
+    const used = (classes || []).filter((c) => !c.demo).reduce((sum, c) => sum + (c.students || []).length, 0);
+    if (!limit) {
+      // بلا سقف: إمّا حسابٌ معفًى، وإمّا أن الملخّص لم يصل — ولا نخترع رقماً
+      return state.premium?.grandfathered ? el('span', { class: 'muted small', text: t('hStuCapFree') }) : null;
+    }
+    const full = used >= limit;
+    return el('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, [
+      el('span', { class: full ? 'badge warn' : 'muted small', text: full ? t('hStuCapFull', { limit }) : t('hStuCap', { used, limit }) }),
+      // زرُّ الترقية حين يقترب السقف لا دائماً: بيعٌ في موضع الحاجة لا إعلانٌ دائم
+      used >= limit - 3 && myTier() !== 'pro' ? el('a', { class: 'btn accent sm', href: '#/upgrade' }, t('hStuCapUpgrade')) : null,
+    ]);
+  }
+
   async function openStudents(classId) {
     blankPage();
     let items = [];
@@ -572,6 +595,12 @@
         ]),
       ]),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('hStuIntro') }),
+      /*
+       * سقفُ الباقة معروضٌ **قبل** أن يُبلغ لا بعده: من يعرف أن عنده ثمانية
+       * عشر من عشرين يقرّر وهو مرتاح، ومن يكتشفه في رسالة منعٍ وهو يضيف
+       * طالباً في منتصف الحصّة يقرّر وهو غاضب.
+       */
+      studentCapNote(items),
     ]);
     const formBox = el('div', { class: 'stack' });
     head.append(formBox);
@@ -3208,7 +3237,9 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           try {
             const res = await api(`/api/admin/users/${user.id}/premium`, { method: 'POST', body });
             const at = data.users.findIndex((u) => u.id === user.id);
-            data.users[at] = res.user;
+            // دمجٌ لا استبدال: ردّ التفعيل يحمل حالة الاشتراك وحدها، فاستبدالُ
+            // الصفّ به كان يمحو بلد المعلّم وعدّادَي ما أنشأه من الجدول
+            data.users[at] = { ...data.users[at], ...res.user };
             toast(label, 'ok');
             draw();
           } catch (err) {
@@ -3216,9 +3247,22 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           }
         };
 
+        /*
+         * أيّ باقةٍ يُفعَّل عليها؟ سؤالٌ لا بدّ منه في التفعيل اليدويّ: من
+         * حوّل ٤٠ شيكلاً اشترى الاحترافية، ومن حوّل ٢٧ اشترى الأساسية —
+         * والفرق بينهما لا يُخمَّن. والقائمة تبدأ عند مستواه الحالي فلا
+         * يُنزَّل مشتركٌ سهواً بتمديد شهر.
+         */
+        const tierSel = el('select', { style: { minWidth: '96px' } }, [
+          el('option', { value: 'basic', text: t('upProName') }),
+          el('option', { value: 'pro', text: t('upEliteName') }),
+        ]);
+        tierSel.value = user.tier === 'pro' ? 'pro' : 'basic';
+
         const controls = el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
-          el('button', { class: 'btn sm ok', type: 'button', onclick: () => apply({ addDays: 30 }, t('haMonthWasAdded')) }, t('hmonth')),
-          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: 365 }, t('haYearWasAdded')) }, t('hyear')),
+          tierSel,
+          el('button', { class: 'btn sm ok', type: 'button', onclick: () => apply({ addDays: 30, tier: tierSel.value }, t('haMonthWasAdded')) }, t('hmonth')),
+          el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: 365, tier: tierSel.value }, t('haYearWasAdded')) }, t('hyear')),
           el('button', { class: 'btn sm ghost', type: 'button', onclick: () => apply({ addDays: -30 }, t('haMonthWasDeducted')) }, t('hmonth2')),
           el(
             'button',
@@ -3265,7 +3309,15 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             ]),
           ]),
           el('td', { 'data-label': t('hsubscription') }, [
-            el('div', { class: 'stack tight' }, [statusBadge, el('span', { class: 'muted small', text: fmtDate(user.premiumUntil) })]),
+            el('div', { class: 'stack tight' }, [
+              statusBadge,
+              // المستوى بجوار المدّة: «مشترك» وحدها لم تعد تكفي بعد أن صارت
+              // الباقات المدفوعة اثنتين
+              user.isPremium && !user.isAdmin
+                ? el('span', { class: 'badge', text: t(user.tier === 'pro' ? 'upEliteName' : 'upProName') })
+                : null,
+              el('span', { class: 'muted small', text: fmtDate(user.premiumUntil) }),
+            ]),
           ]),
           el('td', { 'data-label': t('hcontrols'), style: { whiteSpace: 'normal' } }, [controls]),
         ]);
@@ -3309,6 +3361,25 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     card: { enabled: false, priceUsd: 5, currency: 'usd' },
   };
 
+  /**
+   * الباقات الثلاث — مصدرها الخادم دائماً، وهذه نسخةُ طوارئ لحظةَ تعذّر نداء.
+   *
+   * ولا يُكتب رقمٌ منها في نصوص الترجمة: «٥٠ طالباً» في نصٍّ عربي و«٥٠» في
+   * إعدادِ الخادم يفترقان يوم يتغيّر الإعداد، فيقرأ المعلّم وعداً غير المنفَّذ.
+   */
+  const DEFAULT_PLANS = [
+    { id: 'free', priceUsd: 0, students: 20, gamesLifetime: 2, gamesMonthly: 0, perks: [] },
+    { id: 'basic', priceUsd: 5, students: 50, gamesMonthly: 15, perks: [] },
+    { id: 'pro', priceUsd: 12, students: 200, gamesMonthly: 35, perks: [], soon: [] },
+  ];
+
+  const plansOf = (info) => (info?.plans?.length ? info.plans : DEFAULT_PLANS);
+  const planById = (info, id) => plansOf(info).find((p) => p.id === id) || DEFAULT_PLANS.find((p) => p.id === id) || {};
+  /** مبلغُ المستوى بالعملة المحلّية — والقديم `amount` للأساسية */
+  const localAmount = (pay, tier) => (pay ? pay.amounts?.[tier] ?? pay.amount : 0);
+  /** مستوى الحساب الآن: free | basic | pro */
+  const myTier = () => state.premium?.tier || 'free';
+
   /** رابط واتساب جاهز برسالة مكتوبة — أقصر طريق من رغبة الاشتراك إلى محادثة */
   function whatsappLink(plan, note) {
     const text = t('hWhatsappMsg', { price: plan.priceUsd }) + (note ? ' ' + note : '');
@@ -3349,11 +3420,15 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
   function subscribeBtn(plan, opts = {}) {
     const cls = opts.class || 'btn primary';
     const how = payMethod(plan);
+    // المستوى يُحمل في العنوان حتى صفحة الدفع: المبلغ يختلف باختلافه، فزرٌّ
+    // لا يقول أيّ باقةٍ ضُغطت يوصل المعلّم إلى سعرٍ غير الذي رآه
+    const tier = opts.tier || 'basic';
+    const href = '#/pay' + (tier === 'basic' ? '' : '?tier=' + tier);
     if (how === 'local') {
-      return el('a', { class: cls, href: '#/pay' }, opts.label || t('payCta', { amount: localPay(plan).amount }));
+      return el('a', { class: cls, href }, opts.label || t('payCta', { amount: localAmount(localPay(plan), tier) }));
     }
     if (how === 'card') {
-      return el('a', { class: cls, href: '#/pay' }, opts.label || t('payCardCta', { price: plan.card.priceUsd }));
+      return el('a', { class: cls, href }, opts.label || t('payCardCta', { price: opts.priceUsd ?? plan.card.priceUsd }));
     }
     return el('a', { class: cls, href: whatsappLink(plan, opts.note), target: '_blank', rel: 'noopener' },
       opts.label || t('hWhatsappBtn', { phone: plan.whatsapp }));
@@ -3459,24 +3534,39 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     ]);
   }
 
-  /** [نصّ الميزة، خلية المجّاني، خلية المشترك] — بريميوم يشمل الكلّ إلا ما صُرّح */
-  function planRows(plan) {
+  /** [نصّ الميزة، المجّاني، الأساسية، الاحترافية] — والأعلى يشمل ما دونه إلا ما صُرّح */
+  function planRows(plan, info) {
     const free = plan.games?.free ?? 2;
-    const monthly = plan.games?.premiumMonthly ?? 15;
+    const basic = planById(info, 'basic');
+    const pro = planById(info, 'pro');
+    const freePlan = planById(info, 'free');
     return [
-      [t('upRow1'), true, true],
-      [t('upRow2'), true, true],
-      [t('upRow3'), true, true],
-      [t('upRow4'), true, true],
-      [t('upRow5'), true, true],
-      [t('upRow6'), true, true],
-      [t('upRow7'), true, true],
-      [t('upRow8'), true, true],
-      [t('upRow9'), false, true],
-      [t('upRow10'), false, true],
-      [t('upRow11'), false, true],
-      // العدد لا العلامة: المجّاني يبني لعبتين فعلاً، فـ«غير متاح» كذبٌ عليه
-      [t('upRowGames'), t('upGamesFreeCell', { count: free }), t('upGamesProCell', { count: monthly })],
+      [t('upRow1'), true, true, true],
+      [t('upRow2'), true, true, true],
+      [t('upRow3'), true, true, true],
+      [t('upRow4'), true, true, true],
+      [t('upRow5'), true, true, true],
+      [t('upRow6'), true, true, true],
+      [t('upRow7'), true, true, true],
+      [t('upRow8'), true, true, true],
+      [t('upRow9'), false, true, true],
+      [t('upRow10'), false, true, true],
+      [t('upRow11'), false, true, true],
+      // الأعداد لا العلامات: المجّاني يبني لعبتين فعلاً ويسجّل عشرين طالباً،
+      // فـ«غير متاح» كذبٌ عليه — والصادق أن يُكتب العدد
+      [
+        t('upRowStudents'),
+        t('upStudentsCell', { count: freePlan.students ?? 20 }),
+        t('upStudentsCell', { count: basic.students ?? 50 }),
+        t('upStudentsCell', { count: pro.students ?? 200 }),
+      ],
+      [
+        t('upRowGames'),
+        t('upGamesFreeCell', { count: free }),
+        t('upGamesProCell', { count: basic.gamesMonthly ?? 15 }),
+        t('upGamesProCell', { count: pro.gamesMonthly ?? 35 }),
+      ],
+      [t('upRowBooking'), false, false, t('upSoonCell')],
     ];
   }
 
@@ -3519,10 +3609,15 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       ])
     );
 
-    const freeCard = el('div', { class: 'plan' + (paid ? '' : ' current') }, [
+    const tier = info?.tier || 'free';
+    const basic = planById(info, 'basic');
+    const pro = planById(info, 'pro');
+    const freePlan = planById(info, 'free');
+
+    const freeCard = el('div', { class: 'plan' + (tier === 'free' ? ' current' : '') }, [
       el('div', { class: 'row between' }, [
         el('h2', { style: { margin: 0 }, text: t('upFreeName') }),
-        paid ? null : el('span', { class: 'badge ok', text: t('upCurrent') }),
+        tier === 'free' ? el('span', { class: 'badge ok', text: t('upCurrent') }) : null,
       ]),
       el('div', { class: 'plan-price' }, [
         el('strong', { text: t('upFreePrice') }),
@@ -3531,53 +3626,89 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('upFreeTag') }),
       el('ul', { class: 'plan-list' }, [
         ...['upFree1', 'upFree2', 'upFree3', 'upFree4', 'upFree5', 'upFree6'].map((k) => planPerk(t(k))),
+        planPerk(t('upStudentsCell', { count: freePlan.students ?? 20 })),
         planPerk(t('upGamesFree', { count: freeGames })),
       ]),
     ]);
 
     // المشترك لا يُعرض عليه زرّ شراءٍ اشتراه: يرى مدّته وزرّ تجديد لا أكثر
     const until = paid && info?.premiumUntil ? el('span', { class: 'muted small', text: t('upUntilDate', { date: fmtDate(info.premiumUntil) }) }) : null;
-    // المشترك بالبطاقة لا يُعرض عليه «جدّد»: اشتراكه يتجدّد وحده، وما يحتاجه
-    // زرُّ إدارةٍ يلغي منه أو يبدّل بطاقته
-    const cta = paid
-      ? el('div', { class: 'stack tight' }, [
+
+    /**
+     * فعلُ كلّ بطاقة بحسب موضع صاحبها منها.
+     *
+     * ثلاث حالات لا واحدة: من هو فيها يرى مدّته وإدارتها، ومن دونها يرى
+     * «اشترك»، ومن فوقها لا يُعرض عليه أن ينزل — الترقية تُباع والتنزيل يُطلب.
+     */
+    const ctaFor = (id, plan2) => {
+      if (tier === id) {
+        return el('div', { class: 'stack tight' }, [
           el('span', { class: 'badge ok', text: t('upSubscribed') }),
           until,
-          manageBtn() || subscribeBtn(plan, { class: 'btn ghost sm', label: t('upRenewBtn') }),
-        ])
-      : state.user
-        ? subscribeBtn(plan)
-        : el('div', { class: 'stack tight' }, [
-            el('span', { class: 'muted small', text: t('upSignInFirst') }),
-            el('a', { class: 'btn primary', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/upgrade') }, t('upSignInBtn')),
-          ]);
+          manageBtn() || subscribeBtn(plan, { class: 'btn ghost sm', label: t('upRenewBtn'), tier: id, priceUsd: plan2.priceUsd }),
+        ]);
+      }
+      if (id === 'basic' && tier === 'pro') return el('span', { class: 'muted small', text: t('upIncludedInPro') });
+      if (!state.user) {
+        return el('div', { class: 'stack tight' }, [
+          el('span', { class: 'muted small', text: t('upSignInFirst') }),
+          el('a', { class: 'btn primary', href: '/api/auth/google?next=' + encodeURIComponent('/host.html#/upgrade') }, t('upSignInBtn')),
+        ]);
+      }
+      return subscribeBtn(plan, { tier: id, priceUsd: plan2.priceUsd });
+    };
 
-    const proCard = el('div', { class: 'plan best' + (paid ? ' current' : '') }, [
-      el('div', { class: 'row between' }, [
-        el('h2', { style: { margin: 0 }, text: t('upProName') }),
-        paid ? el('span', { class: 'badge ok', text: t('upCurrent') }) : null,
-      ]),
+    const priceNode = (plan2, id) =>
       el('div', { class: 'plan-price' }, [
         // سعرٌ بعملةٍ لا يستطيع المعلّم أن يدفع بها ليس سعراً: الشيكل لمن له
         // طريق دفعٍ محليّ، والدولار لسواه
-        el('strong', { dir: pay ? 'auto' : 'ltr', text: pay ? t('payAmount', { amount: pay.amount }) : `$${plan.priceUsd}` }),
+        el('strong', {
+          dir: pay ? 'auto' : 'ltr',
+          text: pay ? t('payAmount', { amount: localAmount(pay, id) }) : `$${plan2.priceUsd}`,
+        }),
         el('span', { class: 'muted small', text: t('upPerMonth') }),
+      ]);
+
+    const basicCard = el('div', { class: 'plan' + (tier === 'basic' ? ' current' : '') }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 }, text: t('upProName') }),
+        tier === 'basic' ? el('span', { class: 'badge ok', text: t('upCurrent') }) : null,
       ]),
+      priceNode(basic, 'basic'),
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('upProTag') }),
       el('ul', { class: 'plan-list' }, [
         planPerk(t('upEverythingFree')),
         planPerk(t('upPro1')),
         planPerk(t('upPro2')),
         planPerk(t('upPro3')),
-        planPerk(t('upGamesPro', { count: monthlyGames })),
+        planPerk(t('upStudentsCell', { count: basic.students ?? 50 })),
+        planPerk(t('upGamesPro', { count: basic.gamesMonthly ?? monthlyGames })),
       ]),
-      cta,
+      ctaFor('basic', basic),
+    ]);
+
+    const proCard = el('div', { class: 'plan best' + (tier === 'pro' ? ' current' : '') }, [
+      el('div', { class: 'row between' }, [
+        el('h2', { style: { margin: 0 }, text: t('upEliteName') }),
+        tier === 'pro' ? el('span', { class: 'badge ok', text: t('upCurrent') }) : null,
+      ]),
+      priceNode(pro, 'pro'),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('upEliteTag') }),
+      el('ul', { class: 'plan-list' }, [
+        planPerk(t('upEverythingBasic')),
+        planPerk(t('upStudentsCell', { count: pro.students ?? 200 })),
+        planPerk(t('upGamesPro', { count: pro.gamesMonthly ?? 35 })),
+        // ميزةٌ لم تُبنَ بعد تُكتب «قريباً» صراحةً: من يدفع اليوم يعرف ما عنده
+        // اليوم وما ينتظره — ووعدٌ مبهم يُفقد الثقة بالصفحة كلّها
+        ...(pro.soon || []).map((line) => planPerk(t('upSoon', { what: line }), false)),
+      ]),
+      ctaFor('pro', pro),
     ]);
 
     const invite = signupTrialInvite(plan) || trialCountdown();
     if (invite) app.append(invite);
 
-    app.append(el('div', { class: 'plans' }, [freeCard, proCard]));
+    app.append(el('div', { class: 'plans plans--three' }, [freeCard, basicCard, proCard]));
 
     app.append(
       el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
@@ -3588,8 +3719,11 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
               el('th', {}, t('upFeature')),
               el('th', { class: 'plan-cell' }, t('upFreeName')),
               el('th', { class: 'plan-cell' }, t('upProName')),
+              el('th', { class: 'plan-cell' }, t('upEliteName')),
             ])),
-            el('tbody', {}, planRows(plan).map(([label, free, pro]) => el('tr', {}, [el('td', {}, label), planCell(free), planCell(pro)]))),
+            el('tbody', {}, planRows(plan, info).map(([label, free, basicCell, proCell]) =>
+              el('tr', {}, [el('td', {}, label), planCell(free), planCell(basicCell), planCell(proCell)])
+            )),
           ]),
         ]),
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('upHonest') }),
@@ -3627,7 +3761,9 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
    * ولا نطلب صورة الإيصال هنا: رفعها إلينا يعني تخزين صورةٍ لا نحتاجها،
    * وواتساب في يد المعلّم أصلاً وفيه يرى ردّنا.
    */
-  function walletPayCard(pay) {
+  function walletPayCard(pay, tier = 'basic') {
+    // المبلغ بحسب الباقة المطلوبة — وهو الرقم نفسه في الخطوة والرسالة والزرّ
+    const amount = localAmount(pay, tier);
     const walletRow = el('div', { class: 'pay-wallet' }, [
       el('span', { class: 'pay-wallet__no', dir: 'ltr', text: pay.wallet }),
       el('button', { class: 'btn ghost sm', type: 'button' }, t('payCopyWallet')),
@@ -3637,8 +3773,11 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       toast(done ? t('payCopied') : pay.wallet, done ? 'ok' : '');
     });
 
-    // الرسالة تحمل بريد الحساب: بها يعرف المفعّل أيّ حساب يفتح بلا أن يسأل
-    const note = t('payWaMsg', { amount: pay.amount, wallet: pay.wallet, email: state.user?.email || '—' });
+    /*
+     * الرسالة تحمل بريد الحساب **واسم الباقة**: بها يعرف المفعّل أيّ حساب
+     * يفتح وعلى أيّ مستوى، بلا أن يسأل — والمبلغان متقاربان فالتخمين يخطئ.
+     */
+    const note = t('payWaMsg', { amount, wallet: pay.wallet, email: state.user?.email || '—' }) + ' — ' + t(tier === 'pro' ? 'upEliteName' : 'upProName');
     const waHref = `https://wa.me/${pay.whatsapp}?text=${encodeURIComponent(note)}`;
 
     return el('div', { class: 'card stack' }, [
@@ -3646,10 +3785,10 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('span', { class: 'pay-head__badge', 'aria-hidden': 'true', text: '📱' }),
         el('div', { class: 'stack tight grow' }, [
           el('strong', { text: t('payMethodJawwal') }),
-          el('span', { class: 'muted small', text: t('payAmountLine', { amount: pay.amount }) }),
+          el('span', { class: 'muted small', text: t('payAmountLine', { amount }) }),
         ]),
       ]),
-      payStep(1, t('payStep1Title', { amount: pay.amount }), t('payStep1Body'), walletRow),
+      payStep(1, t('payStep1Title', { amount }), t('payStep1Body'), walletRow),
       payStep(2, t('payStep2Title'), t('payStep2Body')),
       payStep(
         3,
@@ -3673,8 +3812,8 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
    * والتفعيل تلقائيّ بخطّاف Stripe لا بيدٍ بشرية: من دفع في الثالثة فجراً
    * يجد حسابه مفتوحاً في الثالثة فجراً.
    */
-  function cardPayCard(plan) {
-    const price = plan.card?.priceUsd ?? plan.priceUsd;
+  function cardPayCard(plan, tier = 'basic', info = null) {
+    const price = tier === 'pro' ? planById(info, 'pro').priceUsd : plan.card?.priceUsd ?? plan.priceUsd;
     const go = el('button', { class: 'btn primary', type: 'button' }, t('payCardBtn', { price }));
 
     go.addEventListener('click', async () => {
@@ -3685,7 +3824,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       go.disabled = true;
       go.textContent = t('payCardOpening');
       try {
-        const { url } = await api('/api/billing/checkout', { method: 'POST' });
+        const { url } = await api('/api/billing/checkout', { method: 'POST', body: { tier } });
         location.href = url;
       } catch (err) {
         // تفصيلُ Stripe يصل للمالك وحده — ومعه يعرف سبب العطل بلا سجلّات
@@ -3720,7 +3859,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
    * أن يصل خطّافُهم إلى خادمنا — ثوانٍ غالباً. فننتظرها بدل أن نقول للمعلّم
    * «لم يتغيّر شيء» في اللحظة التي دفع فيها.
    */
-  async function openPayment() {
+  async function openPayment(wanted) {
     teardown();
     codeBadge.classList.add('hidden');
     connBadge.classList.add('hidden');
@@ -3731,6 +3870,8 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     if (!info) info = await api('/api/ai/status').catch(() => null);
     const plan = info?.plan || DEFAULT_PLAN;
     const how = payMethod(plan);
+    const tier = wanted === 'pro' ? 'pro' : 'basic';
+    const chosen = planById(info, tier);
 
     // «تواصل معنا» ليست صفحةَ دفع: من لا طريق دفعٍ ذاتيّ له يعود إلى الباقات
     if (how === 'contact') {
@@ -3746,12 +3887,17 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       ])
     );
     app.append(el('h1', { style: { marginBottom: '4px' }, text: how === 'card' ? t('payCardTitle') : t('payTitle') }));
-    app.append(el('p', { class: 'muted small', style: { marginTop: 0 }, text: how === 'card' ? t('payCardIntro') : t('payIntro') }));
+    // اسمُ الباقة المقصودة في الصفحة نفسها: المبلغان متقاربان، ومن ضغط زرّ
+    // الاحترافية يجب أن يقرأ اسمها قبل أن يحوّل
+    app.append(el('p', { class: 'muted small', style: { marginTop: 0 } }, [
+      el('span', { class: 'badge', text: t(tier === 'pro' ? 'upEliteName' : 'upProName') }),
+      el('span', { text: ' ' + (how === 'card' ? t('payCardIntro') : t('payIntro')) }),
+    ]));
 
     const back = returnFromStripe();
     if (back) app.append(back);
 
-    app.append(how === 'card' ? cardPayCard(plan) : walletPayCard(localPay(plan)));
+    app.append(how === 'card' ? cardPayCard(plan, tier, info) : walletPayCard(localPay(plan), tier));
 
     app.append(
       el('div', { class: 'card stack', style: { marginTop: '12px' } }, [
@@ -3760,7 +3906,9 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           planPerk(t('upPro1')),
           planPerk(t('upPro2')),
           planPerk(t('upPro3')),
-          planPerk(t('upGamesPro', { count: plan.games?.premiumMonthly ?? 15 })),
+          planPerk(t('upStudentsCell', { count: chosen.students ?? (tier === 'pro' ? 200 : 50) })),
+          planPerk(t('upGamesPro', { count: chosen.gamesMonthly ?? plan.games?.premiumMonthly ?? 15 })),
+          ...(tier === 'pro' ? (chosen.soon || []).map((line) => planPerk(t('upSoon', { what: line }), false)) : []),
         ]),
         el('a', { class: 'btn ghost sm', href: '#/upgrade' }, t('upCompareLink')),
       ])

@@ -88,6 +88,15 @@ async function attachUser(req, _res, next) {
              */
             displayName: user.displayName || '',
             premiumUntil: user.premiumUntil ?? null,
+            /*
+             * مستوى الباقة، وإعفاءُ من سبق سقفَ الطلاب.
+             *
+             * والقائمة هنا بيضاء لا نسخةً كاملة: حقلٌ لا يُذكر فيها لا يصل
+             * المسارات. فبلا هذين السطرين يُقرأ كلُّ مشتركٍ «أساسياً» مهما
+             * دفع، ويُحاسَب كلُّ حسابٍ قديم بسقفٍ أُعفي منه.
+             */
+            tier: user.tier || '',
+            grandfatheredAt: user.grandfatheredAt ?? null,
             // يميّز منحة التسجيل عن اشتراكٍ مدفوع في ما تعرضه الواجهة
             trialGrantedAt: user.trialGrantedAt ?? null,
             country: user.country || '',

@@ -21,6 +21,13 @@
 
 const FREE_TOTAL = Number(process.env.GAME_FREE_TOTAL ?? 2);
 const PREMIUM_MONTHLY = Number(process.env.GAME_PREMIUM_MONTHLY ?? 15);
+/** الاحترافية: حصّةٌ أوسع لأن بناء الألعاب هو ما تُشترى الباقة لأجله غالباً */
+const PRO_MONTHLY = Number(process.env.GAME_PRO_MONTHLY ?? 35);
+
+/** حصّة الشهر بحسب المستوى */
+function monthlyFor(tier) {
+  return tier === 'pro' ? PRO_MONTHLY : PREMIUM_MONTHLY;
+}
 
 /** مفتاح الشهر الميلادي بتوقيت UTC — YYYY-MM */
 function monthKey(at = Date.now()) {
@@ -44,11 +51,12 @@ function quotaOf(user, status) {
   if (status?.isPremium) {
     // عدّاد شهرٍ مضى ليس عدّاد هذا الشهر: مفتاحٌ قديم يعني أن الحصّة كاملة
     const used = user?.gamesMonthKey === monthKey() ? Number(user?.gamesMonth) || 0 : 0;
+    const limit = monthlyFor(status.tier);
     return {
-      plan: 'premium',
-      limit: PREMIUM_MONTHLY,
+      plan: status.tier === 'pro' ? 'pro' : 'premium',
+      limit,
       used,
-      remaining: Math.max(0, PREMIUM_MONTHLY - used),
+      remaining: Math.max(0, limit - used),
       unlimited: false,
       period: 'month',
     };
@@ -73,7 +81,7 @@ function quotaOf(user, status) {
  */
 function summary(user, status) {
   const q = quotaOf(user, status);
-  return { ...q, remaining: q.unlimited ? null : q.remaining, premiumMonthly: PREMIUM_MONTHLY };
+  return { ...q, remaining: q.unlimited ? null : q.remaining, premiumMonthly: PREMIUM_MONTHLY, proMonthly: PRO_MONTHLY };
 }
 
 /**
@@ -87,7 +95,7 @@ function summary(user, status) {
  * @param {object|null} pay طريقة الدفع المحلّية إن وُجدت (`premium.localPayFor`)
  */
 function exhaustedMessage(q, plan, pay) {
-  if (q.plan === 'premium') {
+  if (q.plan === 'premium' || q.plan === 'pro') {
     return `بلغت حصّتك الشهرية من بناء الألعاب (${q.limit} لعبة). تتجدّد مع بداية الشهر القادم.`;
   }
   const head = `الحساب المجاني يبني ${q.limit} لعبة فقط، وقد استعملتهما. اشترك في بريميوم لتبني ${PREMIUM_MONTHLY} لعبة كل شهر — `;
@@ -99,4 +107,4 @@ function exhaustedMessage(q, plan, pay) {
   return head + `واتساب ${plan?.whatsapp} (${plan?.priceUsd}$ شهرياً).`;
 }
 
-module.exports = { quotaOf, summary, exhaustedMessage, monthKey, FREE_TOTAL, PREMIUM_MONTHLY };
+module.exports = { quotaOf, summary, exhaustedMessage, monthKey, monthlyFor, FREE_TOTAL, PREMIUM_MONTHLY, PRO_MONTHLY };

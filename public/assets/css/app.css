@@ -3757,6 +3757,17 @@ body.screen-body .q-image {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
+/*
+ * ثلاث بطاقات: العتبة أضيق كي تُرى الثلاث معاً على حاسوبٍ عاديّ.
+ *
+ * وبعتبة ٢٦٠px كانت الثالثة تنزل وحدها في سطرٍ ثانٍ على شاشةٍ متوسّطة، فتبدو
+ * ملحقةً بالباقتين لا ثالثةً لهما — والمقارنة بين ثلاثٍ لا تصحّ إن لم تُرَ
+ * الثلاث في نظرةٍ واحدة.
+ */
+.plans--three {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .plan {
   display: grid;
   gap: 10px;

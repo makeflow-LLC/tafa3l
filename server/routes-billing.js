@@ -78,6 +78,8 @@ function billingRoutes() {
     res.json({
       card: stripe.configured(),
       priceUsd: premium.PLAN.priceUsd,
+      plans: premium.PLANS,
+      tier: premium.tierOf(req.user),
       localPay: premium.localPayFor(req.user),
       // بوّابة الإدارة تُفتح لمن دفع بالبطاقة فعلاً — ومنها يلغي اشتراكه بنفسه
       canManage: Boolean(stripe.configured() && req.user?.stripeCustomerId),
@@ -96,10 +98,15 @@ function billingRoutes() {
       if (premium.localPayFor(req.user)) {
         return res.status(400).json({ error: 'الدفع في بلدك يتمّ عبر المحفظة المحلّية' });
       }
+      // المستوى يأتي من الواجهة ويُتحقّق منه هنا: «free» ليست باقةً تُشترى،
+      // ونصٌّ مجهول يُردّ إلى الأساسية لا يُمرَّر إلى Stripe كما جاء
+      const wanted = String(req.body?.tier || 'basic');
+      const tier = wanted === 'pro' ? 'pro' : 'basic';
       const session = await stripe.createCheckout({
         user: req.user,
         origin: originOf(req),
-        priceUsd: premium.PLAN.priceUsd,
+        priceUsd: premium.planFor(tier).priceUsd,
+        tier,
       });
       res.json({ url: session.url });
     } catch (err) {
@@ -136,6 +143,20 @@ function userIdIn(object) {
   );
 }
 
+/**
+ * مستوى الباقة كما وُسم في الدفعة — من المواضع نفسها التي يُقرأ منها المعرّف.
+ * وفراغُه لا يعني «مجاني» بل «قبل المستويات»، فيُترك للقارئ أن يقرأه أساسياً.
+ */
+function tierIn(object) {
+  const raw =
+    object?.metadata?.tier ||
+    object?.subscription_details?.metadata?.tier ||
+    object?.parent?.subscription_details?.metadata?.tier ||
+    object?.lines?.data?.[0]?.metadata?.tier ||
+    '';
+  return raw === 'pro' || raw === 'basic' ? raw : '';
+}
+
 /** نهايةُ المدة المدفوعة بالمللي ثانية — أو صفر إن لم تُعلنها الفاتورة */
 function paidUntil(object) {
   const end = Number(object?.lines?.data?.[0]?.period?.end || object?.period_end || 0);
@@ -163,11 +184,19 @@ async function ownerOf(object) {
   return null;
 }
 
-/** يمدّد الاشتراك إلى تاريخٍ مطلق — ولا ينقصه أبداً */
-async function grantUntil(user, until) {
+/**
+ * يمدّد الاشتراك إلى تاريخٍ مطلق — ولا ينقصه أبداً.
+ *
+ * والمستوى يُرفع ولا يُخفض هنا: من كان في الاحترافية ووصلت فاتورةٌ بلا وسمٍ
+ * (أو بوسم الأساسية لاشتراكٍ ثانٍ) لا يُنزَّل بحدثٍ واحد — التنزيل قرارٌ
+ * يمرّ من البوّابة أو من المالك، لا أثرٌ جانبيّ لخطّافٍ يصل مكرّراً.
+ */
+async function grantUntil(user, until, tier) {
   const target = Math.max(Number(user.premiumUntil) || 0, until);
   if (target <= Date.now()) return null;
-  return storage.get().setPremiumUntil(user.id, Math.round(target));
+  const live = premium.tierOf(user);
+  const next = tier === 'pro' || (tier === 'basic' && live !== 'pro') ? tier : undefined;
+  return storage.get().setPremiumUntil(user.id, Math.round(target), next);
 }
 
 /**
@@ -186,8 +215,8 @@ async function applyEvent(event) {
     const customer = typeof object.customer === 'string' ? object.customer : object.customer?.id;
     // ربطُ الزبون بالحساب هنا وحده: فواتير الشهور القادمة لا تحمل غيره
     if (customer && user.stripeCustomerId !== customer) await storage.get().setStripeCustomer(user.id, customer);
-    const updated = await grantUntil(user, Date.now() + MONTH_MS);
-    return { handled: true, until: updated?.premiumUntil ?? user.premiumUntil };
+    const updated = await grantUntil(user, Date.now() + MONTH_MS, tierIn(object));
+    return { handled: true, until: updated?.premiumUntil ?? user.premiumUntil, tier: updated?.tier || user.tier || '' };
   }
 
   // الفاتورة هي الحدث الذي يتكرّر كل شهر: التجديد يمرّ من هنا لا من الجلسة
@@ -195,8 +224,8 @@ async function applyEvent(event) {
     const user = await ownerOf(object);
     if (!user) return { handled: false, reason: 'no-user' };
     const end = paidUntil(object);
-    const updated = await grantUntil(user, (end || Date.now() + MONTH_MS) + (end ? GRACE_MS : 0));
-    return { handled: true, until: updated?.premiumUntil ?? user.premiumUntil };
+    const updated = await grantUntil(user, (end || Date.now() + MONTH_MS) + (end ? GRACE_MS : 0), tierIn(object));
+    return { handled: true, until: updated?.premiumUntil ?? user.premiumUntil, tier: updated?.tier || user.tier || '' };
   }
 
   /*
@@ -227,4 +256,4 @@ async function webhook(req, res) {
   }
 }
 
-module.exports = { billingRoutes, webhook, applyEvent, GRACE_MS, MONTH_MS };
+module.exports = { billingRoutes, webhook, applyEvent, tierIn, GRACE_MS, MONTH_MS };

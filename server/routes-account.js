@@ -201,6 +201,8 @@ function accountRoutes(store) {
           premiumUntil: u.premiumUntil ?? null,
           isPremium: premium.isPremium(u),
           isAdmin: premium.isAdmin(u),
+          tier: premium.tierOf(u),
+          grandfathered: Boolean(u.grandfatheredAt),
           onSignupTrial: premium.onSignupTrial(u),
           activities: counts.get(u.id)?.activities || 0,
           games: counts.get(u.id)?.games || 0,
@@ -243,7 +245,21 @@ function accountRoutes(store) {
         return res.status(400).json({ error: 'حدّد addDays أو until' });
       }
 
-      const updated = await storage.get().setPremiumUntil(target.id, until);
+      /*
+       * المستوى مع المدّة: المالك يفعّل يدوياً لمن دفع بالمحفظة المحلّية،
+       * فلا بدّ أن يقول **أيّ باقةٍ** دفع ثمنها. وغيابه يُبقي مستوى الحساب
+       * كما هو — تمديدُ مشتركٍ في الاحترافية لا يُنزّله إلى الأساسية سهواً.
+       */
+      let tier;
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'tier')) {
+        const wanted = String(req.body.tier || '');
+        if (wanted && !premium.TIERS.includes(wanted)) return res.status(400).json({ error: 'مستوى غير معروف' });
+        tier = wanted === 'free' ? null : wanted;
+      }
+      // إلغاءُ الاشتراك يُسقط مستواه معه: حسابٌ بلا تاريخٍ ساري لا مستوى له
+      if (until === null && tier === undefined) tier = null;
+
+      const updated = await storage.get().setPremiumUntil(target.id, until, tier);
       res.json({
         user: {
           id: updated.id,
@@ -253,6 +269,7 @@ function accountRoutes(store) {
           premiumUntil: updated.premiumUntil ?? null,
           isPremium: premium.isPremium(updated),
           isAdmin: premium.isAdmin(updated),
+          tier: premium.tierOf(updated),
         },
       });
     } catch (err) {
@@ -572,6 +589,23 @@ function accountRoutes(store) {
     return { ...item, pupils: records.syncPupils(item.students, item.pupils, item.groups) };
   }
 
+  /**
+   * مجموع طلاب هذا المعلّم في فصوله كلّها — عليه يقع سقف الباقة.
+   *
+   * والسقف على المجموع لا على الفصل الواحد: سقفُ الفصل يُلتفّ عليه بفصلٍ
+   * ثانٍ، والمجموع هو ما يقيس حجم الاستعمال فعلاً. وفصلُ العرض التجريبي خارج
+   * العدّ — طلابه أسماءٌ اخترعناها نحن، فلا يصحّ أن تأكل من حصّة المعلّم.
+   *
+   * @param {string} ownerId
+   * @param {string} [exceptId] فصلٌ يُستثنى — يُمرَّر حين يُعاد كشفه كاملاً
+   */
+  async function studentsTotal(ownerId, exceptId) {
+    const classes = await storage.get().listClasses(ownerId);
+    return classes
+      .filter((c) => !c.demo && c.id !== exceptId)
+      .reduce((sum, c) => sum + (c.students || []).length, 0);
+  }
+
   /** فصلٌ يملكه هذا المعلّم وإلا 404 — لا فرق بين «غير موجود» و«ليس لك» */
   async function ownClass(req, res) {
     const item = await storage.get().getClass(req.params.id);
@@ -601,6 +635,8 @@ function accountRoutes(store) {
       if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
       const now = Date.now();
       const roster = parseRoster(req.body?.students);
+      const before = await studentsTotal(req.user.id);
+      premium.assertStudentsAllowed(req.user, before + roster.names.length, before);
       const item = withPupils({
         id: storage.newId('cl_'),
         ownerId: req.user.id,
@@ -626,6 +662,13 @@ function accountRoutes(store) {
       const name = String(req.body?.name ?? existing.name).trim().slice(0, 60);
       if (!name) return res.status(400).json({ error: 'اكتب اسم الفصل' });
       const roster = req.body?.students === undefined ? null : parseRoster(req.body.students);
+      if (roster) {
+        // من كان فوق سقفه (بعد انتهاء اشتراكه) لا يُمنع من **تقليل** كشفه:
+        // المنع على الزيادة وحدها، وإلا حُبس في قائمةٍ لا يستطيع تحريرها
+        const others = await studentsTotal(req.user.id, existing.id);
+        const was = (existing.students || []).length;
+        premium.assertStudentsAllowed(req.user, others + roster.names.length, others + was);
+      }
       const updated = withPupils({
         ...existing,
         name,
@@ -716,6 +759,8 @@ function accountRoutes(store) {
       const names = (item.students || []).slice();
       if (names.length >= MAX_STUDENTS) return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_STUDENTS} طالباً)` });
       if (names.some((n) => sameName(n, name))) return res.status(409).json({ error: 'هذا الاسم موجود في الفصل' });
+      const others = await studentsTotal(req.user.id, item.id);
+      premium.assertStudentsAllowed(req.user, others + names.length + 1, others + names.length);
       const group = String(req.body?.group || '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
       const groups = (item.groups || []).slice();
       /*
@@ -816,6 +861,8 @@ function accountRoutes(store) {
         }
       }
       if (names.length + wanted.length > MAX_STUDENTS) return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_STUDENTS} طالباً)` });
+      const others = await studentsTotal(req.user.id, item.id);
+      premium.assertStudentsAllowed(req.user, others + names.length + wanted.length, others + (item.students || []).length);
       names.push(...wanted);
       groups.push(...wanted.map(() => group));
       const updated = await saveRoster(item, names, groups);
