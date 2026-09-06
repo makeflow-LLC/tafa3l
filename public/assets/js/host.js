@@ -101,6 +101,8 @@
     // إدارة الطلاب: كل الفصول، أو فصلٌ بعينه (‎#/students?class=cl_…‎)
     const stu = hash.match(/^\/students(?:\?class=([^&]+))?$/);
     if (stu) return openStudents(stu[1] ? decodeURIComponent(stu[1]) : null);
+    // المواعيد: جدولي، وطلبات الطلاب عليه
+    if (hash === '/booking') return openBooking();
     // الواجبات: قائمة التكليفات، أو واجبٌ بعينه بمن سلّم ومن لم يسلّم
     // (و‎?activity=‎ يفتح نموذج التكليف على نشاطٍ بعينه — قادمٌ من بطاقته)
     const hwNew = hash.match(/^\/homework\?activity=([\w-]+)$/);
@@ -212,6 +214,7 @@
     menu.append(UI.MenuRow({ label: t('hmyActivities'), href: '#/mine' }));
     menu.append(UI.MenuRow({ label: t('hStuTitle'), href: '#/students' }));
     menu.append(UI.MenuRow({ label: t('hwNav'), href: '#/homework' }));
+    menu.append(UI.MenuRow({ label: t('bkNav'), href: '#/booking' }));
     menu.append(UI.MenuRow({ label: t('hRecNav'), href: '#/records' }));
     menu.append(UI.MenuRow({ label: t('lNav'), href: '#/library' }));
     menu.append(UI.MenuRow({ label: t('gNav'), href: '/games.html' }));
@@ -363,6 +366,7 @@
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
         UI.NavChip({ label: t('hwNav'), href: '#/homework' }),
+        UI.NavChip({ label: t('bkNav'), href: '#/booking' }),
         UI.NavChip({ label: t('hRecNav'), href: '#/records' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
@@ -1398,6 +1402,336 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     return el('div', { class: 'card stack tight' }, kids);
   }
 
+  // ------------------------------------------------------------ المواعيد
+
+  /**
+   * المواعيد — «متى تفضي؟» سؤالٌ لا ينتهي على واتساب.
+   *
+   * فيفتح المعلّم أوقاته أزراراً، ويرى الطالب الفارغَ منها فيضغط. وما يصل
+   * المعلّم بعدها ليس رسالةً يفكّ رموزها، بل بطاقةٌ فيها: من، وأيّ مادة،
+   * وأيّ موضوع، ومتى، ورقمُ واتسابه — فيقبل أو يرفض بضغطة.
+   */
+
+  /** أيامٌ من اليوم إلى ثلاثة أسابيع — مفاتيحُها محلّية لا UTC */
+  function nextDays(count) {
+    const out = [];
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    for (let i = 0; i < count; i += 1) out.push(new Date(start.getTime() + i * 86400000));
+    return out;
+  }
+
+  const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const dayLabel = (d) => d.toLocaleDateString(loc(), { weekday: 'short', day: 'numeric', month: 'short' });
+  const hourLabel = (at) => new Date(at).toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
+  const whenLabel = (at) => new Date(at).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' });
+
+  /** جرسُ الطلبات المعلّقة — يُملأ مرّةً عند الإقلاع، ويُحدَّث بعد كل قرار */
+  async function refreshBell() {
+    const bell = document.getElementById('bellBtn');
+    const count = document.getElementById('bellCount');
+    if (!bell || !count || !state.user) return;
+    try {
+      const data = await api('/api/bookings');
+      state.pendingBookings = data.pending || 0;
+      const on = data.booking && data.pending > 0;
+      bell.hidden = !on;
+      bell.classList.toggle('hidden', !on);
+      count.textContent = on ? String(data.pending) : '';
+      bell.title = on ? t('bkBellTitle', { n: data.pending }) : '';
+    } catch {
+      /* الجرس زينةٌ نافعة لا شرطٌ للوصول: فشلُه يمرّ بصمت */
+    }
+  }
+
+  /**
+   * الجرس يحيا ما دامت اللوحة مفتوحة.
+   *
+   * وبلا هذا كان لا يتغيّر إلا بإعادة تحميل الصفحة: معلّمٌ يعمل على لوحته
+   * ساعةً يصله فيها ثلاثةُ طلبات ولا يرى منها شيئاً. والدورة دقيقةٌ ونصف —
+   * نداءٌ صغير لا يُثقل، ومعه تحديثٌ فوريّ حين يعود إلى التبويب من غيره
+   * (وهو أكثر ما يحدث فعلاً: يفتح واتساب ثم يعود).
+   */
+  function watchBell() {
+    const tick = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshBell();
+    }, 90000);
+    tick.unref?.();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshBell();
+    });
+  }
+
+  async function openBooking() {
+    blankPage();
+    let data;
+    let slotData;
+    try {
+      [data, slotData] = await Promise.all([api('/api/bookings'), api('/api/slots')]);
+    } catch (err) {
+      app.replaceChildren(errorCard(err.message, '#/', t('hDashboard')));
+      return;
+    }
+    app.innerHTML = '';
+    const publicUrl = state.user ? `${location.origin}/t/${state.user.id}` : '';
+
+    app.append(
+      el('div', { class: 'card stack' }, [
+        el('h1', { style: { margin: 0 }, text: t('bkTitle') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('bkIntro') }),
+        el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+          el('a', { class: 'btn ghost sm', href: publicUrl, target: '_blank', rel: 'noopener' }, t('bkOpenPage')),
+          el('button', {
+            class: 'btn ghost sm', type: 'button',
+            onclick: async () => {
+              await copyLink(publicUrl);
+              toast(t('bkCopied'), 'ok');
+            },
+          }, t('bkCopyPage')),
+          el('a', { class: 'btn ghost sm', href: '#/profile' }, t('bkEditProfile')),
+        ]),
+      ])
+    );
+
+    /*
+     * الباقة: الحجز في الاحترافية وحدها. ونقولها قبل أن يملأ جدوله لا بعده —
+     * من فتح عشرين موعداً ثم قيل له «هذه ميزةٌ مدفوعة» يشعر أنه خُدع.
+     */
+    if (!data.booking) {
+      app.append(
+        el('div', { class: 'card stack' }, [
+          el('div', { class: 'note warn', text: t('bkNeedsPro') }),
+          el('a', { class: 'btn primary sm', href: '#/upgrade', style: { alignSelf: 'flex-start' } }, t('upNav')),
+        ])
+      );
+      return;
+    }
+
+    app.append(requestsCard(data.bookings || []));
+    app.append(openerCard(slotData.slots || []));
+    app.append(slotsCard(slotData.slots || []));
+  }
+
+  /** الطلبات: المعلّقة أوّلاً — وهي وحدها ما ينتظر فعلاً */
+  function requestsCard(list) {
+    const pending = list.filter((b) => b.status === 'pending');
+    const decided = list.filter((b) => b.status !== 'pending');
+    const card = el('div', { class: 'card stack' }, [
+      el('div', { class: 'row between', style: { flexWrap: 'wrap', gap: '8px' } }, [
+        el('h2', { style: { margin: 0 }, text: t('bkRequests') }),
+        pending.length ? el('span', { class: 'badge warn', text: t('bkPendingN', { n: pending.length }) }) : null,
+      ]),
+    ]);
+    if (!list.length) {
+      card.append(el('p', { class: 'muted small', style: { margin: 0 }, text: t('bkNoRequests') }));
+      return card;
+    }
+    [...pending, ...decided].forEach((b) => card.append(requestRow(b)));
+    return card;
+  }
+
+  function requestRow(b) {
+    const tone = b.status === 'confirmed' ? 'ok' : b.status === 'declined' ? 'bad' : 'warn';
+    const row = el('div', { class: 'stack tight', style: { padding: '10px 0', borderTop: '1px solid var(--border)' } });
+    const decide = async (status, link) => {
+      try {
+        const res = await api(`/api/bookings/${b.id}/decide`, { method: 'POST', body: { status, link } });
+        toast(status === 'confirmed' ? t('bkAccepted') : t('bkDeclined'), 'ok');
+        Object.assign(b, res.booking);
+        refreshBell();
+        openBooking();
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    };
+
+    const actions = el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } });
+    if (b.status === 'pending') {
+      /*
+       * رابط اللقاء مع القبول لا بعده: القبول بلا رابطٍ يترك الطالب ينتظر
+       * رسالةً ثانية. ويبقى اختيارياً — من يلتقيه في مدرسته لا رابط له.
+       */
+      const link = el('input', { type: 'url', placeholder: t('bkLinkPh'), style: { minWidth: '180px' } });
+      actions.append(
+        link,
+        el('button', { class: 'btn primary sm', type: 'button', onclick: () => decide('confirmed', link.value.trim()) }, t('bkAccept')),
+        el('button', { class: 'btn danger sm', type: 'button', onclick: () => confirm(t('bkDeclineAsk')) && decide('declined') }, t('bkDecline'))
+      );
+    } else if (b.status === 'confirmed' && b.link) {
+      actions.append(el('a', { class: 'btn ghost sm', href: b.link, target: '_blank', rel: 'noopener' }, t('bkOpenMeet')));
+    }
+
+    // واتساب الطالب: رسالةٌ جاهزة بموعده — الردّ خطوةٌ واحدة لا ثلاث
+    const wa = `https://wa.me/${String(b.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(t('bkWaMsg', { when: whenLabel(b.at) }))}`;
+
+    row.append(
+      el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap' } }, [
+        el('div', { class: 'stack tight grow' }, [
+          el('strong', { text: b.name }),
+          el('span', { class: 'muted small', text: whenLabel(b.at) + ' · ' + t('tpMinutes', { n: b.minutes }) }),
+        ]),
+        el('span', { class: 'badge ' + tone, text: t('tpStatus_' + b.status) }),
+      ]),
+      el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+        el('span', { class: 'badge', text: b.subject }),
+        b.topic ? el('span', { class: 'muted small', text: b.topic }) : null,
+      ]),
+      el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+        el('span', { class: 'chip pin', style: { direction: 'ltr' }, text: b.phone }),
+        el('a', { class: 'btn ghost sm', href: wa, target: '_blank', rel: 'noopener' }, t('bkWhatsapp')),
+      ]),
+      actions
+    );
+    return row;
+  }
+
+  /**
+   * فتحُ الأوقات: يومٌ يُختار، وأزرارُ ساعاتٍ تُضغط — ثم «كرّرها ٤ أسابيع».
+   *
+   * والتكرار يُحسب هنا بتقويم المتصفّح لا على الخادم بجمع سبعة أيام: التوقيت
+   * الصيفيّ يزيح «الرابعة» ساعةً في الحساب المجرّد، فيجد الطالب درسه في الثالثة.
+   */
+  function openerCard(slots) {
+    const taken = new Set(slots.map((s) => s.at));
+    const card = el('div', { class: 'card stack' }, [
+      el('h2', { style: { margin: 0 }, text: t('bkOpenTitle') }),
+      el('p', { class: 'muted small', style: { margin: 0 }, text: t('bkOpenHint') }),
+    ]);
+
+    const days = el('div', { class: 'chips' });
+    const grid = el('div', { class: 'slot-grid' });
+    const minutes = el('select', {}, [15, 30, 45, 60, 90].map((n) => el('option', { value: String(n), text: t('tpMinutes', { n }) })));
+    minutes.value = '30';
+    const repeat = el('select', {}, [1, 2, 3, 4, 6, 8].map((n) => el('option', { value: String(n), text: n === 1 ? t('bkRepeatOnce') : t('bkRepeatN', { n }) })));
+    const save = el('button', { class: 'btn primary', type: 'button', disabled: true }, t('bkSave'));
+
+    let day = nextDays(1)[0];
+    /** الأوقات المختارة في هذه الجلسة — مفاتيحها طوابع زمنية */
+    const picked = new Set();
+
+    const paintGrid = () => {
+      grid.replaceChildren();
+      for (let h = 8; h <= 21; h += 1) {
+        for (const m of [0, 30]) {
+          const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0, 0).getTime();
+          const already = taken.has(at);
+          const on = picked.has(at);
+          const btn = el('button', {
+            class: 'slot' + (on ? ' on' : '') + (already ? ' is-open' : ''),
+            type: 'button',
+            disabled: already || at <= Date.now(),
+            title: already ? t('bkAlready') : '',
+            onclick: () => {
+              if (picked.has(at)) picked.delete(at);
+              else picked.add(at);
+              save.disabled = picked.size === 0;
+              paintGrid();
+            },
+          }, [
+            el('strong', { text: `${String(h).padStart(2, '0')}:${m ? '30' : '00'}` }),
+            already ? el('span', { class: 'muted small', text: t('bkAlreadyShort') }) : null,
+          ]);
+          grid.append(btn);
+        }
+      }
+    };
+
+    days.replaceChildren(
+      ...nextDays(21).map((d) =>
+        el('button', {
+          class: 'chip' + (dayKey(d) === dayKey(day) ? ' on' : ''),
+          type: 'button',
+          'data-day': dayKey(d),
+          onclick: () => {
+            day = d;
+            picked.clear();
+            save.disabled = true;
+            days.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.dataset.day === dayKey(d)));
+            paintGrid();
+          },
+          text: dayLabel(d),
+        })
+      )
+    );
+    paintGrid();
+
+    save.addEventListener('click', async () => {
+      const weeks = Number(repeat.value) || 1;
+      const mins = Number(minutes.value) || 30;
+      const wanted = [];
+      for (const at of picked) {
+        for (let w = 0; w < weeks; w += 1) {
+          // التكرار بالتقويم المحلّي: نضيف أسبوعاً إلى اليوم نفسه لا سبعة
+          // أيام إلى الطابع الزمني — فتبقى الساعة هي الساعة عبر التوقيت الصيفي
+          const d = new Date(at);
+          d.setDate(d.getDate() + w * 7);
+          wanted.push({ at: d.getTime(), minutes: mins });
+        }
+      }
+      save.disabled = true;
+      try {
+        const res = await api('/api/slots', { method: 'POST', body: { slots: wanted } });
+        toast(t('bkSaved', { n: res.added }), 'ok');
+        openBooking();
+      } catch (err) {
+        toast(err.message, 'bad');
+        save.disabled = false;
+      }
+    });
+
+    card.append(
+      days,
+      grid,
+      el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' } }, [
+        el('div', { class: 'stack tight' }, [el('label', { text: t('bkDuration') }), minutes]),
+        el('div', { class: 'stack tight' }, [el('label', { text: t('bkRepeat') }), repeat]),
+        save,
+      ])
+    );
+    return card;
+  }
+
+  /** المواعيد المفتوحة: مجموعةً بأيامها، وكلٌّ يُحذف ما لم يُحجز */
+  function slotsCard(slots) {
+    const card = el('div', { class: 'card stack' }, [el('h2', { style: { margin: 0 }, text: t('bkOpenSlots') })]);
+    if (!slots.length) {
+      card.append(el('p', { class: 'muted small', style: { margin: 0 }, text: t('bkNoSlots') }));
+      return card;
+    }
+    const byDay = new Map();
+    slots.forEach((s) => {
+      const key = dayKey(new Date(s.at));
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(s);
+    });
+    for (const list of byDay.values()) {
+      card.append(
+        el('div', { class: 'stack tight', style: { padding: '8px 0', borderTop: '1px solid var(--border)' } }, [
+          el('strong', { class: 'small', text: dayLabel(new Date(list[0].at)) }),
+          el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, list.map((s) =>
+            el('span', { class: 'chip' + (s.taken ? ' on' : ''), title: s.taken ? t('bkTaken') : '' }, [
+              el('span', { text: hourLabel(s.at) }),
+              s.taken
+                ? el('span', { class: 'muted small', text: ' · ' + t('bkTaken') })
+                : el('button', {
+                    class: 'chip__x', type: 'button', title: t('bkDelete'), text: '✕',
+                    onclick: async () => {
+                      try {
+                        await api('/api/slots/' + s.id, { method: 'DELETE' });
+                        openBooking();
+                      } catch (err) {
+                        toast(err.message, 'bad');
+                      }
+                    },
+                  }),
+            ])
+          )),
+        ])
+      );
+    }
+    return card;
+  }
+
   // ------------------------------------------------------------ الواجبات
 
   /**
@@ -2194,6 +2528,43 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     );
 
     const country = window.T.countrySelect(profile.country || '');
+
+    /*
+     * حقول الصفحة العامّة — ما يقنع من لا يعرفك.
+     *
+     * صفحةُ معلّمٍ فيها اسمٌ وصورةٌ وحدهما لا تُقنع أحداً بحجز درس. والذي
+     * يُقنع أشياءُ يعرفها هو ولا نعرفها نحن: ماذا يدرّس، وكم سنة، وأين درّس،
+     * وأيّ شهادةٍ يحملها — فنسأله عنها هنا، وما لا يملؤه لا يُعرض في صفحته.
+     */
+    const subjectPicks = new Set(Array.isArray(profile.subjects) ? profile.subjects : []);
+    const subjectChips = el('div', { class: 'chips' }, SUBJECTS.map((id) => {
+      const chip = el('button', {
+        class: 'chip' + (subjectPicks.has(id) ? ' on' : ''),
+        type: 'button',
+        text: tagLabel('subj', id),
+        onclick: () => {
+          if (subjectPicks.has(id)) subjectPicks.delete(id);
+          else if (subjectPicks.size < 6) subjectPicks.add(id);
+          chip.classList.toggle('on', subjectPicks.has(id));
+        },
+      });
+      return chip;
+    }));
+    const years = el('input', { type: 'number', min: '0', max: '60', dir: 'ltr', value: String(profile.years || '') });
+    const credentials = el('textarea', { rows: 2, maxlength: 300, placeholder: t('profCredentialsPh') });
+    credentials.value = profile.credentials || '';
+    const schools = el('textarea', { rows: 2, maxlength: 300, placeholder: t('profSchoolsPh') });
+    schools.value = profile.schools || '';
+    // العيّنة من **المنشور** وحده: الصفحة عامّة، ونشاطٌ غير منشورٍ يُعرض فيها
+    // يكشف أسئلةً لم يقرّر صاحبها كشفها
+    const sample = el('select', {}, [el('option', { value: '', text: t('profSampleNone') })]);
+    api('/api/activities')
+      .then(({ activities }) => {
+        (activities || []).filter((a) => a.published).forEach((a) => sample.append(el('option', { value: a.id, text: a.title })));
+        sample.value = profile.sampleId || '';
+      })
+      .catch(() => {});
+
     const face = el('div', { class: 'profile-face' });
     // حقلُ الملفّ مخفيّ خلف زرٍّ بلغة الصفحة: «Choose File / No file chosen»
     // كان يظهر كما يرسمه المتصفّح، إنجليزياً وبلا اتجاه، وسط نموذجٍ عربيّ
@@ -2245,6 +2616,11 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           bio: bio.value,
           country: country.value,
           links: linkInputs.map((box) => box.value.trim()).filter(Boolean),
+          subjects: [...subjectPicks],
+          years: Number(years.value) || 0,
+          credentials: credentials.value,
+          schools: schools.value,
+          sampleId: sample.value,
         };
         if (photo !== undefined) body.photo = photo;
         const res = await api('/api/profile', { method: 'PUT', body });
@@ -2299,9 +2675,17 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('span', { class: 'small' }, [t('cnLabel'), ' ', window.T.hintDot(t('cnWhy'))]),
           country,
         ]),
+        el('h2', { style: { margin: '6px 0 0' }, text: t('profPageTitle') }),
+        el('p', { class: 'muted small', style: { margin: 0 }, text: t('profPageHint') }),
+        el('div', { class: 'stack tight' }, [el('span', { class: 'small', text: t('profSubjects') }), subjectChips]),
+        el('label', {}, [el('span', { class: 'small', text: t('profYears') }), years]),
+        el('label', {}, [el('span', { class: 'small' }, [t('profCredentials'), ' ', window.T.hintDot(t('profCredentialsHint'))]), credentials]),
+        el('label', {}, [el('span', { class: 'small', text: t('profSchools') }), schools]),
+        el('label', {}, [el('span', { class: 'small' }, [t('profSample'), ' ', window.T.hintDot(t('profSampleHint'))]), sample]),
         el('p', { class: 'note warn small', style: { margin: 0 }, text: t('profPublicWarning') }),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
+        el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
           save,
+          el('a', { class: 'btn ghost', href: '/t/' + user.id, target: '_blank', rel: 'noopener' }, t('profPreviewPage')),
           el('a', { class: 'btn ghost', href: '/games.html#/t/' + user.id, target: '_blank', rel: 'noopener' }, t('profPreview')),
         ]),
       ])
@@ -2543,7 +2927,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       meta: [
         UI.Badge({ label: t('hQuestionCount', { count: item.questionCount }) }),
         // اسمُ المادة والصفّ بلغة المعلّم لا معرّفهما («math» و«g5» لا يقولان شيئاً)
-        item.subject ? UI.Badge({ label: tagLabel('subject', item.subject) }) : null,
+        item.subject ? UI.Badge({ label: tagLabel('subj', item.subject) }) : null,
         item.grade ? UI.Badge({ label: tagLabel('grade', item.grade) }) : null,
         item.copies ? UI.Badge({ label: t('lCopies', { n: item.copies }) }) : null,
         item.author ? el('span', { text: t('lBy', { name: item.author }) }) : null,
@@ -2770,6 +3154,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         put('tileHomework', n ? t('hwTileCount', { n }) : t('hTileNone'));
       })
       .catch(() => put('tileHomework', ''));
+    api('/api/bookings')
+      .then((data) => {
+        const n = data.pending || 0;
+        put('tileBooking', !data.booking ? t('hTileOff') : n ? t('bkTileCount', { n }) : t('hTileNone'));
+      })
+      .catch(() => put('tileBooking', ''));
     if (state.user) {
       api('/api/games?limit=1&teacher=' + encodeURIComponent(state.user.id))
         .then((data) => put('tileGames', data.total ? t('hTileGamesCount', { n: data.total }) : t('hTileNone')))
@@ -2795,6 +3185,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         UI.NavChip({ label: t('hdesignWithAi'), href: '#/ai' }),
         UI.NavChip({ label: t('gbNav'), href: '#/game-ai' }),
         UI.NavChip({ label: t('hwNav'), href: '#/homework' }),
+        UI.NavChip({ label: t('bkNav'), href: '#/booking' }),
         UI.NavChip({ label: t('hRecNav'), href: '#/records' }),
         UI.NavChip({ label: t('lNav'), href: '#/library' }),
         UI.NavChip({ label: t('gNav'), href: '/games.html' }),
@@ -2885,6 +3276,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         tile('📚', t('hmyActivities'), t('hTileActivities'), '#/mine', 'tileActivities'),
         tile('🧑‍🏫', t('hStuTitle'), t('hTileStudents'), '#/students', 'tileStudents'),
         tile('📝', t('hwNav'), t('hwTile'), '#/homework', 'tileHomework'),
+        tile('📅', t('bkNav'), t('bkTile'), '#/booking', 'tileBooking'),
         tile('📒', t('hRecNav'), t('hTileRecords'), '#/records', 'tileRecords'),
         tile('🎮', t('gMine'), t('hTileGames'), '#/games', 'tileGames'),
         tile('🌍', t('lNav'), t('hTileLibrary'), '#/library'),
@@ -5876,5 +6268,10 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
   // نعرف المستخدم أولاً حتى تظهر أزرار الحساب صحيحة من أول رسم
   loadAccount()
     .finally(route)
-    .finally(() => window.T.afterLogin(state.user, state.premium));
+    .finally(() => window.T.afterLogin(state.user, state.premium))
+    // الجرس بعد الرسم لا قبله: طلبٌ ينتظر ردّاً لا يجوز أن يؤخّر ظهور اللوحة
+    .finally(() => {
+      refreshBell();
+      watchBell();
+    });
 })();
