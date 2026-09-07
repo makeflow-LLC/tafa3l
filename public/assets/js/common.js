@@ -122,11 +122,35 @@
       // من له بلدٌ مفترض يجده مُختاراً فيؤكّده، ومن لا بلد له يختار من فارغ
       const select = countrySelect(user.country || '', { placeholder: t('cnPick') });
       const note = el('span', { class: 'muted small', text: t('cnWhy') });
+      /*
+       * تحذيرٌ ثمّ تأكيدٌ باسم البلد.
+       *
+       * البلد ليس حقل تعريفٍ يُملأ بأي شيء: عليه تُبنى عملةُ الاشتراك وطريقةُ
+       * الدفع، فمن اختار بلداً عشوائياً وجد نفسه أمام طريق دفعٍ لا يعمل عنده
+       * ولا يعرف لماذا. ولأن القائمة منسدلة، فأسهلُ خطأٍ فيها هو أوّل خيارٍ
+       * تقع عليه الإصبع — فيُطلب تأكيدٌ يذكر **اسم البلد الذي اختاره** لا
+       * علامةً مبهمة: من يقرأ «أؤكّد أنّي أُعلّم من ألبانيا» يلتفت إلى خطئه.
+       */
+      const care = el('p', { class: 'note warn small', style: { margin: 0 }, text: t('cnCare') });
+      const confirmBox = el('input', { type: 'checkbox' });
+      const confirmText = el('span', { class: 'small' });
+      const confirm = el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start' }, hidden: true }, [confirmBox, confirmText]);
       // الزرّ مقفلٌ حتى يُختار بلد: زرٌّ يُضغط ولا يفعل شيئاً أسوأ من زرٍّ مقفل
-      const go = el('button', { class: 'btn primary', type: 'button', disabled: !select.value }, t('cnContinue'));
+      const go = el('button', { class: 'btn primary', type: 'button', disabled: true }, t('cnContinue'));
+      const countryName = () => select.options[select.selectedIndex]?.textContent?.trim() || select.value;
+      const refresh = () => {
+        confirm.hidden = !select.value;
+        if (select.value) confirmText.textContent = t('cnConfirm', { country: countryName() });
+        go.disabled = !select.value || !confirmBox.checked;
+      };
+      // ومن غيّر بلده بعد أن أكّد يعود إلى نقطة البداية: التأكيد على ما اختاره الآن
       select.addEventListener('change', () => {
-        go.disabled = !select.value;
+        confirmBox.checked = false;
+        refresh();
       });
+      confirmBox.addEventListener('change', refresh);
+      // القائمة تصل بعد الرسم، فقد تُملأ بقيمةٍ مختارةٍ مسبقاً بلا حدث تغيير
+      select.addEventListener('tp:filled', refresh);
       go.addEventListener('click', async () => {
         if (!select.value) return;
         go.disabled = true;
@@ -169,9 +193,12 @@
         );
       }
       parts.push(
+        care,
         el('label', { class: 'stack tight' }, [el('span', { class: 'small', text: t('cnGateLabel') }), select, note]),
+        confirm,
         go
       );
+      refresh();
     } else {
       parts.push(
         el('a', { class: 'btn primary', href: '/host.html#/ai', onclick: close }, t('upWelcomeCta')),
@@ -234,6 +261,9 @@
         sel.append(group(t('cnArab'), arab), group(t('cnOther'), rest));
         if (value) sel.value = value;
         sel.disabled = false;
+        // الامتلاء ليس اختياراً من القارئ، فلا يبعث `change` — ومن ينتظر
+        // اسم البلد المختار (بطاقةُ التأكيد) لا يعرف متى صار له اسم بغيره
+        sel.dispatchEvent(new CustomEvent('tp:filled'));
       })
       .catch(() => {
         sel.disabled = false;

@@ -2547,6 +2547,34 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     const country = window.T.countrySelect(profile.country || '');
 
     /*
+     * تغييرُ البلد يُؤكَّد باسمه.
+     *
+     * البلد هنا حقلٌ بين حقول، وأسهلُ ما يُصيبه أن تُزحلق الإصبعُ القائمةَ
+     * وهي تمرّ عليها فيُحفظ بلدٌ لم يُقصد — وعليه تُبنى عملةُ الاشتراك وطريقةُ
+     * الدفع. فمن **غيّره** يُطلب منه تأكيدٌ باسم ما اختاره، ومن لم يمسّه يحفظ
+     * كما كان بلا سؤال: التأكيد على ما تغيّر لا على ما استقرّ.
+     */
+    const countryWas = profile.country || '';
+    const countryName = () => country.options[country.selectedIndex]?.textContent?.trim() || country.value;
+    const countryBox = el('input', { type: 'checkbox' });
+    const countryText = el('span', { class: 'small' });
+    const countryConfirm = el('label', { class: 'note warn row', style: { gap: '8px', alignItems: 'flex-start' }, hidden: true }, [
+      countryBox,
+      countryText,
+    ]);
+    const refreshCountry = () => {
+      const changed = Boolean(country.value) && country.value !== countryWas;
+      countryConfirm.hidden = !changed;
+      if (changed) countryText.textContent = t('cnChanged', { country: countryName() });
+      else countryBox.checked = false;
+    };
+    country.addEventListener('change', () => {
+      countryBox.checked = false;
+      refreshCountry();
+    });
+    country.addEventListener('tp:filled', refreshCountry);
+
+    /*
      * حقول الصفحة العامّة — ما يقنع من لا يعرفك.
      *
      * صفحةُ معلّمٍ فيها اسمٌ وصورةٌ وحدهما لا تُقنع أحداً بحجز درس. والذي
@@ -2628,6 +2656,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
 
     const save = el('button', { class: 'btn accent', type: 'button' }, t('profSave'));
     save.addEventListener('click', async () => {
+      // بلدٌ تغيّر ولم يُؤكَّد: نقف هنا لا في الخادم — الوقفةُ رسالةٌ لا خطأ
+      if (!countryConfirm.hidden && !countryBox.checked) {
+        countryBox.focus();
+        toast(t('cnConfirmFirst'), 'bad');
+        return;
+      }
       save.disabled = true;
       try {
         const body = {
@@ -2692,9 +2726,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('span', { class: 'small' }, [t('profLinks'), ' ', window.T.hintDot(t('profLinksHint'))]),
           ...linkInputs,
         ]),
-        el('label', {}, [
-          el('span', { class: 'small' }, [t('cnLabel'), ' ', window.T.hintDot(t('cnWhy'))]),
-          country,
+        el('div', { class: 'stack tight' }, [
+          el('label', {}, [
+            el('span', { class: 'small' }, [t('cnLabel'), ' ', window.T.hintDot(t('cnWhy'))]),
+            country,
+          ]),
+          countryConfirm,
         ]),
         el('h2', { style: { margin: '6px 0 0' }, text: t('profPageTitle') }),
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('profPageHint') }),
