@@ -112,7 +112,7 @@ test('مفتاح البحث يوحّد الهمزة والتاء المربوط�
 
 test('الترشيح: بلدٌ ومادّةٌ وصفٌّ واسمٌ — والاسم الكامل يُطابَق ولا يُعرض', () => {
   const items = [
-    { id: 'a', name: 'أ. سامي', fullName: 'أ. سامي حجازي', country: 'JO', subjects: ['math'], grades: ['g7'], booking: true, published: 2, games: 0, plays: 0 },
+    { id: 'a', name: 'أ. سامي', fullName: 'أ. سامي حجازي', schools: 'مدرسة الأمل الثانوية', country: 'JO', subjects: ['math'], grades: ['g7'], booking: true, published: 2, games: 0, plays: 0 },
     { id: 'b', name: 'هدى', fullName: 'هدى سليم', country: 'PS', subjects: ['science'], grades: ['g7', 'g8'], booking: false, published: 0, games: 3, plays: 40 },
     { id: 'c', name: 'كريم', fullName: 'كريم خالد', country: 'PS', subjects: ['math'], grades: ['g9'], booking: false, published: 1, games: 0, plays: 0 },
   ];
@@ -121,6 +121,8 @@ test('الترشيح: بلدٌ ومادّةٌ وصفٌّ واسمٌ — والا
   assert.deepEqual(directory.filter(items, { grade: 'g7' }).map((i) => i.id), ['b', 'a'], 'الأكثر نشراً أوّلاً');
   assert.deepEqual(directory.filter(items, { booking: true }).map((i) => i.id), ['a']);
   assert.deepEqual(directory.filter(items, { q: 'حجازي' }).map((i) => i.id), ['a'], 'اللقب الكامل يجد صاحبه');
+  assert.deepEqual(directory.filter(items, { q: 'الامل' }).map((i) => i.id), ['a'], 'واسمُ المدرسة يجد معلّميها');
+  assert.deepEqual(directory.filter(items, { q: 'مدرسة النور' }).map((i) => i.id), [], 'ومدرسةٌ لا أحد فيها لا تُخرج أحداً');
   assert.deepEqual(directory.filter(items, { q: 'هدي' }).map((i) => i.id), ['b']);
   assert.deepEqual(directory.filter(items, { subject: 'math', country: 'PS' }).map((i) => i.id), ['c']);
 });
@@ -138,7 +140,7 @@ test('يُدرج من له وجهٌ عامّ: بروفايلٌ مملوء أو �
 test('الدليل عامٌّ: يُرشَّح ويكتم البريد والهاتف والاسم الكامل', async () => {
   const sami = client();
   const samiMail = await sami.login('أ. سامي حجازي');
-  await sami.request('PUT', '/api/profile', { subjects: ['math'], grades: ['g7', 'g8'], country: 'JO', years: 9, phone: '0599000000', phonePublic: false });
+  await sami.request('PUT', '/api/profile', { subjects: ['math'], grades: ['g7', 'g8'], country: 'JO', years: 9, schools: 'مدرسة الأمل الثانوية', phone: '0599000000', phonePublic: false });
   const made = await sami.request('POST', '/api/activities', QUIZ('الكسور'));
   await sami.request('POST', `/api/activities/${made.data.activity.id}/publish`, { subject: 'math', grade: 'g7' });
 
@@ -163,6 +165,9 @@ test('الدليل عامٌّ: يُرشَّح ويكتم البريد والها
   assert.equal(body.includes('0599000000'), false, 'لا هاتف');
   assert.equal(body.includes('حجازي'), false, 'الاسم الكامل لا يخرج');
   assert.equal(body.includes('fullName'), false);
+  // المدارس كلّها تُطابَق ولا تُرسل — وأوّلُها وحدها تُعرض على البطاقة
+  assert.equal(body.includes('"schools"'), false, 'النصّ الكامل للمدارس لا يخرج');
+  assert.equal(all.items.find((i) => i.name === 'أ. سامي').school, 'مدرسة الأمل الثانوية');
 
   const samiRow = all.items.find((i) => i.name === 'أ. سامي');
   assert.equal(samiRow.published, 1);
@@ -181,6 +186,7 @@ test('الدليل عامٌّ: يُرشَّح ويكتم البريد والها
   assert.deepEqual((await guest('/api/teachers?booking=1')).items.map((i) => i.name), ['هدى']);
   assert.deepEqual((await guest('/api/teachers?q=' + encodeURIComponent('حجازي'))).items.map((i) => i.name), ['أ. سامي'], 'اللقب الكامل يجد صاحبه');
   assert.deepEqual((await guest('/api/teachers?q=' + encodeURIComponent('هدي'))).items.map((i) => i.name), ['هدى']);
+  assert.deepEqual((await guest('/api/teachers?q=' + encodeURIComponent('الامل'))).items.map((i) => i.name), ['أ. سامي'], 'البحث بالمدرسة');
   assert.equal((await guest('/api/teachers?q=' + encodeURIComponent('لا أحد'))).total, 0);
 
   // والصفوف تصل صفحة المعلّم وبروفايله

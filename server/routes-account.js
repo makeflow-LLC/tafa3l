@@ -1922,6 +1922,9 @@ function accountRoutes(store) {
             subjects: Array.isArray(u.subjects) ? u.subjects : [],
             grades: Array.isArray(u.grades) ? u.grades : [],
             years: Number(u.years) || 0,
+            // المدارس كلّها تُطابَق، وأوّلُها وحدها تُعرض: بطاقةٌ لا تتّسع لثلاث
+            schools: String(u.schools || '').slice(0, 300),
+            school: clean(String(u.schools || '').split('\n')[0], 120),
             bio: clean(u.bio, 140),
             published: c.published,
             games: c.games,
@@ -1941,7 +1944,7 @@ function accountRoutes(store) {
       res.json({
         total: shown.length,
         // الاسم الكامل للمطابقة لا للعرض — يُنزع قبل الإرسال
-        items: shown.slice(offset, offset + limit).map(({ fullName, ...it }) => it),
+        items: shown.slice(offset, offset + limit).map(({ fullName, schools, ...it }) => it),
         // البلدان الحاضرة فعلاً في الدليل — فلا يختار الطالب بلداً لا معلّم فيه
         countries: [...new Set(all.map((it) => it.country).filter(Boolean))].sort(),
       });

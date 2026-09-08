@@ -41,6 +41,9 @@ function searchKey(text) {
  * الترشيح والترتيب. الاسم يُطابَق على الاسم العامّ **و**الاسم الكامل — فمن
  * بحث بلقب المعلّم كاملاً وجده وإن كانت صفحته تعرض اسمه الأوّل — ولا يُكشف
  * الاسم الكامل بذلك: المطابقة في الخادم، والمعروض هو العامّ.
+ *
+ * والمدرسة تُطابَق مع الاسم في الحقل نفسه لا في حقلٍ ثانٍ: الطالب يكتب ما
+ * يعرفه — «مدرسة الأمل» أو «أ. سامي» — ولا يعرف في أيّ خانةٍ يضعه.
  */
 function filter(items, { q = '', country = '', subject = '', grade = '', booking = false } = {}) {
   const needle = searchKey(q);
@@ -52,7 +55,13 @@ function filter(items, { q = '', country = '', subject = '', grade = '', booking
     .filter((it) => !s || (it.subjects || []).includes(s))
     .filter((it) => !g || (it.grades || []).includes(g))
     .filter((it) => !booking || it.booking)
-    .filter((it) => !needle || searchKey(it.name).includes(needle) || searchKey(it.fullName).includes(needle))
+    .filter(
+      (it) =>
+        !needle ||
+        searchKey(it.name).includes(needle) ||
+        searchKey(it.fullName).includes(needle) ||
+        searchKey(it.schools).includes(needle)
+    )
     .sort((a, b) => b.published + b.games - (a.published + a.games) || b.plays - a.plays || a.name.localeCompare(b.name, 'ar'));
 }
 
