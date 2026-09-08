@@ -3651,6 +3651,81 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       return;
     }
 
+    /*
+     * إحصاءُ المعلّم الواحد: يُطلب عند فتحه لا مع الجدول.
+     *
+     * صفٌّ واحدٌ من الأرقام يعني قراءةَ فصوله وسجلّاته وواجباته — وجلبُها
+     * لمئتَي معلّمٍ دفعةً واحدة يُثقل اللوحة كلّها ليقرأ المالك سطراً منها.
+     * فالفتح هو ما يطلب، والمفتوحُ يبقى مفتوحاً عبر إعادة الرسم (التفعيل
+     * يعيد رسم الجدول، ولو نسي المفتوح لانطبق ما فتحه المالك تحت يده).
+     */
+    const openStats = new Set();
+    const statCache = new Map();
+
+    const statLine = (n, label) =>
+      el('div', { class: 'row between' }, [
+        el('span', { class: 'muted small', text: label }),
+        el('strong', { text: String(n) }),
+      ]);
+
+    const statBox = (title, lines) =>
+      el('div', { class: 'stat stack tight' }, [
+        el('strong', { class: 'small', text: title }),
+        ...lines.filter(Boolean).map(([n, label]) => statLine(n, label)),
+      ]);
+
+    function statsCard(stats) {
+      const p = stats.profile;
+      return el('div', { class: 'stack tight' }, [
+        el('span', {
+          class: 'muted small',
+          text: `${t('hstLastActive')}: ${stats.lastActiveAt ? fmtDate(stats.lastActiveAt) : t('hstNever')}`,
+        }),
+        el('div', { class: 'stats' }, [
+          statBox(t('hstContent'), [
+            [stats.activities.total, t('hstActivities')],
+            [stats.activities.questions, t('hstQuestions')],
+            [stats.activities.published, t('hstPublished')],
+            [stats.activities.copies, t('hstCopies')],
+            [stats.bank, t('hstBank')],
+          ]),
+          statBox(t('hstGames'), [
+            [stats.games.total, t('hstGamesUp')],
+            [stats.games.plays, t('hstGamePlays')],
+            [stats.games.built, t('hstGamesBuilt')],
+          ]),
+          statBox(t('hstStudents'), [
+            [stats.classes.total, t('hstClasses')],
+            [stats.classes.students, t('hstStudentsN')],
+            [stats.classes.groups, t('hstGroups')],
+            [stats.classes.withRecord, t('hstWithRecord')],
+          ]),
+          statBox(t('hstRecords'), [
+            [stats.records.rows, t('hstRecordRows')],
+            [stats.records.sessions, t('hstSessions')],
+          ]),
+          statBox(t('hstHomework'), [
+            [stats.homework.total, t('hstHwTotal')],
+            [stats.homework.assigned, t('hstHwAssigned')],
+            [stats.homework.done, t('hstHwDone')],
+          ]),
+          statBox(t('hstBooking'), [
+            [stats.booking.slots, t('hstSlots')],
+            [stats.booking.requests, t('hstRequests')],
+            [stats.booking.pending, t('hstPending')],
+          ]),
+          statBox(t('hstProfile'), [
+            [p.photo ? '✅' : '—', t('hstProfilePhoto')],
+            [p.bio ? '✅' : '—', t('hstProfileBio')],
+            [p.subjects, t('hstProfileSubjects')],
+            [p.years, t('hstProfileYears')],
+            [p.samples, t('hstProfileSamples')],
+            [p.terms ? '✅' : '—', t('hstProfileTerms')],
+          ]),
+        ]),
+      ]);
+    }
+
     const draw = () => {
       const users = data.users;
       const active = users.filter((u) => u.isPremium).length;
@@ -3747,9 +3822,44 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             : null,
         ]);
 
-        return el('tr', {}, [
+        const statsBody = el('td', { colspan: 6, style: { whiteSpace: 'normal' } });
+        const statsRow = el('tr', { class: 'adm-stats', hidden: !openStats.has(user.id) }, [statsBody]);
+        const toggle = el('button', { class: 'btn ghost sm', type: 'button' }, openStats.has(user.id) ? t('hstClose') : t('hstOpen'));
+
+        const paint = () => {
+          const cached = statCache.get(user.id);
+          statsBody.replaceChildren(cached ? statsCard(cached) : el('span', { class: 'muted small', text: t('hstLoading') }));
+        };
+        if (openStats.has(user.id)) paint();
+
+        toggle.addEventListener('click', async () => {
+          if (openStats.has(user.id)) {
+            openStats.delete(user.id);
+            statsRow.hidden = true;
+            toggle.textContent = t('hstOpen');
+            return;
+          }
+          openStats.add(user.id);
+          statsRow.hidden = false;
+          toggle.textContent = t('hstClose');
+          paint();
+          if (statCache.has(user.id)) return;
+          try {
+            const res = await api(`/api/admin/users/${user.id}/stats`);
+            statCache.set(user.id, res.stats);
+            if (openStats.has(user.id)) paint();
+          } catch (err) {
+            statsBody.replaceChildren(el('span', { class: 'note warn small', text: err.message }));
+          }
+        });
+
+        const row = el('tr', {}, [
           el('td', { style: { whiteSpace: 'normal' } }, [
-            el('div', { class: 'stack tight' }, [el('strong', { text: user.name }), el('span', { class: 'muted small', text: user.email })]),
+            el('div', { class: 'stack tight' }, [
+              el('strong', { text: user.name }),
+              el('span', { class: 'muted small', text: user.email }),
+              toggle,
+            ]),
           ]),
           el('td', { 'data-label': t('hsignedUp') }, fmtDate(user.createdAt)),
           el('td', { 'data-label': t('cnColumn') }, countryName(user.country)),
@@ -3774,7 +3884,9 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           ]),
           el('td', { 'data-label': t('hcontrols'), style: { whiteSpace: 'normal' } }, [controls]),
         ]);
-      });
+
+        return [row, statsRow];
+      }).flat();
 
       app.append(
         el('div', { class: 'card stack' }, [

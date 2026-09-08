@@ -237,6 +237,122 @@ function accountRoutes(store) {
   });
 
   /**
+   * إحصاءُ معلّمٍ واحد — **أرقامٌ لا محتوى**.
+   *
+   * اللوحة كانت تقول «سجّل قبل ٤٠ يوماً وله ٣ أنشطة»، وهذا لا يكفي لمعرفة
+   * هل المنصّة تُستعمل فعلاً: معلّمٌ بثلاثة أنشطة وثمانين طالباً وعشرين
+   * واجباً مستخدمٌ حقيقيّ، وآخرُ بثلاثة أنشطةٍ بلا فصلٍ ولا طالب لم يبدأ بعد.
+   *
+   * ولا يُرسل من محتواه شيء: لا عناوينُ أنشطة، ولا أسماءُ طلاب، ولا نتائج.
+   * المالك يقيس الاستعمال لا يقرأ صفوف الناس — فما يخرج من هنا **عدادات**.
+   */
+  router.get('/admin/users/:id/stats', premium.requireAdmin, async (req, res) => {
+    try {
+      const store = storage.get();
+      const target = await store.findUserById(req.params.id);
+      if (!target) return res.status(404).json({ error: 'المدرب غير موجود' });
+
+      const [activities, classes, assignments, slots, bookings, games, bank] = await Promise.all([
+        store.listActivities(target.id),
+        store.listClasses(target.id),
+        store.listAssignments(target.id),
+        store.listSlots(target.id),
+        store.listBookings(target.id),
+        store.listGames({ ownerId: target.id, limit: 1000 }),
+        store.listBankQuestions(target.id),
+      ]);
+
+      // الفصل التجريبي خارج العدّ: طلابه أسماءٌ اخترعناها نحن لا طلابه هو
+      const real = classes.filter((c) => !c.demo);
+      const recordClasses = real.filter((c) => c.record);
+      const records = (await Promise.all(recordClasses.map((c) => store.listRecords(c.id)))).flat();
+
+      // الواجب: كم كُلِّف وكم سلّم — من السجل نفسه، فلا رقمان يفترقان
+      const byStudent = new Map();
+      for (const row of records) {
+        if (!byStudent.has(row.studentId)) byStudent.set(row.studentId, new Set());
+        byStudent.get(row.studentId).add(row.code);
+      }
+      let assigned = 0;
+      let done = 0;
+      for (const item of assignments) {
+        const codes = new Set(homework.codesOf(item));
+        const ids = Array.isArray(item.studentIds) ? item.studentIds : [];
+        assigned += ids.length;
+        done += ids.filter((id) => [...(byStudent.get(id) || [])].some((code) => codes.has(code))).length;
+      }
+
+      const stamps = [
+        target.createdAt,
+        ...activities.map((a) => a.updatedAt || a.createdAt),
+        ...games.items.map((g) => g.createdAt),
+        ...assignments.map((a) => a.createdAt),
+        ...real.map((c) => c.updatedAt || c.createdAt),
+        ...records.map((r) => r.at),
+      ].filter((n) => Number.isFinite(n));
+
+      res.json({
+        user: {
+          id: target.id,
+          name: target.name,
+          displayName: target.displayName || '',
+          email: target.email,
+          createdAt: target.createdAt,
+          country: target.country || '',
+          tier: premium.tierOf(target),
+          premiumUntil: target.premiumUntil ?? null,
+          isPremium: premium.isPremium(target),
+          isAdmin: premium.isAdmin(target),
+          grandfathered: Boolean(target.grandfatheredAt),
+        },
+        stats: {
+          lastActiveAt: stamps.length ? Math.max(...stamps) : target.createdAt,
+          activities: {
+            total: activities.length,
+            published: activities.filter((a) => a.published).length,
+            questions: activities.reduce((sum, a) => sum + (a.questions || []).length, 0),
+            copies: activities.reduce((sum, a) => sum + (Number(a.copies) || 0), 0),
+          },
+          bank: bank.length,
+          games: {
+            total: games.total,
+            plays: games.items.reduce((sum, g) => sum + (Number(g.plays) || 0), 0),
+            built: Number(target.gamesBuilt) || 0,
+          },
+          classes: {
+            total: real.length,
+            students: real.reduce((sum, c) => sum + (c.students || []).length, 0),
+            // `groups` كشفٌ موازٍ للأسماء لا قائمةَ مجموعات — فالعدد بالتمييز
+            groups: real.reduce((sum, c) => sum + new Set((c.groups || []).filter(Boolean)).size, 0),
+            withRecord: recordClasses.length,
+          },
+          records: {
+            rows: records.length,
+            sessions: new Set(records.map((r) => r.code)).size,
+          },
+          homework: { total: assignments.length, assigned, done },
+          booking: {
+            slots: slots.length,
+            requests: bookings.length,
+            pending: bookings.filter((b) => b.status === 'pending').length,
+          },
+          // اكتمالُ البروفايل: ما مُلئ لا ما كُتب فيه
+          profile: {
+            photo: Boolean(target.hasPhoto),
+            bio: Boolean(target.bio),
+            subjects: (target.subjects || []).length,
+            years: Number(target.years) || 0,
+            samples: (target.samples || []).length,
+            terms: Boolean(target.bookingTerms),
+          },
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'تعذّر جلب إحصاء المدرب' });
+    }
+  });
+
+  /**
    * ضبط اشتراك مدرب: إما بإضافة أيام (addDays موجب أو سالب) أو بتاريخ صريح
    * (until بالمللي ثانية، أو null لإلغاء الاشتراك فوراً).
    */
