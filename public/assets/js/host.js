@@ -1308,6 +1308,11 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
            * ورمزُها يفتح سجلّه بلا حساب، فلا تُسلَّم عن طالبٍ حقيقيّ. أمّا
            * النموذج فطلابه أسماءٌ اخترعناها.
            */
+          // بطاقةُ وليّ الأمر: ورقةٌ تُطبع وتُسلَّم — تُفتح في لسانٍ جديد كالتقرير
+          el('a', {
+            class: 'btn accent sm', target: '_blank', rel: 'noopener',
+            href: `/card.html?class=${encodeURIComponent(classId)}&student=${encodeURIComponent(studentId)}`,
+          }, t('cdCard')),
           data.demo
             ? el('button', {
                 class: 'btn ghost sm', type: 'button',

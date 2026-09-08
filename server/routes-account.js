@@ -1073,12 +1073,32 @@ function accountRoutes(store) {
       const pupil = (item.pupils || []).find((p) => p.id === req.params.sid);
       if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
       const rows = await storage.get().listRecords(item.id, pupil.id);
+      /*
+       * حالةُ واجباته معه لا في نداءٍ ثانٍ: بطاقةُ وليّ الأمر تسأل «هل يسلّم
+       * واجباته؟» قبل أن تسأل عن درجته، والجوابُ محسوبٌ من التكليف والسجل
+       * معاً — وهما هنا. والحساب من `homework.progress` نفسه فلا رقمان
+       * يفترقان بين البطاقة وصفحة الواجب.
+       */
+      const mine = (await storage.get().listAssignments(req.user.id)).filter(
+        (a) => a.classId === item.id && (a.studentIds || []).includes(pupil.id)
+      );
+      const homeworkStats = { assigned: mine.length, done: 0, late: 0, missing: 0 };
+      for (const assignment of mine) {
+        const [row] = homework.progress({ assignment, pupils: [pupil], records: rows }).rows;
+        if (!row) continue;
+        if (row.status === homework.STATUS.DONE) homeworkStats.done += 1;
+        else if (row.status === homework.STATUS.NONE) homeworkStats.missing += 1;
+        if (row.late) homeworkStats.late += 1;
+      }
       res.json({
+        // اسمُ الفصل مع الطالب: البطاقةُ تُطبع وتُسلَّم، وورقةٌ بلا فصلٍ لا تُعرف لمن
+        class: { id: item.id, name: item.name },
         student: records.publicPupil(pupil),
         demo: Boolean(item.demo),
         records: rows,
         weak: records.weakSpots(rows),
         weakSkills: records.weakSkills(rows),
+        homework: homeworkStats,
       });
     } catch (err) {
       console.error('student record:', err);
