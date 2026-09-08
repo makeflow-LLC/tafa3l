@@ -356,6 +356,73 @@
     download(toXlsx(buildResultsSheets(data)), `tapio-${data.code}-results.xlsx`);
   }
 
+  // ------------------------------------------------------------ كشف الفصل
+
+  /**
+   * كشفُ الفصل ملفاً — أسماءُ طلابه ومجموعاتهم ورموزهم، ومعها خلاصةُ سجلّهم
+   * إن كان الفصل مسجَّلاً.
+   *
+   * والمعلّم يطلبه لأسبابٍ لا تخصّنا: يسلّمه لإدارته، أو يوزّع الرموز على
+   * أولياء الأمور، أو يحتفظ بنسخةٍ عنده قبل أن ينتهي العام. فالملفُّ يخرج
+   * كما هو عنده — بالمجموعات كما كتبها والترتيب كما رتّبه — لا مرتّباً
+   * بالنتيجة: كشفٌ يُطابَق بالعين مع كشف المدرسة.
+   */
+  /**
+   * اسمُ الملفّ **لاتينيّ دائماً**.
+   *
+   * وهذا ليس تفضيلاً: Chromium يتجاهل خاصيّة `download` كلَّها إن كان الاسم
+   * عربياً في رابط `blob:`، فينزل الملفُّ باسم «download» **بلا امتداد** —
+   * فلا يفتحه Excel بنقرة. فنبني اسماً من الحروف اللاتينية إن وُجدت، وإلا
+   * فتاريخُ اليوم؛ واسمُ الفصل بالعربية في أوّل سطرٍ داخل الملفّ نفسه.
+   */
+  function fileSlug(text) {
+    const ascii = String(text || '')
+      .replace(/[^A-Za-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 30);
+    const day = new Date().toISOString().slice(0, 10);
+    return ascii.length >= 2 ? `${ascii}-${day}` : `class-${day}`;
+  }
+
+  function rosterSheets({ className, students = [], stats = false }) {
+    const withPin = students.some((s) => s.pin);
+    const head = [t('xRosterNo'), t('xRosterName'), t('xRosterGroup')];
+    if (withPin) head.push(t('xRosterPin'));
+    if (stats) head.push(t('xRosterAttempts'), t('xRosterAvg'), t('xRosterLast'), t('xRosterLastAt'));
+
+    const body = students.map((s, i) => {
+      const row = [i + 1, s.name || '', s.group || ''];
+      if (withPin) row.push(s.pin || '');
+      if (stats) {
+        row.push(
+          Number(s.attempts) || 0,
+          s.avgPercent === null || s.avgPercent === undefined ? '' : Number(s.avgPercent),
+          s.lastPercent === null || s.lastPercent === undefined ? '' : Number(s.lastPercent),
+          s.lastAt ? new Date(s.lastAt).toLocaleDateString(loc(), { year: 'numeric', month: 'long', day: 'numeric' }) : ''
+        );
+      }
+      return row;
+    });
+
+    return [
+      {
+        name: t('xRosterSheet'),
+        rows: [
+          [t('xRosterClass'), className || ''],
+          [t('xStudentCount'), students.length],
+          [t('xExportedAt'), new Date().toLocaleString(loc())],
+          [],
+          head,
+          ...body,
+        ],
+      },
+    ];
+  }
+
+  function toRoster(data) {
+    download(toXlsx(rosterSheets(data)), `tapio-${fileSlug(data.className)}.xlsx`);
+  }
+
   // ------------------------------------------------------------------ pdf
   //
   // تنزيل مباشر لملف PDF حقيقي (لا نافذة طباعة): jsPDF + جدول autoTable
@@ -1091,6 +1158,7 @@ ${opts?.withKey === false ? '' : `<div class="key"><h2>${t('paperKeyTitle')}</h2
 
   global.Exporter = {
     toExcel, toResultsExcel,
+    toRoster, rosterSheets,       // كشفُ الفصل: أسماءٌ ومجموعاتٌ ورموزٌ وخلاصةُ السجل
     toPaper, paperHtml,           // ورقة الطالب + مفتاح الإجابات
     toPdf, toResultsPdf,          // تقرير ملوّن عبر نافذة الطباعة (الأجمل)
     toPdfFile, toResultsPdfFile,  // تنزيل مباشر بلا نافذة (أبسط)
