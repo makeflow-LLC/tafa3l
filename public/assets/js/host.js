@@ -1049,6 +1049,16 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
                   onclick: (event) => buildReview(classId, {}, event.currentTarget),
                 }, t('hwRev'))
               : null,
+            /*
+             * التحليل صفحةٌ مستقلّة تُفتح في لسانٍ جديد: هو تقريرٌ يُطبع ويُسلَّم،
+             * لا لوحةٌ تُتصفَّح — وصفحةُ الطباعة لا تحمل شريطاً ولا قائمة.
+             */
+            withAttempts.length
+              ? el('a', {
+                  class: 'btn ghost sm', title: t('hRecAnalyzeHint'), target: '_blank', rel: 'noopener',
+                  href: '/report.html?class=' + encodeURIComponent(classId),
+                }, t('hRecAnalyze'))
+              : null,
             el('a', { class: 'btn ghost sm', href: '#/homework' }, t('hwNav')),
             withAttempts.length
               ? el('button', {
@@ -1097,6 +1107,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
                     class: 'btn ghost sm', type: 'button', title: t('hwRevHint'),
                     onclick: (event) => buildReview(classId, { group: g.name }, event.currentTarget),
                   }, t('hwRevGroup'))
+                : null,
+              g.name && g.attempts
+                ? el('a', {
+                    class: 'btn ghost sm', title: t('hRecAnalyzeHint'), target: '_blank', rel: 'noopener',
+                    href: '/report.html?class=' + encodeURIComponent(classId) + '&group=' + encodeURIComponent(g.name),
+                  }, t('hRecAnalyzeGroup'))
                 : null,
             ])
           )),
@@ -4147,7 +4163,8 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         t('upGamesProCell', { count: basic.gamesMonthly ?? 15 }),
         t('upGamesProCell', { count: pro.gamesMonthly ?? 35 }),
       ],
-      [t('upRowBooking'), false, false, t('upSoonCell')],
+      [t('upRowBooking'), false, false, true],
+      [t('upRowAnalysis'), false, false, true],
     ];
   }
 

@@ -19,6 +19,7 @@ const { aiRoutes } = require('./routes-ai');
 const { gameAiRoutes } = require('./routes-game-ai');
 const billing = require('./routes-billing');
 const { bookingRoutes, sweep: sweepBookings } = require('./routes-booking');
+const { analysisRoutes } = require('./routes-analysis');
 const stripeApi = require('./stripe');
 const sharePage = require('./share-page');
 const ai = require('./ai');
@@ -131,6 +132,7 @@ app.use('/api', aiRoutes());
 app.use('/api', gameAiRoutes());
 app.use('/api', billing.billingRoutes());
 app.use('/api', bookingRoutes());
+app.use('/api', analysisRoutes());
 
 // ------------------------------------------------------------------ واجهة REST
 

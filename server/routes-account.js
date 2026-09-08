@@ -732,7 +732,8 @@ function accountRoutes(store) {
    * حين يشغّله يصير لكل اسمٍ ملفٌّ برمزٍ شخصي، وتُكتب نتائج من يدخلون بأسمائهم
    * ورموزهم بعد كل نشاط. وحين يطفئه لا يُكتب جديد، وما كُتب يبقى حتى يحذفه هو.
    */
-  const publicClass = (item) => ({
+  // التحليل المحفوظ ليس من بيانات الفصل التي تُسرد: صفحته تطلبه وحدها
+  const publicClass = ({ analysis, ...item }) => ({
     ...item,
     record: Boolean(item.record),
     demo: Boolean(item.demo),
