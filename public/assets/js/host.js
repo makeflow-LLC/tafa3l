@@ -1234,7 +1234,14 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             ]),
             el('span', { class: 'muted small', text: t('hClassCount', { n: item.students.length }) }),
           ]),
-          el('a', { class: 'btn primary sm', href: `#/class/${item.id}/record` }, t('hRecOpen')),
+          el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
+            // التحليل من هنا أيضاً: المالكُ يسأل «أين أجده؟» فيجده حيث يقرأ سجلّاته
+            el('a', {
+              class: 'btn ghost sm', title: t('hRecAnalyzeHint'), target: '_blank', rel: 'noopener',
+              href: '/report.html?class=' + encodeURIComponent(item.id),
+            }, t('hRecAnalyze')),
+            el('a', { class: 'btn primary sm', href: `#/class/${item.id}/record` }, t('hRecOpen')),
+          ]),
         ])
       ))
     );
@@ -5375,8 +5382,6 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     return el('div', { class: 'stack center' }, [
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('hopenThisAddressIn') }),
       el('div', { style: { direction: 'ltr', fontWeight: '700' }, text: url.replace(/^https?:\/\//, '') }),
-      el('p', { class: 'muted small', style: { margin: '6px 0 0' }, text: t('horEnterTheCode') }),
-      el('div', { class: 'bigcode', text: state.code }),
       el('div', { class: 'row', style: { justifyContent: 'center' } }, [
         el('button', { class: 'btn sm', type: 'button', onclick: () => copy(url) }, t('hcopyLink')),
         el('button', { class: 'btn sm ghost', type: 'button', onclick: () => share(url, s.title) }, t('hshare2')),

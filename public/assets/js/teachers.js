@@ -68,6 +68,7 @@
     ];
     const facts = [
       item.country ? countryName(item.country) : '',
+      item.school || '',
       item.years ? t('tdYears', { n: item.years }) : '',
       item.published ? t('tdActivities', { n: item.published }) : '',
       item.games ? t('tdGames', { n: item.games }) : '',
@@ -90,7 +91,14 @@
   async function boot() {
     // الفلاتر تُبنى مرّةً — والشبكة وحدها تُعاد مع كل تغيير، فلا تسقط بؤرة الكتابة
     const search = el('input', { type: 'search', placeholder: t('tdSearch'), value: state.q, maxlength: 60, 'aria-label': t('tdSearch') });
-    const country = el('select', { 'aria-label': t('tdAnyCountry') }, [el('option', { value: '', text: t('tdAnyCountry') })]);
+    /*
+     * كلُّ البلدان لا الحاضرة منها وحدها.
+     *
+     * كانت القائمة تُحصر بمن في الدليل، فيفتحها طالبٌ فيجد بلداً واحداً —
+     * وقائمةٌ بخيارٍ واحد تبدو عطلاً لا ترشيحاً، وتقول ضمناً «لا معلّمين
+     * إلا هنا». والقائمة الكاملة هي نفسها التي يختار منها المعلّم بلده.
+     */
+    const country = window.T.countrySelect(state.country, { placeholder: t('tdAnyCountry') });
     const subject = el('select', { 'aria-label': t('tdAnySubject') }, [
       el('option', { value: '', text: t('tdAnySubject') }),
       ...SUBJECTS.map((id) => el('option', { value: id, text: tagLabel('subj', id) })),
@@ -127,22 +135,13 @@
       el('div', { class: 'center', style: { marginTop: '10px' } }, [more])
     );
 
-    // أسماءُ البلدان بلغة القارئ، والقائمة تُحصر فيما في الدليل بعد أول جلب
+    // أسماءُ البلدان بلغة القارئ — لعرضها في البطاقات لا للقائمة (تملأ نفسها)
     window.T.countryList()
       .then(({ arab, rest }) => {
         countryNames = new Map([...arab, ...rest].map((c) => [c.code, c.name]));
-        draw.lastCountries && fillCountries(draw.lastCountries);
         draw.lastItems && paint(draw.lastItems, false);
       })
       .catch(() => {});
-
-    function fillCountries(codes) {
-      country.replaceChildren(
-        el('option', { value: '', text: t('tdAnyCountry') }),
-        ...codes.map((code) => el('option', { value: code, text: countryName(code) }))
-      );
-      country.value = codes.includes(state.country) ? state.country : '';
-    }
 
     function paint(items, append) {
       if (!append) grid.replaceChildren();
@@ -163,12 +162,7 @@
         return;
       }
       if (mine !== seq) return; // ردٌّ متأخّر لبحثٍ سابق
-      draw.lastCountries = data.countries || [];
       draw.lastItems = append ? [...(draw.lastItems || []), ...data.items] : data.items;
-      if (!append && !country.dataset.filled) {
-        fillCountries(draw.lastCountries);
-        country.dataset.filled = '1';
-      }
       paint(data.items, append);
       const shown = state.offset + data.items.length;
       count.textContent = data.total === 1 ? t('tdCountOne') : t('tdCount', { n: data.total });

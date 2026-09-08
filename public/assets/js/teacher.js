@@ -157,10 +157,21 @@
     }
   }
 
-  /** ما نشره وما بناه: أنشطته في المكتبة وألعابه */
+  /**
+   * ما نشره وما بناه: أنشطته في المكتبة وألعابه.
+   *
+   * والفرق بين الاثنين عند الزائر جوهريّ: **اللعبة يفتحها بنفسه**، أمّا
+   * النشاط فيُطلقه معلّمه في حصّة — وأسئلته وإجاباتها الصحيحة في المكتبة
+   * لأصحاب الحسابات. فكان زرّ «افتح» يقود الطالبَ إلى بوّابة دخولٍ لا
+   * تعنيه؛ صار يظهر لمن يملك حساباً، ويقرأ الطالبُ مكانَه جملةً تقول له
+   * كيف يصله النشاط.
+   */
   function listsCard() {
-    api('/api/library?teacher=' + encodeURIComponent(id) + '&limit=12')
-      .then(({ items }) => {
+    Promise.all([
+      api('/api/library?teacher=' + encodeURIComponent(id) + '&limit=12'),
+      api('/api/auth/me').then((d) => Boolean(d.user)).catch(() => false),
+    ])
+      .then(([{ items }, signedIn]) => {
         if (!items?.length) return;
         app.append(
           el('div', { class: 'card stack' }, [
@@ -171,7 +182,9 @@
                   el('strong', { text: a.title }),
                   el('span', { class: 'muted small', text: [a.subject ? tagLabel('subj', a.subject) : '', t('hQuestionCount', { count: a.questionCount })].filter(Boolean).join(' · ') }),
                 ]),
-                el('a', { class: 'btn ghost sm', href: '/host.html#/library/' + a.id }, t('tpOpen')),
+                signedIn
+                  ? el('a', { class: 'btn ghost sm', href: '/host.html#/library/' + a.id }, t('tpOpen'))
+                  : el('span', { class: 'muted small', text: t('tpActivityNote') }),
               ])
             ),
           ])
