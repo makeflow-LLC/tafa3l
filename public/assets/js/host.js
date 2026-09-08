@@ -672,6 +672,10 @@
           current.record ? el('a', { class: 'btn primary sm', href: `#/class/${current.id}/record` }, t('hRecOpen')) : null,
           el('button', { class: 'btn ghost sm', type: 'button', onclick: () => pasteList() }, t('hStuPaste')),
           el('button', {
+            class: 'btn ghost sm', type: 'button', title: t('hStuDownloadHint'),
+            onclick: () => downloadRoster(current),
+          }, t('hStuDownload')),
+          el('button', {
             class: 'btn danger sm', type: 'button',
             onclick: async () => {
               if (!confirm(t('hClassDeleteAsk'))) return;
@@ -1000,6 +1004,28 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     win.document.close();
   }
 
+  /**
+   * كشفُ الفصل ملفَّ Excel.
+   *
+   * والمصدرُ ما بين يدي الشاشة التي طُلب منها: صفحةُ الطلاب تعرف الأسماء
+   * والمجموعات والرموز، وصفحةُ السجل تعرف معها المتوسّطات — فكلٌّ تُنزّل ما
+   * تعرفه، ولا نطلب من الخادم نداءً ثانياً لملفٍّ بين يدي القارئ أصلاً.
+   */
+  function downloadRoster(cls, summary) {
+    if (!window.Exporter) return toast(t('hexportFailed'), 'bad');
+    const pinOf = new Map((cls.pupils || []).map((p) => [p.name, p.pin]));
+    const students = summary
+      ? summary.map((s) => ({ name: s.name, group: s.group, pin: s.pin, attempts: s.attempts, avgPercent: s.avgPercent, lastPercent: s.lastPercent, lastAt: s.lastAt }))
+      : (cls.students || []).map((name, i) => ({ name, group: (cls.groups || [])[i] || '', pin: pinOf.get(name) || '' }));
+    if (!students.length) return toast(t('hStuNoStudents'), 'warn');
+    try {
+      window.Exporter.toRoster({ className: cls.name, students, stats: Boolean(summary) });
+      toast(t('hStuDownloaded'), 'ok');
+    } catch (err) {
+      toast(err.message || t('hexportFailed'), 'bad');
+    }
+  }
+
   /** سجلّ الفصل: كل طالبٍ بمحاولاته ومتوسّطه واتجاهه — والنقر يفتح ملفّه */
   async function openClassRecord(classId) {
     blankPage();
@@ -1039,6 +1065,10 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('div', { class: 'card stack' }, [
           el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, [
             el('button', { class: 'btn accent sm', type: 'button', onclick: () => printPins(cls, students) }, t('hRecPrint')),
+            el('button', {
+              class: 'btn ghost sm', type: 'button', title: t('hStuDownloadHint'),
+              onclick: () => downloadRoster(cls, students),
+            }, t('hStuDownload')),
             /*
              * المراجعة والتكليف هنا لا في صفحةٍ ثالثة: المعلّم يقرأ النتائج
              * فيقرّر — والقرار فعلٌ يليه، لا مسارٌ يبحث عنه بعد أن يغلق الصفحة.
