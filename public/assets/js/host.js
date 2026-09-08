@@ -3823,34 +3823,50 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         ]);
 
         const statsBody = el('td', { colspan: 6, style: { whiteSpace: 'normal' } });
-        const statsRow = el('tr', { class: 'adm-stats', hidden: !openStats.has(user.id) }, [statsBody]);
-        const toggle = el('button', { class: 'btn ghost sm', type: 'button' }, openStats.has(user.id) ? t('hstClose') : t('hstOpen'));
+        /*
+         * المفتوح **يوجد** في الصفحة، والمطويّ لا يوجد.
+         *
+         * كان الصفّ يُبنى دائماً ويُخفى بـ`hidden`، وذلك يجعل ظهوره رهينةَ
+         * قاعدةِ عرضٍ في ملفّ الأنماط — ونسخةٌ قديمةٌ منه في ذاكرة المتصفّح
+         * (أو عاملُ الخدمة) تكفي ليضغط المالك الزرّ فلا يرى شيئاً. والإدراج
+         * والإزالة لا يعتمدان على نمطٍ إطلاقاً: ما في الشجرة يُرى.
+         */
+        const open = openStats.has(user.id);
+        const statsRow = open ? el('tr', { class: 'adm-stats', 'data-for': user.id }, [statsBody]) : null;
+        const toggle = el('button', { class: 'btn ghost sm', type: 'button' }, open ? t('hstClose') : t('hstOpen'));
 
-        const paint = () => {
+        if (open) {
           const cached = statCache.get(user.id);
-          statsBody.replaceChildren(cached ? statsCard(cached) : el('span', { class: 'muted small', text: t('hstLoading') }));
-        };
-        if (openStats.has(user.id)) paint();
+          statsBody.replaceChildren(
+            cached?.error
+              ? el('span', { class: 'note warn small', text: cached.error })
+              : cached
+                ? statsCard(cached)
+                : el('span', { class: 'muted small', text: t('hstLoading') })
+          );
+        }
 
         toggle.addEventListener('click', async () => {
-          if (openStats.has(user.id)) {
-            openStats.delete(user.id);
-            statsRow.hidden = true;
-            toggle.textContent = t('hstOpen');
-            return;
-          }
-          openStats.add(user.id);
-          statsRow.hidden = false;
-          toggle.textContent = t('hstClose');
-          paint();
-          if (statCache.has(user.id)) return;
+          // لا فشلَ صامت: أيّ خطأٍ هنا يُقال في نخبٍ وفي مكان البطاقة معاً
           try {
+            if (openStats.has(user.id)) {
+              openStats.delete(user.id);
+              draw();
+              return;
+            }
+            openStats.add(user.id);
+            draw();
+            if (statCache.has(user.id)) return;
             const res = await api(`/api/admin/users/${user.id}/stats`);
-            statCache.set(user.id, res.stats);
-            if (openStats.has(user.id)) paint();
+            statCache.set(user.id, res?.stats || { error: t('hstFailed') });
           } catch (err) {
-            statsBody.replaceChildren(el('span', { class: 'note warn small', text: err.message }));
+            statCache.set(user.id, { error: err.message || t('hstFailed') });
+            toast(err.message || t('hstFailed'), 'bad');
           }
+          if (!openStats.has(user.id)) return;
+          draw();
+          // الجدول أُعيد بناؤه، فنُحضر البطاقة إلى العين بدل أن تُبحث تحت الصفّ
+          app.querySelector(`tr.adm-stats[data-for="${user.id}"]`)?.scrollIntoView({ block: 'nearest' });
         });
 
         const row = el('tr', {}, [
@@ -3885,7 +3901,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('td', { 'data-label': t('hcontrols'), style: { whiteSpace: 'normal' } }, [controls]),
         ]);
 
-        return [row, statsRow];
+        return statsRow ? [row, statsRow] : [row];
       }).flat();
 
       app.append(

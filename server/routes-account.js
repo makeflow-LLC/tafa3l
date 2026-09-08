@@ -252,20 +252,39 @@ function accountRoutes(store) {
       const target = await store.findUserById(req.params.id);
       if (!target) return res.status(404).json({ error: 'المدرب غير موجود' });
 
+      /*
+       * مصدرٌ يسقط لا يُسقط البطاقة كلّها.
+       *
+       * الأرقام تأتي من سبعة مصادر مستقلّة، وهي **إحصاءٌ لا حساب**: أن يُعرض
+       * ستّةٌ منها وسابعُها صفرٌ أهونُ بكثير من صفحةٍ تقول «تعذّر» فلا يعرف
+       * المالك عن معلّمه شيئاً. فكلٌّ يُقرأ على حدة، ومن أخفق يُسجَّل في
+       * السجلّ ويُعطى قيمةً فارغة.
+       */
+      const safe = async (what, run, fallback) => {
+        try {
+          return await run();
+        } catch (err) {
+          console.error(`admin stats (${what}) for ${target.id}:`, err.message);
+          return fallback;
+        }
+      };
+
       const [activities, classes, assignments, slots, bookings, games, bank] = await Promise.all([
-        store.listActivities(target.id),
-        store.listClasses(target.id),
-        store.listAssignments(target.id),
-        store.listSlots(target.id),
-        store.listBookings(target.id),
-        store.listGames({ ownerId: target.id, limit: 1000 }),
-        store.listBankQuestions(target.id),
+        safe('activities', () => store.listActivities(target.id), []),
+        safe('classes', () => store.listClasses(target.id), []),
+        safe('assignments', () => store.listAssignments(target.id), []),
+        safe('slots', () => store.listSlots(target.id), []),
+        safe('bookings', () => store.listBookings(target.id), []),
+        safe('games', () => store.listGames({ ownerId: target.id, limit: 1000 }), { total: 0, items: [] }),
+        safe('bank', () => store.listBankQuestions(target.id), []),
       ]);
 
       // الفصل التجريبي خارج العدّ: طلابه أسماءٌ اخترعناها نحن لا طلابه هو
       const real = classes.filter((c) => !c.demo);
       const recordClasses = real.filter((c) => c.record);
-      const records = (await Promise.all(recordClasses.map((c) => store.listRecords(c.id)))).flat();
+      const records = (
+        await Promise.all(recordClasses.map((c) => safe('records', () => store.listRecords(c.id), [])))
+      ).flat();
 
       // الواجب: كم كُلِّف وكم سلّم — من السجل نفسه، فلا رقمان يفترقان
       const byStudent = new Map();

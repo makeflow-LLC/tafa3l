@@ -1116,6 +1116,7 @@
       hstOpen: '📊 إحصاؤه',
       hstClose: '▲ أغلق',
       hstLoading: 'نجمع أرقامه…',
+      hstFailed: 'تعذّر جلب إحصاء هذا المعلّم',
       hstLastActive: 'آخر نشاط',
       hstNever: 'لم يبدأ بعد',
       hstContent: '📝 ما أنشأه',
