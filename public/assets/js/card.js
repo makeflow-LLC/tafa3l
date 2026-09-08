@@ -7,6 +7,11 @@
  * وبمَ أساعده في البيت؟ ثم تترك للمعلّم سطراً يكتبه بخطّه ولوليّ الأمر
  * سطراً يوقّعه.
  *
+ * وتخرج **ملفَّ PDF** لا نافذةَ طباعة: المعلّم لا يقف عند طابعة — يرسلها
+ * في واتساب، أو يفتحها على لوحه في الاجتماع، أو يحفظها في ملفّ الطالب.
+ * وPDF وحدها تُفتح على الجوّال واللوح والحاسوب بلا تطبيق، وتظهر معاينتُها
+ * في المحادثة.
+ *
  * وما لا يخرج فيها مقصودٌ كذلك: **لا رمزَ الطالب** — الورقة تُصوَّر وتُرسل
  * في مجموعات الصفّ، والرمزُ مفتاحُ سجلّه لا خبرٌ عنه. ومن أراد الرموز
  * فلها ورقتها («طباعة الرموز») تُقصّ وتُسلَّم لكلٍّ رمزُه وحده.
@@ -82,6 +87,39 @@
       'data-placeholder': t('cdNotePh'),
     });
 
+    /*
+     * التنزيل يبني الملفّ من الأرقام نفسها المعروضة أمام المعلّم — ومعها
+     * ملاحظتُه إن كتبها قبل الضغط، فما يراه هو ما يصل وليَّ الأمر.
+     */
+    const download = el('button', { class: 'btn primary sm', type: 'button' }, t('cdPdf'));
+    download.addEventListener('click', async () => {
+      if (!window.Exporter) return toast(t('cdPdfFailed'), 'bad');
+      download.disabled = true;
+      const label = download.textContent;
+      download.textContent = t('cdPdfWorking');
+      try {
+        await window.Exporter.toStudentCardPdf({
+          name: s.name,
+          meta: [data.class?.name, s.group, teacherName ? t('cdTeacher', { name: teacherName }) : '', t('cdMadeAt', { at: fmtDate(Date.now()) })]
+            .filter(Boolean)
+            .join(' · '),
+          avg: pct(avg),
+          attempts: String(rows.length),
+          last: pct(scored[0]?.percent ?? null),
+          homework: hw.assigned ? `${hw.done}/${hw.assigned}` : '',
+          level: t(level.key),
+          rows: recent.map((r) => [r.title || '—', fmtDate(r.at), pct(r.percent ?? null)]),
+          help: (skills.length ? skills.map((w) => `${w.skill} — ${times(w.misses)}`) : spots.map((w) => `«${w.text}» — ${times(w.times)}`)),
+          note: note.textContent.trim(),
+        });
+        toast(t('cdPdfDone'), 'ok');
+      } catch (err) {
+        toast(err.message || t('cdPdfFailed'), 'bad');
+      }
+      download.disabled = false;
+      download.textContent = label;
+    });
+
     const head = el('div', { class: 'card stack tight' }, [
       el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap', alignItems: 'flex-start' } }, [
         /*
@@ -99,7 +137,7 @@
           }),
         ]),
         el('div', { class: 'row no-print', style: { gap: '6px', flexWrap: 'wrap' } }, [
-          el('button', { class: 'btn primary sm', type: 'button', onclick: () => window.print() }, t('cdPrint')),
+          download,
           el('a', { class: 'btn ghost sm', href: backHref }, t('cdBack')),
         ]),
       ]),

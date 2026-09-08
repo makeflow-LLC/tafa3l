@@ -4756,3 +4756,17 @@ details.card[open] > summary::after {
     font-size: 0.98rem;
   }
 }
+
+/* ------------------------------------------------------- دليل المعلّم */
+/*
+ * عنوانُ الجزء بين البطاقات: الدليل مرجعٌ طويل، فيحتاج القارئ فاصلاً يقول
+ * «انتقلتَ من بابٍ إلى باب» — لا بطاقةً أخرى تشبه ما قبلها.
+ */
+.help-part {
+  margin: 22px 0 2px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border);
+  font-size: 1.05rem;
+  color: var(--muted);
+  letter-spacing: 0.2px;
+}
