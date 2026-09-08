@@ -199,8 +199,8 @@ test('الباقات المعروضة: ثلاثٌ بأرقامها، والحج�
   assert.ok(!premium.planFor('pro').soon?.length, 'ولم يبقَ فيها ما يُوعد به «قريباً»');
   // المحفظة المحلّية: مبلغٌ لكل مستوى
   assert.equal(premium.LOCAL_PAY.PS.amounts.basic, 15);
-  assert.equal(premium.LOCAL_PAY.PS.amounts.pro, 40);
-  assert.match(premium.upgradeHint({ country: 'PS' }, 'pro'), /40 شيكل/);
+  assert.equal(premium.LOCAL_PAY.PS.amounts.pro, 36);
+  assert.match(premium.upgradeHint({ country: 'PS' }, 'pro'), /36 شيكل/);
   assert.match(premium.upgradeHint({ country: 'PS' }, 'basic'), /15 شيكل/);
 });
 

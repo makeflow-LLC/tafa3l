@@ -43,7 +43,7 @@ const SIGNUP_TRIAL_DAYS = process.env.PREMIUM_SIGNUP_TRIAL_DAYS === undefined ? 
  * والأرقام كلها متغيّرات بيئة: رقم محفظةٍ يتغيّر ولا ننشر نسخةً جديدة لأجله.
  */
 const BASIC_ILS = Number(process.env.PS_PAY_AMOUNT_ILS) || 15;
-const PRO_ILS = Number(process.env.PS_PAY_AMOUNT_ILS_PRO) || 40;
+const PRO_ILS = Number(process.env.PS_PAY_AMOUNT_ILS_PRO) || 36;
 
 const LOCAL_PAY = {
   PS: {
