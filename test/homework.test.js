@@ -397,3 +397,32 @@ test('نشاط المراجعة: بلا سجلٍّ للنطاق لا تُبنى�
   assert.equal(built.status, 409);
   assert.match(built.data.error, /سجلّ/);
 });
+
+test('ملفُّ الطالب يحمل ما تحتاجه بطاقةُ وليّ الأمر: فصلُه وحالُ واجباته', async () => {
+  const { teacher, cls, activityId } = await teacherWithClass();
+  const lian = cls.pupils.find((p) => p.name === 'ليان');
+  const sara = cls.pupils.find((p) => p.name === 'سارة');
+
+  // واجبان: تسلّم ليان أحدهما ولا تسلّم الآخر
+  const first = (await teacher.request('POST', '/api/assignments', { activityId, classId: cls.id })).data.assignment;
+  const played = await solve(first.code, 'ليان', lian.pin, ['o1', 'true']);
+  assert.ok(!played.error);
+  played.socket.close();
+  await teacher.request('POST', '/api/assignments', { activityId, classId: cls.id });
+
+  const file = await teacher.request('GET', `/api/classes/${cls.id}/record/${lian.id}`);
+  assert.equal(file.status, 200);
+  assert.equal(file.data.class.name, cls.name, 'اسمُ الفصل مع الطالب — الورقةُ تُسلَّم فتُعرف لمن');
+  assert.deepEqual(file.data.homework, { assigned: 2, done: 1, late: 0, missing: 1 });
+
+  // ومن لم يُكلَّف بشيءٍ لا يُعدّ عليه واجب
+  const other = await teacher.request('GET', `/api/classes/${cls.id}/record/${sara.id}`);
+  assert.equal(other.data.homework.assigned, 2, 'الفصلُ كلّه مُكلَّف');
+  assert.equal(other.data.homework.done, 0);
+  assert.equal(other.data.homework.missing, 2);
+
+  // ولا يُفتح ملفُّ طالبٍ في فصلٍ ليس للمعلّم
+  const stranger = client();
+  await stranger.login('معلّمٌ آخر');
+  assert.equal((await stranger.request('GET', `/api/classes/${cls.id}/record/${lian.id}`)).status, 404);
+});
