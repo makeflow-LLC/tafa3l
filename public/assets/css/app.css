@@ -4430,3 +4430,194 @@ details.card[open] > summary::after {
     width: 100%;
   }
 }
+
+/* --------------------------------------------------- تقرير تحليل الفصل */
+/*
+ * ورقةٌ تُطبع: على الشاشة بطاقاتٌ كسائر المنصّة، وعلى الورق تُنزع الأزرار
+ * والشريط والظلال وتُفرض ألوانُ الضوء — السمة الداكنة ليست للورق.
+ */
+.report {
+  display: grid;
+  gap: 12px;
+}
+
+.report h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.report h2 {
+  font-size: 1.05rem;
+}
+
+.report .headline {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.report-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.report-cols:empty {
+  display: none;
+}
+
+.report ul,
+.report ol {
+  margin: 0;
+  padding-inline-start: 20px;
+  line-height: 1.8;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.report-table th,
+.report-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: start;
+  line-height: 1.6;
+  /* الملاحظة والخطوة نصّان يلتفّان — جدولٌ يمرّر أفقياً يُقصّ على الورق */
+  white-space: normal;
+}
+
+.report-table td:nth-child(6),
+.report-table td:nth-child(7) {
+  min-width: 180px;
+}
+
+.report-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.report .trend {
+  direction: ltr;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* وعلى الجوّال يصير كل طالبٍ بطاقةً — جدولُ سبعة أعمدة لا يُقرأ بعرض ٣٩٠px */
+@media (max-width: 720px) {
+  .report-table thead {
+    display: none;
+  }
+
+  .report-table,
+  .report-table tbody,
+  .report-table tr,
+  .report-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .report-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: var(--surface);
+  }
+
+  .report-table td {
+    border: 0;
+    padding: 4px 0;
+  }
+
+  .report-table td:empty {
+    display: none;
+  }
+
+  .report .trend {
+    text-align: start;
+  }
+
+  .report-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    margin-bottom: 2px;
+  }
+
+  .report-table td:first-child {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+  }
+}
+
+.report-foot {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
+@media print {
+  html,
+  html.dark,
+  html.stage {
+    --bg: #fff;
+    --bg-2: #fff;
+    --surface: #fff;
+    --surface-2: #f4f4f4;
+    --border: #cfcfcf;
+    --text: #111;
+    --muted: #555;
+    color-scheme: light;
+  }
+
+  body.report-page {
+    background: #fff;
+    color: #111;
+  }
+
+  body.report-page .topbar,
+  body.report-page .no-print,
+  body.report-page .toast {
+    display: none !important;
+  }
+
+  body.report-page .wrap {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  body.report-page .table-wrap {
+    overflow: visible;
+  }
+
+  body.report-page .card,
+  body.report-page .stat {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #cfcfcf;
+  }
+
+  body.report-page .badge {
+    border: 1px solid #999;
+  }
+
+  body.report-page a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

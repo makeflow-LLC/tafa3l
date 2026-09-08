@@ -144,7 +144,7 @@ const PLANS = [
     priceUsd: PRO_PRICE_USD,
     students: LIMITS.pro.students,
     gamesMonthly: LIMITS.pro.gamesMonthly,
-    perks: ['كل ما في الأساسية', 'حجز مواعيد مع طلابك من صفحتك العامّة'],
+    perks: ['كل ما في الأساسية', 'حجز مواعيد مع طلابك من صفحتك العامّة', 'تحليل الفصل بالذكاء الاصطناعي في تقريرٍ يُطبع'],
   },
 ];
 
