@@ -18,6 +18,7 @@ const { sendGameFrame } = require('./game-frame');
 const records = require('./records');
 const demoRecord = require('./demo-record');
 const homework = require('./homework');
+const directory = require('./directory');
 const review = require('./review');
 
 const MAX_ACTIVITIES = 200;
@@ -1803,6 +1804,7 @@ function accountRoutes(store) {
     publicName: publicNameOf(u),
     // صفحة المعلّم العامّة
     subjects: Array.isArray(u.subjects) ? u.subjects : [],
+    grades: Array.isArray(u.grades) ? u.grades : [],
     years: Number(u.years) || 0,
     schools: u.schools || '',
     samples: Array.isArray(u.samples) ? u.samples : [],
@@ -1865,6 +1867,9 @@ function accountRoutes(store) {
       if (body.subjects !== undefined) {
         patch.subjects = (Array.isArray(body.subjects) ? body.subjects : []).map((s) => clean(s, 40)).filter(Boolean).slice(0, 6);
       }
+      if (body.grades !== undefined) {
+        patch.grades = (Array.isArray(body.grades) ? body.grades : []).map((s) => clean(s, 40)).filter(Boolean).slice(0, 13);
+      }
       if (body.years !== undefined) patch.years = Math.max(0, Math.min(60, Math.round(Number(body.years) || 0)));
       if (body.schools !== undefined) patch.schools = cleanLines(body.schools, MAX_BIO_CHARS);
       /*
@@ -1894,6 +1899,58 @@ function accountRoutes(store) {
    * البروفايل العلني. لا بريد ولا معرّف جوجل ولا شيء لم يكتبه المعلّم بنفسه:
    * الاسم الظاهر دائماً، والصورة والرقم إن ملأهما — والفارغ لا يُذكر أصلاً.
    */
+  /**
+   * دليلُ المعلّمين — عامٌّ بلا حساب: الطالب يبحث عن معلّمه.
+   *
+   * ولا يخرج منه إلا ما يظهر في صفحة المعلّم أصلاً: الاسم العامّ والصورة
+   * والمواد والصفوف والبلد وما نشره. لا بريد ولا هاتف ولا اسم كامل.
+   */
+  router.get('/teachers', async (req, res) => {
+    try {
+      const store = storage.get();
+      const [users, counts] = await Promise.all([store.listUsers(), store.directoryCounts()]);
+      const all = users
+        .filter((u) => directory.isListed(u, counts.get(u.id)))
+        .map((u) => {
+          const c = counts.get(u.id) || { published: 0, games: 0, plays: 0 };
+          return {
+            id: u.id,
+            name: publicNameOf(u),
+            fullName: u.name || '',
+            photo: Boolean(u.hasPhoto),
+            country: u.country || '',
+            subjects: Array.isArray(u.subjects) ? u.subjects : [],
+            grades: Array.isArray(u.grades) ? u.grades : [],
+            years: Number(u.years) || 0,
+            bio: clean(u.bio, 140),
+            published: c.published,
+            games: c.games,
+            plays: c.plays,
+            booking: premium.limitsFor(u).booking === true,
+          };
+        });
+      const shown = directory.filter(all, {
+        q: clean(req.query.q, 60),
+        country: clean(req.query.country, 2),
+        subject: clean(req.query.subject, 40),
+        grade: clean(req.query.grade, 40),
+        booking: req.query.booking === '1',
+      });
+      const limit = Math.min(60, Math.max(1, Number(req.query.limit) || 24));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
+      res.json({
+        total: shown.length,
+        // الاسم الكامل للمطابقة لا للعرض — يُنزع قبل الإرسال
+        items: shown.slice(offset, offset + limit).map(({ fullName, ...it }) => it),
+        // البلدان الحاضرة فعلاً في الدليل — فلا يختار الطالب بلداً لا معلّم فيه
+        countries: [...new Set(all.map((it) => it.country).filter(Boolean))].sort(),
+      });
+    } catch (err) {
+      console.error('teachers directory:', err);
+      res.status(500).json({ error: 'تعذّر جلب دليل المعلّمين' });
+    }
+  });
+
   router.get('/teachers/:id', async (req, res) => {
     try {
       const u = await storage.get().findUserById(req.params.id);
@@ -1910,6 +1967,7 @@ function accountRoutes(store) {
           phone: phoneIsPublic(u) ? u.phone || '' : '',
           // ما يملؤه لصفحته العامّة — وما لم يُملأ لا يُرسل فلا يُعرض
           subjects: Array.isArray(u.subjects) ? u.subjects : [],
+          grades: Array.isArray(u.grades) ? u.grades : [],
           years: Number(u.years) || 0,
           schools: u.schools || '',
           // عيّناتُ دروسه: روابطُ خارجية يضعها بنفسه

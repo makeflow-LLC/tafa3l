@@ -267,6 +267,7 @@ function fileDriver() {
       }
       // صفحةُ المعلّم العامّة: موادُّه وسنوات خبرته
       if (patch.subjects !== undefined) u.subjects = Array.isArray(patch.subjects) ? patch.subjects : [];
+      if (patch.grades !== undefined) u.grades = Array.isArray(patch.grades) ? patch.grades : [];
       if (patch.samples !== undefined) u.samples = Array.isArray(patch.samples) ? patch.samples : [];
       if (patch.years !== undefined) u.years = Number(patch.years) || 0;
       /*
@@ -332,6 +333,22 @@ function fileDriver() {
       };
       Object.values(db.activities).forEach((a) => bump(a.ownerId, 'activities'));
       Object.values(db.games).forEach((g) => bump(g.ownerId, 'games'));
+      return out;
+    },
+    /** للدليل: ما نشره كل معلّم للعامّة — أنشطةٌ في المكتبة وألعابٌ ومرّات لعبها */
+    async directoryCounts() {
+      const out = new Map();
+      const row = (id) => {
+        if (!out.has(id)) out.set(id, { published: 0, games: 0, plays: 0 });
+        return out.get(id);
+      };
+      Object.values(db.activities).forEach((a) => a.published && a.ownerId && (row(a.ownerId).published += 1));
+      Object.values(db.games).forEach((g) => {
+        if (!g.ownerId) return;
+        const r = row(g.ownerId);
+        r.games += 1;
+        r.plays += Number(g.plays) || 0;
+      });
       return out;
     },
     async getActivity(id) {
@@ -659,7 +676,7 @@ function postgresDriver(connectionString) {
    */
   const USER_COLUMNS = `id, email, name, display_name, phone, country, google_id,
                         premium_until, trial_granted_at, created_at, tier, grandfathered_at, country_chosen_at,
-                        subjects, years, schools, samples, booking_terms,
+                        subjects, grades, years, schools, samples, booking_terms,
                         games_built, games_month, games_month_key, bio, phone_public,
                         stripe_customer_id, links,
                         (photo IS NOT NULL AND photo <> '') AS has_photo`;
@@ -682,6 +699,7 @@ function postgresDriver(connectionString) {
     countryChosenAt: r.country_chosen_at == null ? null : Number(r.country_chosen_at),
     // صفحة المعلّم العامّة — كلّها اختيارية، وما لم يُملأ لا يُعرض
     subjects: Array.isArray(r.subjects) ? r.subjects : [],
+    grades: Array.isArray(r.grades) ? r.grades : [],
     years: Number(r.years) || 0,
     schools: r.schools || '',
     samples: Array.isArray(r.samples) ? r.samples : [],
@@ -829,6 +847,8 @@ function postgresDriver(connectionString) {
         -- صفحة المعلّم العامّة: موادُّه وسنوات خبرته وشهاداته ومدارسه، ونشاطٌ
         -- يختاره عيّنةً من درسه. كلّها اختيارية — وما لم يُملأ لا يُعرض.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS subjects JSONB;
+        -- الصفوف التي يدرّسها — بها يجده طالبٌ في الدليل
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS grades JSONB;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS years INTEGER;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS schools TEXT;
         -- عيّناتُ دروسه: روابطُ خارجية يضعها بنفسه {title, url}
@@ -1105,6 +1125,10 @@ function postgresDriver(connectionString) {
         params.push(JSON.stringify(Array.isArray(patch.subjects) ? patch.subjects : []));
         sets.push(`subjects = $${params.length}::jsonb`);
       }
+      if (patch.grades !== undefined) {
+        params.push(JSON.stringify(Array.isArray(patch.grades) ? patch.grades : []));
+        sets.push(`grades = $${params.length}::jsonb`);
+      }
       if (patch.samples !== undefined) {
         params.push(JSON.stringify(Array.isArray(patch.samples) ? patch.samples : []));
         sets.push(`samples = $${params.length}::jsonb`);
@@ -1168,6 +1192,16 @@ function postgresDriver(connectionString) {
         ) t GROUP BY owner_id
       `);
       return new Map(rows.map((r) => [r.owner_id, { activities: Number(r.activities), games: Number(r.games) }]));
+    },
+    async directoryCounts() {
+      const { rows } = await pool.query(`
+        SELECT owner_id, SUM(p) AS published, SUM(g) AS games, SUM(pl) AS plays FROM (
+          SELECT owner_id, 1 AS p, 0 AS g, 0 AS pl FROM activities WHERE published
+          UNION ALL
+          SELECT owner_id, 0 AS p, 1 AS g, COALESCE(plays, 0) AS pl FROM games
+        ) t GROUP BY owner_id
+      `);
+      return new Map(rows.map((r) => [r.owner_id, { published: Number(r.published), games: Number(r.games), plays: Number(r.plays) }]));
     },
     async getActivity(id) {
       const { rows } = await pool.query('SELECT * FROM activities WHERE id = $1', [id]);

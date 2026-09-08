@@ -2611,6 +2611,22 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       });
       return chip;
     }));
+    // الصفوف: نفس نمط المواد — رقائقُ تُنقر، وبها يجده الطالب في الدليل
+    const GRADES = (window.I18n && window.I18n.GRADES) || [];
+    const gradePicks = new Set(Array.isArray(profile.grades) ? profile.grades : []);
+    const gradeChips = el('div', { class: 'chips' }, GRADES.map((id) => {
+      const chip = el('button', {
+        class: 'chip' + (gradePicks.has(id) ? ' on' : ''),
+        type: 'button',
+        text: tagLabel('grade', id),
+        onclick: () => {
+          if (gradePicks.has(id)) gradePicks.delete(id);
+          else gradePicks.add(id);
+          chip.classList.toggle('on', gradePicks.has(id));
+        },
+      });
+      return chip;
+    }));
     const years = el('input', { type: 'number', min: '0', max: '60', dir: 'ltr', value: String(profile.years || '') });
     const schools = el('textarea', { rows: 2, maxlength: 300, placeholder: t('profSchoolsPh') });
     schools.value = profile.schools || '';
@@ -2688,6 +2704,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           country: country.value,
           links: linkInputs.map((box) => box.value.trim()).filter(Boolean),
           subjects: [...subjectPicks],
+          grades: [...gradePicks],
           years: Number(years.value) || 0,
           schools: schools.value,
           samples: sampleRows.map((row) => ({ title: row.title.value.trim(), url: row.url.value.trim() })).filter((row) => row.url),
@@ -2752,6 +2769,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('h2', { style: { margin: '6px 0 0' }, text: t('profPageTitle') }),
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('profPageHint') }),
         el('div', { class: 'stack tight' }, [el('span', { class: 'small', text: t('profSubjects') }), subjectChips]),
+        el('div', { class: 'stack tight' }, [el('span', { class: 'small' }, [t('profGrades'), ' ', window.T.hintDot(t('profGradesHint'))]), gradeChips]),
         el('label', {}, [el('span', { class: 'small', text: t('profYears') }), years]),
         el('label', {}, [el('span', { class: 'small', text: t('profSchools') }), schools]),
         el('div', { class: 'stack tight' }, [
