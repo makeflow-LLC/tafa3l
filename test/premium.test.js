@@ -393,3 +393,55 @@ test('رسالةُ نفاد الحصّة تقول للفلسطيني مبلغه 
   assert.match(global, /\$/);
   assert.match(global, new RegExp(premium.PLAN.whatsapp));
 });
+
+test('إحصاءُ المعلّم في لوحة المالك: أرقامٌ صادقة بلا محتوى', async () => {
+  const teacher = client();
+  await teacher.login('stats@example.com', 'أ. رنا');
+
+  const activity = (await teacher.request('POST', '/api/activities', {
+    title: 'سرُّ الخلية النباتية',
+    questions: [
+      { type: 'truefalse', text: 'للخلية النباتية جدار', correct: ['true'] },
+      { type: 'truefalse', text: 'البلاستيدات خضراء', correct: ['true'] },
+      { type: 'truefalse', text: 'النواة مركز التحكّم', correct: ['true'] },
+    ],
+  })).data.activity;
+
+  const cls = (await teacher.request('POST', '/api/classes', {
+    name: 'السابع ب',
+    students: '# مجموعة الدعم\nسارة قاسم\nليان محمود\n# مجموعة الإثراء\nهدى سليم',
+    record: true,
+  })).data.class;
+
+  const made = await teacher.request('POST', '/api/assignments', { activityId: activity.id, classId: cls.id });
+  assert.equal(made.status, 201);
+
+  const owner = client();
+  await owner.login('owner@tapio.fun', 'المالك');
+  const list = await owner.request('GET', '/api/admin/users');
+  const target = list.data.users.find((u) => u.email === 'stats@example.com');
+
+  const res = await owner.request('GET', `/api/admin/users/${target.id}/stats`);
+  assert.equal(res.status, 200);
+  const s = res.data.stats;
+  assert.equal(s.activities.total, 1);
+  assert.equal(s.activities.questions, 3, 'الأسئلة تُعدّ لا تُقرأ');
+  assert.equal(s.classes.total, 1);
+  assert.equal(s.classes.students, 3);
+  assert.equal(s.classes.groups, 2, 'المجموعتان تُميَّزان من كشفٍ موازٍ للأسماء');
+  assert.equal(s.classes.withRecord, 1);
+  assert.equal(s.homework.total, 1);
+  assert.equal(s.homework.assigned, 3, 'الفصل كلّه مُكلَّف');
+  assert.equal(s.homework.done, 0, 'ولا أحدَ سلّم بعد');
+  assert.ok(s.lastActiveAt >= target.createdAt);
+
+  // وما لا يُرسل لا يُقرأ: لا عنوانَ نشاطٍ ولا اسمَ طالبٍ في الجواب كلّه
+  const body = JSON.stringify(res.data);
+  assert.equal(body.includes('سرُّ الخلية'), false, 'عناوين الأنشطة لا تخرج');
+  assert.equal(body.includes('سارة'), false, 'وأسماء الطلاب لا تخرج');
+  assert.equal(body.includes('السابع ب'), false, 'ولا أسماء الفصول');
+
+  // والباب للمالك وحده
+  assert.equal((await teacher.request('GET', `/api/admin/users/${target.id}/stats`)).status, 404);
+  assert.equal((await owner.request('GET', '/api/admin/users/u_ghost/stats')).status, 404);
+});
