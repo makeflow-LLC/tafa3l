@@ -356,6 +356,85 @@
     download(toXlsx(buildResultsSheets(data)), `tapio-${data.code}-results.xlsx`);
   }
 
+  // -------------------------------------------------- بطاقة الطالب PDF
+
+  /**
+   * بطاقةُ وليّ الأمر ملفَّ PDF — لا نافذةَ طباعة.
+   *
+   * والمعلّم لا يقف عند طابعة: يرسلها في واتساب، أو يفتحها على لوحه في
+   * الاجتماع، أو يحفظها في ملفّ الطالب. وPDF وحدها تُفتح على الجوّال واللوح
+   * والحاسوب بلا تطبيق، وتظهر معاينتُها في المحادثة — وHTML مرفقةً لا تفعل.
+   *
+   * والرموز التعبيرية تُنزع من عناوين الملفّ: خطّ Amiri المضمَّن عربيٌّ
+   * لا يحملها، فتخرج مربّعاتٍ فارغة في ورقةٍ تذهب إلى بيت الطالب.
+   */
+  const plain = (text) => String(text || '').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, '').replace(/\s+/g, ' ').trim();
+
+  async function toStudentCardPdf(card) {
+    await ensurePdfLibs();
+    const doc = makeDoc();
+    const muted = [110, 113, 140];
+    let y = PAGE.m;
+
+    y = writeLine(doc, plain(t('cdTitle')), y, { size: 17, bold: true });
+    y = writeLine(doc, card.name, y, { size: 13, bold: true });
+    y = writeLine(doc, card.meta, y, { size: 9.5, color: muted }) + 4;
+
+    // الخلاصة: صفٌّ واحد يُقرأ بنظرة قبل أيّ تفصيل
+    y = table(
+      doc,
+      [plain(t('cdAvg')), plain(t('cdAttempts')), plain(t('cdLast')), ...(card.homework ? [plain(t('cdHomework'))] : []), plain(t('cdLevel'))],
+      [[card.avg, card.attempts, card.last, ...(card.homework ? [card.homework] : []), card.level]],
+      y,
+      { styles: { font: 'Amiri', fontSize: 10, halign: 'center', textColor: [22, 22, 42], cellPadding: 6, lineColor: [215, 218, 230], lineWidth: 0.5 } }
+    ) + 14;
+
+    if (card.rows?.length) {
+      y = writeLine(doc, plain(t('cdRecent')), y, { size: 12, bold: true });
+      y = table(doc, [plain(t('cdColActivity')), plain(t('cdColDate')), plain(t('cdColResult'))], card.rows, y) + 14;
+    }
+
+    if (card.help?.length) {
+      y = writeLine(doc, plain(t('cdHelp')), y, { size: 12, bold: true });
+      y = writeLine(doc, t('cdHelpIntro'), y, { size: 9.5, color: muted });
+      // النقطةُ في آخر النصّ منطقياً تظهر في أوّل السطر بصرياً — والعربية تُقرأ من اليمين
+      card.help.forEach((line) => {
+        y = writeLine(doc, line + ' •', y, { size: 10.5 });
+      });
+      y += 10;
+    }
+
+    // ملاحظةُ المعلّم: ما كتبه يُطبع، وما تُرك يُترك سطوراً يُكتب عليها باليد
+    y = writeLine(doc, plain(t('cdNote')), y, { size: 12, bold: true });
+    if (card.note) {
+      y = writeLine(doc, card.note, y, { size: 10.5 }) + 6;
+    } else {
+      doc.setDrawColor(215, 218, 230);
+      for (let i = 0; i < 2; i += 1) {
+        y += 20;
+        doc.line(PAGE.m, y, PAGE.w - PAGE.m, y);
+      }
+      y += 16;
+    }
+
+    // سطرا التوقيع جنباً إلى جنب
+    const half = (PAGE.w - PAGE.m * 2 - 30) / 2;
+    y += 22;
+    doc.setDrawColor(215, 218, 230);
+    doc.line(PAGE.w - PAGE.m - half, y, PAGE.w - PAGE.m, y);
+    doc.line(PAGE.m, y, PAGE.m + half, y);
+    doc.setFontSize(9);
+    doc.setTextColor(muted[0], muted[1], muted[2]);
+    doc.text(safeText(plain(t('cdSignTeacher'))), PAGE.w - PAGE.m, y + 13, { align: 'right' });
+    doc.text(safeText(plain(t('cdSignParent'))), PAGE.m + half, y + 13, { align: 'right' });
+    doc.setTextColor(22, 22, 42);
+
+    y = writeLine(doc, t('cdFootPdf'), y + 34, { size: 8, color: muted });
+
+    stampFooters(doc);
+    download(doc.output('blob'), `tapio-card-${fileSlug(card.name)}.pdf`);
+  }
+
   // ------------------------------------------------------------ كشف الفصل
 
   /**
@@ -1158,6 +1237,7 @@ ${opts?.withKey === false ? '' : `<div class="key"><h2>${t('paperKeyTitle')}</h2
 
   global.Exporter = {
     toExcel, toResultsExcel,
+    toStudentCardPdf,             // بطاقةُ وليّ الأمر ملفَّ PDF يُفتح على أي جهاز
     toRoster, rosterSheets,       // كشفُ الفصل: أسماءٌ ومجموعاتٌ ورموزٌ وخلاصةُ السجل
     toPaper, paperHtml,           // ورقة الطالب + مفتاح الإجابات
     toPdf, toResultsPdf,          // تقرير ملوّن عبر نافذة الطباعة (الأجمل)
