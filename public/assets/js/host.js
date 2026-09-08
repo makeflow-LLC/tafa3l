@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, firstName: baseFirstName, userName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink, fitCover, gradeChips } =
+  const { $, firstName: baseFirstName, userName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink, fitCover, gradeChips, optionLetter } =
     window.T;
   const Fx = window.Fx;
   // اختصار الترجمة — إن غاب المحرّك نعرض المفتاح بدل الانهيار
@@ -5445,7 +5445,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             { class: `opt c${index % 8}` + (reveal && option.correct ? ' correct' : '') + (reveal && !option.correct && q.scored ? ' dim' : '') },
             [
               el('i', { class: 'bar', style: { width: option.percent + '%' } }),
-              el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+              el('span', { class: 'tag', text: optionLetter(index) }),
               el('span', { class: 'grow', text: option.text }),
               option.correct ? el('span', { class: 'badge ok', text: '✓' }) : null,
               el('span', { class: 'count', text: `${option.percent}${t('pctSuffix')} · ${option.count}` }),

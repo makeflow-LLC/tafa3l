@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, connect, TYPE_LABELS, TYPE_EMOJI, fmtMs, countdownTo } = window.T;
+  const { $, el, avatarNode, toast, connect, TYPE_LABELS, TYPE_EMOJI, fmtMs, countdownTo, optionLetter } = window.T;
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   /** لغة التنسيق للتواريخ والأرقام */
   const loc = () => 'ar';
@@ -252,7 +252,7 @@
       q.options.forEach((option, index) => {
         options.append(
           el('div', { class: `opt c${index % 8}` }, [
-            el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+            el('span', { class: 'tag', text: optionLetter(index) }),
             el('span', { class: 'grow', text: option.text }),
           ])
         );
@@ -341,7 +341,7 @@
         options.append(
           el('div', { class: `opt c${index % 8}` + (scored ? (option.correct ? ' correct' : ' dim') : '') }, [
             el('i', { class: 'bar', style: { width: option.percent + '%' } }),
-            el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+            el('span', { class: 'tag', text: optionLetter(index) }),
             el('span', { class: 'grow', text: option.text }),
             scored && option.correct ? el('span', { class: 'badge ok', text: '✓' }) : null,
             el('span', { class: 'count', text: `${option.percent}${t('pctSuffix')} · ${option.count}` }),

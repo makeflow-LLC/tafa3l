@@ -511,6 +511,19 @@
     return (Math.round(ms / 100) / 10).toFixed(1) + (global.I18n ? global.I18n.t('aSecShort') : 'ث');
   }
 
+  /**
+   * حرف الخيار — أ ب ج د لا A B C D.
+   *
+   * شاشةُ الإجابة تكتب الحرف عربياً، فكان الطالب يختار «أ» ثم تقول له شاشةُ
+   * النتيجة إن إجابته «A»، ويقرأ المعلّم على البروجكتر حرفاً ثالثاً غير الذي
+   * نطق به في الصفّ. حرفٌ واحدٌ من قاموسٍ واحد يقطع هذا الاختلاف، ويسقط إلى
+   * رقمٍ إن تجاوزت الخيارات حروفَ التسلسل.
+   */
+  function optionLetter(index) {
+    const seq = [...String((window.I18n ? window.I18n.t('pOptionLetters') : '') || '')];
+    return seq[index] !== undefined ? seq[index] : String(index + 1);
+  }
+
   function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
@@ -1043,6 +1056,7 @@
     fmtLeft,
     countdownTo,
     escapeHtml,
+    optionLetter,
     shrinkImage,
     fitCover,
     richText,

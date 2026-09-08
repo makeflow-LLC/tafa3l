@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, el, avatarNode, toast, api, connect, store, vibrate, countdownTo } = window.T;
+  const { $, el, avatarNode, toast, api, connect, store, vibrate, countdownTo, optionLetter } = window.T;
   // اختصار الترجمة — إن لم يُحمَّل المحرّك لأي سبب نعرض المفتاح بدل الانهيار
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   /** لغة التنسيق للتواريخ والأرقام */
@@ -1116,7 +1116,7 @@
       const options = el('div', { class: 'options fill' });
       q.options.forEach((option, index) => {
         const button = el('button', { class: `opt c${index % 8}`, type: 'button' }, [
-          el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+          el('span', { class: 'tag', text: optionLetter(index) }),
           el('span', { class: 'grow', text: option.text }),
         ]);
         button.addEventListener('click', () => {
@@ -1532,7 +1532,7 @@
                 (!(q.scored && option.correct !== undefined) && chosen ? ' selected' : ''),
             },
             [
-              el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+              el('span', { class: 'tag', text: optionLetter(index) }),
               el('span', { class: 'grow', text: option.text }),
               chosen ? el('span', { class: 'badge', text: t('pYourAnswer') }) : null,
             ]
@@ -1674,7 +1674,7 @@
                 (!(q.scored && option.correct !== undefined) && chosen ? ' selected' : ''),
             },
             [
-              el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+              el('span', { class: 'tag', text: optionLetter(index) }),
               el('span', { class: 'grow', text: option.text }),
               chosen ? el('span', { class: 'badge', text: t('pYourAnswer') }) : null,
             ]
@@ -1699,7 +1699,7 @@
           },
           [
             el('i', { class: 'bar', style: { width: option.percent + '%' } }),
-            el('span', { class: 'tag', text: String.fromCharCode(65 + index) }),
+            el('span', { class: 'tag', text: optionLetter(index) }),
             el('span', { class: 'grow', text: option.text }),
             el('span', { class: 'count', text: `${option.percent}${t('pctSuffix')} (${option.count})` }),
           ]

@@ -91,3 +91,27 @@ test('لا بقايا لمبدّل اللغة في الواجهة', () => {
     assert.equal(source.includes('I18n.setLang'), false, `${file}: بقي تبديل اللغة`);
   }
 });
+
+/**
+ * حرف الخيار عربيٌّ في كل شاشة.
+ *
+ * كانت شاشة الإجابة تكتب «أ» وشاشةُ النتيجة والبروجكتر ولوحةُ المعلّم تكتب
+ * «A» لنفس الخيار، فيختار الطالب حرفاً ويُقال له إنّه أجاب بحرفٍ آخر، ويقرأ
+ * المعلّم على الشاشة الكبيرة حرفاً ثالثاً غير الذي نطق به في الصفّ. الحرف
+ * كلّه من `optionLetter` وحدها، وهي تقرأ تسلسل القاموس.
+ */
+test('شارة الخيار تأخذ حرفها من القاموس لا من اللاتينية', () => {
+  for (const file of ['assets/js/play.js', 'assets/js/screen.js', 'assets/js/host.js']) {
+    const source = fs.readFileSync(path.join(PUBLIC, file), 'utf8');
+    assert.equal(
+      /class: 'tag', text: String\.fromCharCode\(65/.test(source),
+      false,
+      `${file}: شارة خيارٍ بحرفٍ لاتيني — استعمل optionLetter`
+    );
+    assert.ok(source.includes('optionLetter'), `${file}: لا يستعمل optionLetter`);
+  }
+  const dict = fs.readFileSync(DICT_FILE, 'utf8');
+  const letters = dict.match(/pOptionLetters: '([^']+)'/);
+  assert.ok(letters, 'تسلسل حروف الخيارات مفقود من القاموس');
+  assert.ok(ARABIC.test(letters[1]), 'تسلسل حروف الخيارات ليس عربياً');
+});
