@@ -54,6 +54,7 @@
           el('h1', { style: { margin: 0 }, text: teacher.name }),
           el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, [
             ...(teacher.subjects || []).map((s) => el('span', { class: 'badge', text: tagLabel('subj', s) })),
+            ...(teacher.grades || []).map((g) => el('span', { class: 'badge', style: { opacity: 0.85 }, text: tagLabel('grade', g) })),
             teacher.years ? el('span', { class: 'badge ok', text: t('tpYears', { n: teacher.years }) }) : null,
           ]),
         ]),

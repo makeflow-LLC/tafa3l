@@ -389,6 +389,11 @@ app.get('/t/:id', (req, res) => {
   res.redirect(`/teacher.html?id=${encodeURIComponent(req.params.id)}`);
 });
 
+/** ودليلُ المعلّمين عنوانٌ قصير يُملى على طالبٍ يبحث عن معلّمه */
+app.get('/teachers', (_req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'teachers.html'));
+});
+
 /** وصفحةُ الحجز عنوانٌ مستقلّ: تُشارَك وحدها لمن يريد موعداً لا تعريفاً */
 app.get('/book/:id', (req, res) => {
   res.redirect(`/book.html?id=${encodeURIComponent(req.params.id)}`);

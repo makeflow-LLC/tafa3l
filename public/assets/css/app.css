@@ -4621,3 +4621,45 @@ details.card[open] > summary::after {
     margin: 12mm;
   }
 }
+
+/* --------------------------------------------------- دليل المعلّمين */
+.td-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.td-filters input[type='search'] {
+  grid-column: 1 / -1;
+}
+
+.td-card {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 12px;
+  align-items: start;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, border-color 0.15s ease;
+}
+
+.td-card:hover {
+  border-color: var(--brand);
+  transform: translateY(-2px);
+}
+
+.td-card .tp-face {
+  width: 56px;
+  height: 56px;
+  font-size: 1.4rem;
+}
+
+.td-card .bio {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
