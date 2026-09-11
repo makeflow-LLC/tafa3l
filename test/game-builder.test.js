@@ -344,9 +344,11 @@ test('كتلة CONFIG تعلن حال كل ميزة on/off — والمفاتي�
 
 // ------------------------------------------ الأيدي أولاً، والاسم، والتنويع
 
-test('الرسالة الأولى تسأل عن العمر وعن اسم المعلّم في اللعبة — باسمه الحقيقي وفي رسالةٍ واحدة', () => {
+test('الرسالة الأولى تسأل عن الصفّ وعن اسم المعلّم في اللعبة — باسمه الحقيقي وفي رسالةٍ واحدة', () => {
   const p = builder.systemPrompt(builder.readConfig({}), { teacherName: 'أ. سامي', seed: 's1' });
-  assert.match(p, /١\. لأي عمر أو صف هذه اللعبة؟/);
+  assert.match(p, /١\. لأي صفٍّ هذه اللعبة؟/);
+  assert.match(p, /THE GRADE IS ASKED BEFORE BUILDING, NEVER AFTER/, 'الصفّ قرارُ تصميمٍ لا حقلُ تبويب');
+  assert.match(p, /NEVER ask the teacher for the subject/, 'والمادة لا تُسأل أصلاً');
   assert.match(p, /٢\. هل أكتب اسمك في اللعبة — «أ\. سامي» —/, 'الاسم يُعرض جاهزاً من حسابه');
   assert.match(p, /One message total\. Never a second round of questions/);
   // وبلا اسمٍ معروف يُطلب منه كتابته لا يُخترع
@@ -407,5 +409,93 @@ test('chat يمرّر اسم المعلّم والبذرة إلى تعليمات
     assert.match(system, new RegExp(`Lean on this frame: ${spin.frame}`));
   } finally {
     mock.restore();
+  }
+});
+
+// ------------------------------------------------------------ بطاقة اللعبة
+
+test('التعليمات تُملي بطاقة اللعبة: المادّة من عند النموذج، والصفّ من جواب المعلّم، وخمسُ كلمات', () => {
+  const p = builder.systemPrompt(builder.readConfig({}), { seed: 'c1' });
+  assert.match(p, /# GAME CARD/);
+  for (const name of Object.values(builder.META)) assert.ok(p.includes(name), `الوسم ${name} مذكور`);
+  assert.match(p, /EXACTLY ONE id you choose yourself/, 'المادة يختارها النموذج');
+  assert.match(p, new RegExp(`EXACTLY ${builder.KEYWORDS_WANTED} Arabic search keywords`));
+  // القوائم تُكتب للنموذج بالرمز والاسم، فلا يخترع رمزاً
+  for (const [id, label] of Object.entries(builder.SUBJECTS)) assert.ok(p.includes(`${id} (${label})`), id);
+  for (const [id, label] of Object.entries(builder.GRADES)) assert.ok(p.includes(`${id} (${label})`), id);
+  // والفحص الصامت يُعيد البناء إن غابت
+  assert.match(p, /the <head> is missing the game card/);
+  assert.match(p, /the subject id or a grade id is not one from the GAME CARD lists/);
+});
+
+test('البطاقة تُقرأ من رأس الملفّ: الاسم والمادّة والصفوف وخمسُ كلمات بلا تكرار', () => {
+  const html = [
+    '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">',
+    '<title>  مطبخ   الكسور </title>',
+    '<meta name="tapio:subject" content="math">',
+    '<meta name="tapio:grades" content="g4, g5, zz">',
+    '<meta name="tapio:keywords" content="الكسور, جمع الكسور, الكسور, مقام مشترك, مطبخ, رياضيات, سادسة">',
+    '</head><body><meta name="tapio:subject" content="art"></body></html>',
+  ].join('\n');
+  const meta = builder.readMeta(html);
+  assert.equal(meta.name, 'مطبخ الكسور', 'المسافات تُجمع والأطراف تُقصّ');
+  assert.equal(meta.subject, 'math', 'ووسمُ الجسد لا يُقرأ — الرأس وحده');
+  assert.deepEqual(meta.grades, ['g4', 'g5'], 'ورمزٌ ليس في التصنيف يُطرح');
+  assert.deepEqual(meta.keywords, ['الكسور', 'جمع الكسور', 'مقام مشترك', 'مطبخ', 'رياضيات']);
+  assert.equal(meta.keywords.length, builder.KEYWORDS_WANTED);
+});
+
+test('بطاقةٌ ناقصة أو رموزٌ مجهولة لا تُنشر خطأً — تُطرح', () => {
+  const meta = builder.readMeta('<html><head><title>لعبة</title><meta name="tapio:subject" content="كيمياء"></head></html>');
+  assert.equal(meta.subject, '', 'مادّةٌ لا يعرفها الفلتر أسوأ من لا مادّة');
+  assert.deepEqual(meta.grades, []);
+  assert.deepEqual(meta.keywords, []);
+  assert.equal(meta.name, 'لعبة');
+  // ولا شيء يُخترع من ملفٍّ بلا رأس
+  assert.deepEqual(builder.readMeta(''), { name: '', subject: '', grades: [], keywords: [] });
+});
+
+test('chat يعيد البطاقة مع الملفّ، ولا بطاقة حين لا ملفّ', async () => {
+  const withCard =
+    '<!doctype html><html lang="ar" dir="rtl"><head><title>صيدلية النحو</title>' +
+    '<meta name="tapio:subject" content="arabic"><meta name="tapio:grades" content="g7">' +
+    '<meta name="tapio:keywords" content="النحو, الفاعل, المفعول, إعراب, جملة"></head><body></body></html>';
+  let mock = mockModel([{ text: '```html\n' + withCard + '\n```' }]);
+  try {
+    const out = await builder.chat({ turns: [{ role: 'user', text: 'ابنِ لعبة' }], config: {} });
+    assert.equal(out.meta.subject, 'arabic');
+    assert.deepEqual(out.meta.grades, ['g7']);
+    assert.equal(out.meta.keywords.length, 5);
+    assert.equal(out.meta.name, 'صيدلية النحو');
+  } finally {
+    mock.restore();
+  }
+
+  mock = mockModel([{ text: '١. لأي صفٍّ هذه اللعبة؟' }]);
+  try {
+    const out = await builder.chat({ turns: [{ role: 'user', text: 'درس النحو' }], config: {} });
+    assert.equal(out.html, '');
+    assert.equal(out.meta, null, 'سؤالٌ لا لعبةٌ فيه لا بطاقة له');
+  } finally {
+    mock.restore();
+  }
+});
+
+test('تصنيف الخادم هو تصنيف الواجهة نفسه — لا قائمتان تفترقان', () => {
+  const dict = fs.readFileSync(path.join(__dirname, '..', 'public', 'assets', 'js', 'i18n.js'), 'utf8');
+  const listOf = (name) => {
+    const line = new RegExp(`const ${name} = \\[([^\\]]+)\\]`).exec(dict);
+    assert.ok(line, `قائمة ${name} في القاموس`);
+    return line[1].split(',').map((part) => part.trim().replace(/^'|'$/g, ''));
+  };
+  assert.deepEqual(Object.keys(builder.SUBJECTS), listOf('SUBJECTS'));
+  assert.deepEqual(Object.keys(builder.GRADES), listOf('GRADES'));
+  // والأسماء العربيّة كما يراها المعلّم في الواجهة
+  const label = (key) => new RegExp(`\\b${key}: '([^']+)'`).exec(dict)?.[1];
+  for (const [id, name] of Object.entries(builder.SUBJECTS)) {
+    assert.equal(name, label('subj' + id.charAt(0).toUpperCase() + id.slice(1)), id);
+  }
+  for (const [id, name] of Object.entries(builder.GRADES)) {
+    assert.equal(name, label('grade' + id.charAt(0).toUpperCase() + id.slice(1)), id);
   }
 });

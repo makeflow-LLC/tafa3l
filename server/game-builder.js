@@ -85,6 +85,50 @@ const SWITCHES = {
 };
 
 /**
+ * تصنيفُ المنصّة: رموزُ المادّة والصفوف وأسماؤها العربيّة — هي نفسها التي في
+ * `public/assets/js/i18n.js`، ويحرس تطابقَها اختبار.
+ *
+ * وهي هنا لأن **النموذج** هو من يصنّف اللعبة لا المعلّم: يكتب المادّة والصفّ
+ * في رأس الملفّ، فنحتاج أن نكتب له القائمة في التعليمات، وأن نرفض منه ما
+ * ليس فيها — فلا تُنشر لعبةٌ بمادّةٍ لا يعرفها فلترُ البحث.
+ */
+const SUBJECTS = {
+  math: 'رياضيات',
+  arabic: 'لغة عربية',
+  english: 'لغة إنجليزية',
+  science: 'علوم',
+  tech: 'تكنولوجيا',
+  engineering: 'هندسة',
+  islamic: 'تربية إسلامية',
+  social: 'اجتماعيات',
+  art: 'فنون',
+  sport: 'رياضة بدنية',
+  other: 'أخرى',
+};
+
+const GRADES = {
+  kg: 'رياض الأطفال',
+  g1: 'الصف الأول',
+  g2: 'الصف الثاني',
+  g3: 'الصف الثالث',
+  g4: 'الصف الرابع',
+  g5: 'الصف الخامس',
+  g6: 'الصف السادس',
+  g7: 'الصف السابع',
+  g8: 'الصف الثامن',
+  g9: 'الصف التاسع',
+  g10: 'الصف العاشر',
+  g11: 'الصف الحادي عشر',
+  g12: 'الصف الثاني عشر',
+};
+
+/** كم كلمةً مفتاحيّة تُطلب من النموذج مع كل لعبة — بها يجدها البحث */
+const KEYWORDS_WANTED = 5;
+
+/** أسماءُ وسوم الوصف في رأس الملفّ — يكتبها النموذج ونقرأها نحن */
+const META = { subject: 'tapio:subject', grades: 'tapio:grades', keywords: 'tapio:keywords' };
+
+/**
  * يقرأ إعدادات المعلّم ويحصرها في حدودها.
  * بنك المحتوى لا يصحّ أن يقلّ عمّا يُعرض في الجولة الواحدة، وإلا تكرّرت
  * العناصر في الجولة نفسها — فنرفعه إليه بدل أن نردّ الطلب.
@@ -341,6 +385,11 @@ function selfCheck(cfg) {
   );
   must.push('mechanic is a lazy default', 'wrong moves not misconception-based');
   must.push(
+    `the <head> is missing the game card: <title>, ${META.subject}, ${META.grades}, or ${META.keywords}`,
+    `the keywords are not exactly ${KEYWORDS_WANTED}, or are not Arabic, or would not find this game in a search`,
+    'the subject id or a grade id is not one from the GAME CARD lists'
+  );
+  must.push(
     cfg.tensionSystems === 0 ? 'any tension system at all is present' : `more than ${cfg.tensionSystems} tension system(s)`
   );
 
@@ -359,12 +408,19 @@ function selfCheck(cfg) {
 }
 
 /**
- * الرسالة الأولى: سؤالان في رسالةٍ واحدة — العمر، والاسم في اللعبة.
+ * الرسالة الأولى: سؤالان في رسالةٍ واحدة — الصفّ، والاسم في اللعبة.
+ *
+ * والصفّ **يُسأل قبل البناء** لا بعده: هو الذي يضبط اللغة والعمق والنبرة، ولو
+ * سُئل عنه بعد أن خرجت اللعبة لصار سؤالَ تبويبٍ لا سؤالَ تصميم — ولوجب إعادة
+ * البناء إن جاء الجواب مخالفاً لما ظنّه النموذج.
  *
  * الاسم مسألةُ حقوق: المعلّم يعدّ لعبةً ستنتشر بين الطلاب وأولياء الأمور،
  * ومن حقّه أن يُذكر — أو ألّا يُذكر. والمنصّة تعرف اسمه من حسابه، فتعرضه
  * عليه جاهزاً بدل أن تسأله «ما اسمك؟». وتبقى الرسالة واحدة: سؤالٌ ثانٍ في
  * الرسالة نفسها، لا جولةُ أسئلةٍ ثانية.
+ *
+ * وأمّا المادّة فلا تُسأل أصلاً: النموذج يقرأ الدرس فيعرف مادّته، وسؤال
+ * المعلّم عنها بعد أن جرّب لعبته استمارةٌ لا حوار.
  */
 function firstMessageRule(ctx) {
   const name = String(ctx?.teacherName || '').trim();
@@ -374,12 +430,37 @@ function firstMessageRule(ctx) {
   return [
     '# FIRST MESSAGE — mandatory, one round only',
     'Before suggesting or building anything, send ONE short Arabic message with these numbered questions, then wait:',
-    '١. لأي عمر أو صف هذه اللعبة؟',
+    '١. لأي صفٍّ هذه اللعبة؟ (رياض الأطفال، أو من الصف الأول إلى الثاني عشر — أو اكتب عمر الطلاب)',
     creditQ,
     'Skip any question the teacher already answered in their message (an age or grade given → skip ١; "اكتب اسمي" / "بلا اسم" given → skip ٢). If both are answered, do not ask — proceed directly.',
     'If the lesson content itself is also missing, add it as a third numbered line in the SAME message. One message total. Never a second round of questions. "أنت اختار" → decide it yourself.',
-    'Use the age to set: language simplicity, visual maturity, pacing, humor style, and depth of content.',
+    'THE GRADE IS ASKED BEFORE BUILDING, NEVER AFTER. It sets language simplicity, visual maturity, pacing, humor style, and depth of content — so you cannot build first and ask later. An age instead of a grade is a complete answer: map it yourself (6 years → الصف الأول, 10 → الصف الخامس...).',
+    'NEVER ask the teacher for the subject (المادة) — not here and not after the game is built. You read the lesson and decide the subject yourself (see GAME CARD).',
     'A silent teacher who answers only ١ has not declined the credit — treat a missing answer to ٢ as "لا" and do not ask again.',
+  ];
+}
+
+/**
+ * بطاقةُ اللعبة — وسومٌ في رأس الملفّ يكتبها النموذج ونقرأها نحن.
+ *
+ * الغرض أن ينتهي الاستبيانُ الذي كان يُعرض على المعلّم بعد أن جرّب لعبته:
+ * المادّة والصفوف وكلماتُ البحث كلُّها معلومةٌ للنموذج وهو يبني — فليكتبها
+ * هو، ولتُعرض على المعلّم جاهزةً ليعتمدها بضغطةٍ واحدة.
+ *
+ * وموضعُها رأسُ الملفّ لا نصُّ الردّ: ما يُكتب في الرأس يُكتب قبل كل شيء،
+ * فيسلم إن بلغ الملفُّ سقفَ المخرجات وبُتر آخره؛ وما يُكتب في الردّ يراه
+ * المعلّم سطوراً تقنيّةً لا تعنيه.
+ */
+function gameCardRule() {
+  const subjects = Object.entries(SUBJECTS).map(([id, label]) => `${id} (${label})`).join(' · ');
+  const grades = Object.entries(GRADES).map(([id, label]) => `${id} (${label})`).join(' · ');
+  return [
+    '# GAME CARD — four tags inside <head>, in every file you output. No exceptions.',
+    '<title>اسم اللعبة</title> — a short Arabic name, 2 to 5 words, no quotes and no "لعبة" prefix unless it reads naturally.',
+    `<meta name="${META.subject}" content="ID"> — EXACTLY ONE id you choose yourself from: ${subjects}. Never ask the teacher; derive it from the lesson. Nothing fits → other.`,
+    `<meta name="${META.grades}" content="ID,ID"> — the grade ids matching what the teacher answered, from: ${grades}. One id normally; two or three only when the teacher named a range. Never guess a grade the teacher did not state.`,
+    `<meta name="${META.keywords}" content="ك١, ك٢, ك٣, ك٤, ك٥"> — EXACTLY ${KEYWORDS_WANTED} Arabic search keywords, comma separated, 1-3 words each, no # and no repetition of the title word for word. Think of what a teacher would type to find this game again: the lesson concept, the skill, the mechanic, the frame, the subject. These are the game's only search handles — write them for searching, not for decoration.`,
+    'These four tags are data for the platform, not content for the child: nothing in them is displayed in the game, and you never mention them to the teacher.',
   ];
 }
 
@@ -426,6 +507,8 @@ function systemPrompt(cfg, ctx) {
     'Substitute CONFIG values as real numbers in the code. Never leave a variable name in the output.',
     '',
     ...firstMessageRule(ctx),
+    '',
+    ...gameCardRule(),
     '',
     ...creditRule(),
     '',
@@ -517,7 +600,8 @@ function systemPrompt(cfg, ctx) {
     '',
     '# OUTPUT',
     'The full HTML file in ONE code block, nothing before or after.',
-    'Exceptions: the first message (age + credit), and Mode B suggestions — both plain Arabic text, then wait.',
+    'Exceptions: the first message (grade + credit), and Mode B suggestions — both plain Arabic text, then wait.',
+    'Every file you output carries the GAME CARD tags in its <head>. A file without them is an incomplete answer.',
     '',
     '# SILENT SELF-CHECK — never printed',
     selfCheck(cfg),
@@ -680,6 +764,64 @@ function splitGame(reply) {
   return { text: raw.trim(), html: '' };
 }
 
+/** مسافاتٌ كثيرة تصير واحدة، والأطراف تُقصّ */
+const collapse = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
+
+/** وسومُ `<meta>` في رأس الملفّ — اسماً إلى محتوى، والرأسُ وحده لا الجسد */
+function metaTags(html) {
+  const raw = String(html ?? '');
+  const end = raw.search(/<\/head\s*>/i);
+  const head = end >= 0 ? raw.slice(0, end) : raw.slice(0, 20000);
+  const out = {};
+  for (const tag of head.match(/<meta\b[^>]*>/gi) || []) {
+    const name = /\bname\s*=\s*["']([^"']+)["']/i.exec(tag);
+    const content = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(tag);
+    if (name && content) out[collapse(name[1]).toLowerCase()] = collapse(content[1]);
+  }
+  return out;
+}
+
+/**
+ * بطاقةُ اللعبة كما كتبها النموذج في رأس ملفّها: الاسم، والمادّة، والصفوف،
+ * وكلماتُ البحث. تُقرأ هنا لتُعرض على المعلّم جاهزةً فيعتمدها بضغطة.
+ *
+ * والقراءة لا تثق: رمزٌ ليس في التصنيف يُطرح (لا يُصحَّح ولا يُنشر)، والكلماتُ
+ * تُنزع منها المكرّرات وتُحصر عدداً وطولاً. فغيابُ الحقل أهونُ من حقلٍ لا
+ * يعرفه البحث ولا الفلتر.
+ */
+function readMeta(html) {
+  const raw = String(html ?? '');
+  const tags = metaTags(raw);
+  const title = /<title[^>]*>([\s\S]{1,300}?)<\/title>/i.exec(raw);
+
+  const subject = tags[META.subject];
+  const list = (value) =>
+    collapse(value)
+      .split(/[,،;|\n]+/)
+      .map((part) => collapse(part))
+      .filter(Boolean);
+
+  const grades = [...new Set(list(tags[META.grades]).map((id) => id.toLowerCase()))]
+    .filter((id) => Object.prototype.hasOwnProperty.call(GRADES, id))
+    .slice(0, 4);
+
+  const keywords = [];
+  for (const word of list(tags[META.keywords])) {
+    const clean = word.replace(/^[#*\-•\d.\s]+/, '').slice(0, 40).trim();
+    if (clean && !keywords.includes(clean)) keywords.push(clean);
+    if (keywords.length >= KEYWORDS_WANTED) break;
+  }
+
+  return {
+    name: title ? collapse(title[1]).slice(0, 120) : '',
+    subject: Object.prototype.hasOwnProperty.call(SUBJECTS, String(subject || '').toLowerCase())
+      ? String(subject).toLowerCase()
+      : '',
+    grades,
+    keywords,
+  };
+}
+
 /**
  * يصل ما بُتر. النموذج يُكمل من آخر حرفٍ كتبه بلا إعادةٍ ولا شرح، ونحن
  * نلصق الجزء الجديد بلا فاصل — فالقطع وقع في منتصف سطرٍ غالباً.
@@ -739,7 +881,15 @@ async function chat({ turns, config: rawConfig, teacherName, seed, onProgress })
     cut = !isComplete(html) || next.finish === 'MAX_TOKENS';
   }
 
-  return { text, html, config: cfg, truncated: Boolean(html) && !isComplete(html), continuations };
+  return {
+    text,
+    html,
+    config: cfg,
+    truncated: Boolean(html) && !isComplete(html),
+    continuations,
+    // بطاقةُ اللعبة: الاسم والمادّة والصفوف وكلماتُ البحث — تُعرض للاعتماد
+    meta: html ? readMeta(html) : null,
+  };
 }
 
 module.exports = {
@@ -749,12 +899,14 @@ module.exports = {
   FRAMES,
   spinFor,
   firstMessageRule,
+  gameCardRule,
   creditRule,
   tensionRule,
   funEngine,
   selfCheck,
   callModel,
   splitGame,
+  readMeta,
   stitch,
   systemPrompt,
   configBlock,
@@ -764,6 +916,10 @@ module.exports = {
   replyText,
   isComplete,
   KNOBS,
+  SUBJECTS,
+  GRADES,
+  META,
+  KEYWORDS_WANTED,
   MODEL,
   MAX_OUTPUT_TOKENS,
 };

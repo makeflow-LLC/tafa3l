@@ -614,13 +614,16 @@
   /**
    * مُنتقي الصفوف: رقائقُ تُضغط، و«كل المراحل» حين لا يُختار شيء.
    * ترفع لعبةً من شاشتين — رفعِ المعلّم ومنشئ الألعاب — فالمنتقي واحد.
+   *
+   * و`initial` صفوفٌ مُختارةٌ سلفاً: منشئ الألعاب يعرف صفَّ اللعبة من جواب
+   * المعلّم نفسه، فيُعرض مُعلَّماً ليُصحّح إن شاء لا ليُملأ من جديد.
    */
-  function gradeChips() {
+  function gradeChips(initial) {
     const label = (id) => (window.I18n ? window.I18n.tagLabel('grade', id) : id);
     const grades = (window.I18n && window.I18n.GRADES) || [];
-    const chosen = new Set();
+    const chosen = new Set((Array.isArray(initial) ? initial : []).filter((id) => grades.includes(id)));
     const node = el('div', { class: 'chips' });
-    const all = el('button', { class: 'chip on', type: 'button' }, window.I18n ? window.I18n.t('gAllStages') : 'كل المراحل');
+    const all = el('button', { class: 'chip' + (chosen.size ? '' : ' on'), type: 'button' }, window.I18n ? window.I18n.t('gAllStages') : 'كل المراحل');
     const paint = () => {
       all.classList.toggle('on', chosen.size === 0);
       [...node.querySelectorAll('.chip[data-grade]')].forEach((c) => c.classList.toggle('on', chosen.has(c.dataset.grade)));
@@ -631,7 +634,7 @@
     });
     node.append(all);
     grades.forEach((id) => {
-      const chip = el('button', { class: 'chip', type: 'button', 'data-grade': id }, label(id));
+      const chip = el('button', { class: 'chip' + (chosen.has(id) ? ' on' : ''), type: 'button', 'data-grade': id }, label(id));
       chip.addEventListener('click', () => {
         if (chosen.has(id)) chosen.delete(id);
         else chosen.add(id);

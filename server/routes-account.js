@@ -1760,6 +1760,14 @@ function accountRoutes(store) {
     }
     // مصفوفة فارغة = «كل المراحل»
     const grades = Array.isArray(body?.grades) ? [...new Set(body.grades.map((g) => clean(g, 40)).filter(Boolean))].slice(0, 12) : [];
+    /*
+     * كلماتُ البحث: يكتبها منشئ الألعاب مع كل لعبة (خمسٌ)، ويبحث بها المعلّم
+     * والطالب. اختياريّة — لعبةٌ يرفعها صاحبها بنفسه لا تُطالَب بها، وألعابُ
+     * ما قبل هذه الميزة تبقى كما هي.
+     */
+    const keywords = Array.isArray(body?.keywords)
+      ? [...new Set(body.keywords.map((k) => clean(k, 40)).filter(Boolean))].slice(0, 8)
+      : null;
     const cover = readCover(body?.cover);
     if (!cover && coverRequired) throw Object.assign(new Error('أرفق صورةً مصغّرة تدلّ على اللعبة'), { status: 400 });
     return {
@@ -1767,6 +1775,8 @@ function accountRoutes(store) {
       html,
       bytes,
       grades,
+      // الحقل الغائب يعني «أبقِ ما هو محفوظ» — كالصورة؛ ومصفوفةٌ فارغة تمحوها
+      ...(keywords ? { keywords } : {}),
       // بلا صورةٍ جديدة لا نكتب الحقل أصلاً، فلا يُمحى ما هو محفوظ
       ...(cover ? { cover } : {}),
       // الحفظ للعمل بلا إنترنت مسموحٌ ما لم يمنعه صاحب اللعبة صراحةً
@@ -1782,6 +1792,7 @@ function accountRoutes(store) {
     title: g.title,
     subject: g.subject || '',
     grades: g.grades || [],
+    keywords: Array.isArray(g.keywords) ? g.keywords : [],
     description: g.description || '',
     plays: g.plays || 0,
     rating: g.ratingCount ? Math.round((g.ratingSum / g.ratingCount) * 10) / 10 : null,

@@ -284,6 +284,28 @@ test('البناء مهمّة: الطلب يعود فوراً بمعرّف، ث�
   }
 });
 
+test('بطاقة اللعبة تصل الواجهة مع الملفّ — فلا تُسأل المعلّم عمّا كتبه النموذج', async () => {
+  const email = 'card@example.com';
+  const carded =
+    '<!doctype html><html lang="ar" dir="rtl"><head><title>مزرعة الجمع</title>' +
+    '<meta name="tapio:subject" content="math"><meta name="tapio:grades" content="g2">' +
+    '<meta name="tapio:keywords" content="الجمع, حساب ذهني, مزرعة, أرقام, رياضيات"></head><body></body></html>';
+  const mock = mockUpstream({ email, evolink: () => modelReply('جاهزة 👇\n```html\n' + carded + '\n```') });
+  try {
+    const c = client();
+    await login(c);
+    await grantPremium(email);
+    const started = await c.request('POST', '/api/game-ai/chat', { message: 'الصف الثاني — الجمع' });
+    const done = await awaitJob(c, started.data.jobId);
+    assert.equal(done.data.meta.name, 'مزرعة الجمع');
+    assert.equal(done.data.meta.subject, 'math');
+    assert.deepEqual(done.data.meta.grades, ['g2']);
+    assert.equal(done.data.meta.keywords.length, 5);
+  } finally {
+    mock.restore();
+  }
+});
+
 test('المحادثة تعيش على الخادم: الرسالة الثانية وحدها تُرسل والسياق كاملٌ عندنا', async () => {
   const email = 'ctx@example.com';
   const mock = mockUpstream({
