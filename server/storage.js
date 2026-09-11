@@ -32,6 +32,18 @@ function gameRating(g) {
 }
 
 /**
+ * ما يبحث فيه بحثُ الألعاب: الاسم والوصف والكلماتُ المفتاحيّة.
+ *
+ * الكلمات هي الإضافة الأهمّ: اسمُ اللعبة تسميةٌ طريفة («مطبخ الكسور») لا
+ * يكتبها من يبحث عن «جمع الكسور»، والكلماتُ الخمس التي يكتبها منشئ الألعاب
+ * هي مفاهيمُها ومهارتُها — فبها تُوجد. وتُبقى مطابقةً للسائق الآخر: بحثٌ
+ * بسيط عن نصٍّ داخل نصّ، كما في `g.keywords::text ILIKE` هناك.
+ */
+function gameHaystack(g) {
+  return [g.title, g.description, ...(Array.isArray(g.keywords) ? g.keywords : [])].join(' ').toLowerCase();
+}
+
+/**
  * ترتيب الألعاب. «الأعلى تقييماً» لا يعني أعلى متوسّط: لعبةٌ قيّمها واحد
  * بخمس نجوم ليست أفضل من لعبةٍ قيّمها مئةٌ بأربع ونصف. فنستعمل ترجيحاً
  * بايزياً بسيطاً يسحب المتوسّط نحو ٣٫٥ حتى تتراكم التقييمات.
@@ -527,7 +539,9 @@ function fileDriver() {
         .filter((g) => !subject || g.subject === subject)
         // الصفوف مصفوفة: «كل المراحل» = مصفوفة فارغة فتطابق أي بحث
         .filter((g) => !grade || !g.grades.length || g.grades.includes(grade))
-        .filter((g) => !needle || String(g.title).toLowerCase().includes(needle))
+        // البحث في الاسم والوصف وكلمات اللعبة المفتاحيّة — والكلمات هي التي
+        // تجد اللعبة بمفهومها لا بعنوانها وحده (انظر `server/game-builder.js`)
+        .filter((g) => !needle || gameHaystack(g).includes(needle))
         .sort(sortGames(sort));
       return {
         total: all.length,
@@ -759,6 +773,7 @@ function postgresDriver(connectionString) {
       title: r.title,
       subject: r.subject || '',
       grades: Array.isArray(r.grades) ? r.grades : [],
+      keywords: Array.isArray(r.keywords) ? r.keywords : [],
       description: r.description || '',
       // القوائم لا تختار html ولا cover، فالحقلان قد يغيبان عن الصفّ.
       // و`cover` يُعاد حين يُختار: تعديلُ اللعبة يُعيد كتابة صفّها كاملاً من
@@ -899,6 +914,9 @@ function postgresDriver(connectionString) {
         -- يسمح صاحب اللعبة بحفظها على جهاز الطالب للّعب بلا إنترنت.
         -- الافتراضي مسموح، ومن يمنع تبقى لعبته على المنصّة وحدها.
         ALTER TABLE games ADD COLUMN IF NOT EXISTS offline_ok BOOLEAN NOT NULL DEFAULT TRUE;
+        -- خمسُ كلماتٍ مفتاحيّة يكتبها منشئ الألعاب مع كل لعبة، يبحث بها
+        -- المعلّم والطالب. ألعابُ ما قبلها تبقى بمصفوفةٍ فارغة فلا يتغيّر بحثها.
+        ALTER TABLE games ADD COLUMN IF NOT EXISTS keywords JSONB NOT NULL DEFAULT '[]'::jsonb;
         CREATE TABLE IF NOT EXISTS bank_questions (
           id TEXT PRIMARY KEY,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1413,7 +1431,12 @@ function postgresDriver(connectionString) {
       const params = [];
       const add = (sql, value) => { params.push(value); where.push(sql.replace('$?', '$' + params.length)); };
       if (ownerId) add('g.owner_id = $?', ownerId);
-      if (q.trim()) add('g.title ILIKE $?', '%' + q.trim() + '%');
+      if (q.trim()) {
+        // الاسم والوصف والكلمات المفتاحيّة — كما في `gameHaystack` عند سائق الملفّ
+        params.push('%' + q.trim() + '%');
+        const p = '$' + params.length;
+        where.push(`(g.title ILIKE ${p} OR g.description ILIKE ${p} OR g.keywords::text ILIKE ${p})`);
+      }
       if (subject) add('g.subject = $?', subject);
       // «كل المراحل» تُخزَّن مصفوفةً فارغة فتطابق أي صفّ يبحث عنه الطالب
       if (grade) add("(jsonb_array_length(g.grades) = 0 OR g.grades ? $?)", grade);
@@ -1429,7 +1452,7 @@ function postgresDriver(connectionString) {
       // نستثني html وcover صراحةً: صفحةٌ من ٢٤ لعبة بحجمها الأقصى تعني
       // عشرات الميغابايت تُقرأ وتُنقل بلا أن تستعملها البطاقة
       const { rows } = await pool.query(
-        `SELECT g.id, g.owner_id, g.title, g.subject, g.grades, g.description, g.bytes,
+        `SELECT g.id, g.owner_id, g.title, g.subject, g.grades, g.keywords, g.description, g.bytes,
                 g.plays, g.rating_sum, g.rating_count, g.created_at, g.updated_at, g.offline_ok,
                 (g.cover IS NOT NULL) AS has_cover, u.name AS author_name, u.display_name AS author_display_name
          FROM games g
@@ -1464,14 +1487,14 @@ function postgresDriver(connectionString) {
     },
     async saveGame(g) {
       await pool.query(
-        `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at, cover, offline_ok)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        `INSERT INTO games (id, owner_id, title, subject, grades, description, html, bytes, plays, rating_sum, rating_count, created_at, updated_at, cover, offline_ok, keywords)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          ON CONFLICT (id) DO UPDATE SET title = $3, subject = $4, grades = $5, description = $6, html = $7, bytes = $8, updated_at = $13,
            -- الصورة تبقى إن لم تُرسل صورةٌ جديدة: تعديلٌ لا يحملها ليس طلباً لمحوها
-           cover = COALESCE($14, games.cover), offline_ok = $15`,
+           cover = COALESCE($14, games.cover), offline_ok = $15, keywords = $16`,
         [g.id, g.ownerId, g.title, g.subject || null, JSON.stringify(g.grades || []), g.description || null,
          g.html, g.bytes || 0, g.plays || 0, g.ratingSum || 0, g.ratingCount || 0, g.createdAt, g.updatedAt, g.cover || null,
-         g.offlineOk !== false]
+         g.offlineOk !== false, JSON.stringify(g.keywords || [])]
       );
       return g;
     },

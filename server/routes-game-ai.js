@@ -245,6 +245,10 @@ function gameAiRoutes() {
           html: out.html,
           truncated: out.truncated,
           config: out.config,
+          // بطاقةُ اللعبة كما كتبها النموذج: الاسم والمادّة والصفوف وكلماتُ
+          // البحث — منها تُبنى شاشةُ الاعتماد، فلا يُستفتى المعلّم فيما يعرفه
+          // النموذج أصلاً
+          meta: out.meta || null,
           quota: after,
           finishedAt: Date.now(),
         });
@@ -272,6 +276,7 @@ function gameAiRoutes() {
       html: job.html || '',
       truncated: Boolean(job.truncated),
       config: job.config,
+      meta: job.meta || null,
       // ما بقي بعد هذا البناء — الواجهة تُحدّث عدّادها بلا نداءٍ ثانٍ
       quota: job.quota || null,
       elapsed,

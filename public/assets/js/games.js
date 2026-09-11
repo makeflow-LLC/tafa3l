@@ -468,6 +468,31 @@
     );
     if (game.description) app.append(el('p', { class: 'muted small', text: game.description }));
 
+    /*
+     * كلماتُ اللعبة المفتاحيّة — معروضةٌ لأنها أبوابُ بحث: من أعجبته لعبةٌ عن
+     * «مقام مشترك» يريد أخواتها، وضغطةٌ واحدة تأتيه بها بدل أن يكتبها بيده.
+     */
+    if (Array.isArray(game.keywords) && game.keywords.length) {
+      app.append(
+        el('div', { class: 'stack tight', style: { marginBottom: '10px' } }, [
+          el('span', { class: 'muted small', text: t('gKeywords') }),
+          el(
+            'div',
+            { class: 'row wrap', style: { gap: '6px' } },
+            game.keywords.map((word) => {
+              const chip = el('button', { class: 'chip', type: 'button' }, word);
+              chip.addEventListener('click', () => {
+                Object.assign(state, { q: word, subject: '', grade: '', teacher: '', page: 0, items: [] });
+                if (location.hash.slice(1) !== '/') location.hash = '#/';
+                else openList(true);
+              });
+              return chip;
+            })
+          ),
+        ])
+      );
+    }
+
     app.append(el('a', { class: 'btn accent block big-cta', href: '#/g/' + game.id + '/play' }, t('gPlayNow')));
     app.append(el('p', { class: 'muted small center', style: { marginTop: '6px' }, text: t('gPlayFullNote') }));
 

@@ -208,6 +208,39 @@ test('البحث والتصفية بالمادة والصف — و«كل الم�
   assert.equal(titles.includes('الأفعال الإنجليزية'), false);
 });
 
+test('كلماتُ اللعبة المفتاحيّة تُحفظ ويجدها البحث — وهي مفاهيمها لا عنوانها', async () => {
+  const c = client();
+  await login(c, 'كاتبة الكلمات');
+  const made = (
+    await c.request('POST', '/api/games', GAME({ title: 'مطبخ الكسور', keywords: ['جمع الكسور', 'مقام مشترك', 'كسور', 'طبخ', 'حساب'] }))
+  ).data.game;
+  assert.deepEqual(made.keywords, ['جمع الكسور', 'مقام مشترك', 'كسور', 'طبخ', 'حساب']);
+
+  const guest = client();
+  // من يبحث عن مفهوم الدرس لا يكتب اسم اللعبة الطريف
+  const found = await guest.request('GET', '/api/games?q=' + encodeURIComponent('مقام مشترك'));
+  assert.ok(found.data.items.some((g) => g.id === made.id), 'تُوجد بكلمةٍ من كلماتها');
+  const missed = await guest.request('GET', '/api/games?q=' + encodeURIComponent('تشريح الضفدع'));
+  assert.equal(missed.data.items.some((g) => g.id === made.id), false);
+
+  // ثمانٍ حدُّها، والمكرّر والفارغ يُطرحان
+  const many = (
+    await c.request('POST', '/api/games', GAME({ title: 'لعبة الكلمات', keywords: ['أ', 'أ', '  ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح', 'ط'] }))
+  ).data.game;
+  assert.deepEqual(many.keywords, ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح']);
+
+  // تعديلٌ لا يحمل الكلمات لا يمحوها — كالصورة
+  const kept = await c.request('PUT', '/api/games/' + made.id, { title: 'مطبخ الكسور ٢', html: HTML });
+  assert.deepEqual(kept.data.game.keywords, ['جمع الكسور', 'مقام مشترك', 'كسور', 'طبخ', 'حساب']);
+  // ومصفوفةٌ فارغة صريحة تمحوها
+  const cleared = await c.request('PUT', '/api/games/' + made.id, { title: 'مطبخ الكسور ٣', html: HTML, keywords: [] });
+  assert.deepEqual(cleared.data.game.keywords, []);
+
+  // ولعبةٌ بلا كلمات تبقى كما كانت: مصفوفةٌ فارغة لا خطأ
+  const plain = (await c.request('POST', '/api/games', GAME({ title: 'لعبةٌ بلا كلمات' }))).data.game;
+  assert.deepEqual(plain.keywords, []);
+});
+
 test('ألعاب معلّم بعينه — بروفايله', async () => {
   const a = client();
   await login(a, 'سلمى');
