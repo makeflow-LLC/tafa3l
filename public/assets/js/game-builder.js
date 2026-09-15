@@ -514,10 +514,7 @@
       const post = el('textarea', { class: 'chat-input', rows: 7, readonly: true, 'aria-label': t('gbPostTitle') });
       post.value = text;
       const copyPost = el('button', { class: 'btn primary sm', type: 'button' }, t('gbPostCopy'));
-      copyPost.addEventListener('click', async () => {
-        const ok = await window.T.copyLink(text);
-        toast(ok ? t('gbPostCopied') : t('gbPostCopyFail'), ok ? 'ok' : 'bad');
-      });
+      copyPost.addEventListener('click', () => window.T.copyNow(text, t('gbPostCopied')));
 
       return el('div', { class: 'note ok stack' }, [
         el('strong', { text: t('gbPublishedTitle', { title: game.title }) }),

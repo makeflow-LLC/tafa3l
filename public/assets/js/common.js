@@ -866,28 +866,107 @@
     return out;
   }
 
-  /** ينسخ رابطاً إلى الحافظة، وإن مُنع ذلك رجع إلى تحديد النص */
+  /**
+   * ينسخ نصّاً إلى الحافظة. يعيد true إن نُسخ فعلاً — ومن نادى عليه **يجب**
+   * أن يصدّق الجواب لا أن يقول «نُسخ» على كل حال.
+   *
+   * والبديل حين تُمنع الحافظة (تبويبٌ غير مركَّز، متصفّحٌ داخل تطبيق، صفحةٌ
+   * على http) ليس تفصيلاً: هو ما يعمل على الهواتف فعلاً. وكان مكتوباً على
+   * الوجه الذي **لا يعمل على iOS**:
+   *
+   *   - حقلٌ بـ`readonly` لا يقبل التحديد في Safari الجوال، فلا يُنسخ منه شيء
+   *     — وينسخ `execCommand` حينئذٍ ما كان محدَّداً في الصفحة (جزءٌ من نصٍّ
+   *     لمسه المستخدم قبل قليل)، فيجد المعلّم في حافظته رابطاً ناقصاً أو نصّاً
+   *     غريباً. ولهذا `readOnly = false` مع `contentEditable`.
+   *   - و`select()` وحدها لا تكفي هناك: `setSelectionRange` هي التي تحدّد
+   *     النصّ كاملاً.
+   *   - وحقلٌ خارج الشاشة (`top:-9999px`) لا يُحدَّد أصلاً في Safari الجوال،
+   *     فنبقيه داخلها بحجم بكسلٍ واحد وشفّافاً.
+   *   - و`font-size` دون ١٦ بكسل تُقفز الصفحة في iOS، فنثبّتها.
+   *
+   * ونُعيد تحديد المستخدم كما كان بعدها: لا نسرق تحديداً كان يقرأ به.
+   */
   async function copyLink(url) {
+    const text = String(url ?? '');
+    if (!text) return false;
     try {
-      await navigator.clipboard.writeText(url);
-      return true;
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
     } catch {
-      const box = document.createElement('textarea');
-      box.value = url;
-      box.setAttribute('readonly', '');
-      box.style.position = 'fixed';
-      box.style.opacity = '0';
+      /* ممنوعة أو غير متاحة — إلى البديل */
+    }
+
+    let box = null;
+    const selection = document.getSelection();
+    const saved = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    try {
+      box = document.createElement('textarea');
+      box.value = text;
+      box.readOnly = false;
+      box.contentEditable = 'true';
+      box.setAttribute('aria-hidden', 'true');
+      box.style.cssText =
+        'position:fixed;top:50%;inset-inline-start:0;width:1px;height:1px;padding:0;border:0;margin:0;opacity:0;font-size:16px;';
       document.body.append(box);
+      box.focus({ preventScroll: true });
       box.select();
+      box.setSelectionRange(0, text.length);
       let done = false;
       try {
         done = document.execCommand('copy');
       } catch {
         done = false;
       }
-      box.remove();
       return done;
+    } catch {
+      return false;
+    } finally {
+      box?.remove();
+      if (saved && selection) {
+        selection.removeAllRanges();
+        selection.addRange(saved);
+      }
     }
+  }
+
+  /**
+   * ينسخ ويقول ما جرى فعلاً.
+   *
+   * وحين يُمنع النسخ لا يكفي أن نقول «تعذّر»: المعلّم يريد الرابط الآن ليرسله
+   * إلى صفّه. فنعرضه في حقلٍ محدَّدٍ كاملاً ينسخه بيده — لا في فقاعةٍ تختفي.
+   */
+  async function copyNow(url, okMessage) {
+    const t = (key) => (global.I18n ? global.I18n.t(key) : key);
+    const done = await copyLink(url);
+    if (done) {
+      toast(okMessage || t('shareCopied'), 'ok');
+      return true;
+    }
+    showCopyFallback(String(url ?? ''));
+    return false;
+  }
+
+  /** بطاقةٌ صغيرة فيها الرابط كاملاً محدَّداً — آخر ما يبقى حين تُمنع الحافظة */
+  function showCopyFallback(text) {
+    const t = (key) => (global.I18n ? global.I18n.t(key) : key);
+    document.querySelector('.copy-pop')?.remove();
+    const field = el('input', { value: text, readonly: true, class: 'link-box', 'aria-label': t('copyManualTitle') });
+    const box = el('div', { class: 'copy-pop' }, [
+      el('div', { class: 'copy-card stack tight' }, [
+        el('strong', { class: 'small', text: t('copyManualTitle') }),
+        el('span', { class: 'muted small', text: t('copyManualBody') }),
+        field,
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => box.remove() }, t('copyManualClose')),
+      ]),
+    ]);
+    box.addEventListener('click', (e) => {
+      if (e.target === box) box.remove();
+    });
+    document.body.append(box);
+    field.focus({ preventScroll: true });
+    field.setSelectionRange(0, text.length);
   }
 
   /**
@@ -933,10 +1012,7 @@
     );
 
     const copy = el('button', { class: 'btn ghost sm', type: 'button' }, t('shareCopy'));
-    copy.addEventListener('click', async () => {
-      const done = await copyLink(url);
-      toast(done ? t('shareCopied') : url, done ? 'ok' : '');
-    });
+    copy.addEventListener('click', () => copyNow(url, t('shareCopied')));
     row.append(copy);
     return row;
   }
@@ -1078,6 +1154,7 @@
     richText,
     gradeChips,
     copyLink,
+    copyNow,
     shareBox,
     gameShareUrl,
     vibrate,

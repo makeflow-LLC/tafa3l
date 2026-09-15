@@ -2020,6 +2020,9 @@ class Session {
         // «أكمل الفراغ»: الإجابات المتوقعة تُصدَّر مكان الإجابة الصحيحة
         blanks: q.type === 'blank' ? q.blanks : undefined,
         maxPoints: scoredQ ? q.points : 0,
+        // نصيب السؤال من العلامة الكاملة — به يُكتب عمود «العلامة» في التقرير
+        // بدل النقاط حين يكون النشاط بالعلامات
+        markShare: this.hasMark && scoredQ ? Math.round(this.markShare(q) * 100) / 100 : 0,
         scored: scoredQ,
         manual: !!q.manual,
         timeLimit: this.timeFor(q),
@@ -2048,6 +2051,15 @@ class Session {
       settings: {
         pace: this.settings.pace,
         scoring: this.settings.scoring,
+        /*
+         * نظام المكافأة — وبه وحده يُعرف هل للنقاط معنى في هذا التقرير.
+         *
+         * كان التقرير يطبع «النقاط» و«أعلى نقاط» و«احتساب النقاط» مهما اختار
+         * المعلّم، فيجد من صحّح بالعلامات عمودَ نقاطٍ إلى جانب علامته لا يعرف
+         * ما هو ولا كيف يشرحه لوليّ أمر. النقاط في وضع العلامات رقمٌ داخليّ
+         * للترتيب لا غير — فلا تخرج إلى ورقةٍ يقرؤها أحد.
+         */
+        reward: this.settings.reward,
         requireName: this.settings.requireName,
         showLeaderboard: this.settings.showLeaderboard,
         teamMode: this.settings.teamMode,
@@ -2068,12 +2080,18 @@ class Session {
         const correctCount = values.filter((a) => a.correct === true).length;
         const partialCount = values.filter((a) => a.correct === 'partial').length;
         const totalMs = values.reduce((sum, a) => sum + a.ms, 0);
+        const mark = this.markFor(p);
         return {
           name: this.settings.requireName ? p.name : 'مجهول',
           team: this.teamOf(p)?.name || null,
           score: p.score,
           maxScore,
-          percent: maxScore ? Math.round((p.score / maxScore) * 100) : null,
+          /*
+           * النسبة من العلامة حين يكون النشاط بالعلامات لا من النقاط: النقاط
+           * فيها مكافأة السرعة ومضاعف السلسلة، فنسبتها تخالف علامة الطالب —
+           * فكان متوسط الصفّ في التقرير رقماً ثالثاً لا يطابق أيّ علامة.
+           */
+          percent: mark ? mark.percent : maxScore ? Math.round((p.score / maxScore) * 100) : null,
           rank: rankOf.get(p.id) || null,
           answered,
           unanswered: this.questions.length - answered,
@@ -2083,7 +2101,7 @@ class Session {
           pendingCount: values.filter((a) => a.pending).length,
           bestStreak: p.bestStreak,
           avgSeconds: values.length ? Math.round((totalMs / values.length) / 100) / 10 : 0,
-          mark: this.markFor(p),
+          mark,
           answers: this.questions.map((q) => {
             const a = p.answers.get(q.id);
             if (!a) return null;

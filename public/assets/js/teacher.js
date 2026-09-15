@@ -10,7 +10,7 @@
 (function () {
   'use strict';
 
-  const { $, el, api, toast, copyLink } = window.T;
+  const { $, el, api, toast } = window.T;
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   const tagLabel = (kind, id) => (window.I18n ? window.I18n.tagLabel(kind, id) : id);
   const app = $('#app');
@@ -74,7 +74,7 @@
                 /* أغلق نافذة المشاركة — نُكمل بالنسخ */
               }
             }
-            toast((await copyLink(url)) ? t('tpCopied') : url, 'ok');
+            await window.T.copyNow(url, t('tpCopied'));
           },
         }, t('tpShare')),
         // الروابط بأيقونة منصّتها واسمها — كما تُعرض في بطاقة اللعبة

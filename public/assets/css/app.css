@@ -3876,6 +3876,33 @@ body.screen-body .q-image {
   box-shadow: 0 18px 50px rgb(0 0 0 / 28%);
 }
 
+/* بطاقةُ النسخ اليدويّ: آخر ما يبقى حين يمنع المتصفّح الحافظة.
+   الرابط فيها حقلٌ حقيقي محدَّدٌ كاملاً — لا فقاعةٌ تختفي قبل أن يُلمس. */
+.copy-pop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--scrim);
+}
+
+.copy-card {
+  width: min(420px, 100%);
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 28%);
+}
+
+.copy-card input.link-box {
+  width: 100%;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+}
+
 /* منحة التسجيل — تُرى قبل السعر لا بعده */
 .trial {
   gap: 8px;

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, el, api, toast, copyLink } = window.T;
+  const { $, el, api, toast } = window.T;
   const t = (key, vars) => (window.I18n ? window.I18n.t(key, vars) : key);
   const tagLabel = (kind, id) => (window.I18n ? window.I18n.tagLabel(kind, id) : id);
   const SUBJECTS = (window.I18n && window.I18n.SUBJECTS) || [];
@@ -396,10 +396,9 @@
 
   function shareButton(url, label) {
     const btn = el('button', { class: 'btn ghost sm', type: 'button' }, '🔗 ' + label);
-    btn.addEventListener('click', async (e) => {
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
-      const done = await copyLink(url);
-      toast(done ? t('gLinkCopied') : url, done ? 'ok' : '');
+      window.T.copyNow(url, t('gLinkCopied'));
     });
     return btn;
   }
