@@ -900,7 +900,8 @@
 
     row.append(
       chip(t('shareWhatsapp'), `https://wa.me/?text=${encodeURIComponent(text)}`),
-      chip(t('shareFacebook'), `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`),
+      // `quote` يضع النصّ في صندوق المنشور حيث يحترمه فيسبوك — ولا يضرّ حيث لا يحترمه
+      chip(t('shareFacebook'), `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}${title ? '&quote=' + encodeURIComponent(title) : ''}`),
       chip(t('shareTelegram'), `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title || '')}`),
       chip(t('shareX'), `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title || '')}`)
     );

@@ -344,25 +344,39 @@ test('كتلة CONFIG تعلن حال كل ميزة on/off — والمفاتي�
 
 // ------------------------------------------ الأيدي أولاً، والاسم، والتنويع
 
-test('الرسالة الأولى تسأل عن الصفّ وعن اسم المعلّم في اللعبة — باسمه الحقيقي وفي رسالةٍ واحدة', () => {
+test('الرسالة الأولى سؤالٌ واحد على الأكثر — الصفّ، ولا سؤالَ عن المادّة ولا عن الاسم', () => {
   const p = builder.systemPrompt(builder.readConfig({}), { teacherName: 'أ. سامي', seed: 's1' });
-  assert.match(p, /١\. لأي صفٍّ هذه اللعبة؟/);
+  assert.match(p, /# FIRST MESSAGE — one question at most/);
+  assert.match(p, /«لأي صفٍّ هذه اللعبة؟/);
+  assert.match(p, /If the grade \(or an age\) is already in the message, ask nothing/);
   assert.match(p, /THE GRADE IS ASKED BEFORE BUILDING, NEVER AFTER/, 'الصفّ قرارُ تصميمٍ لا حقلُ تبويب');
   assert.match(p, /NEVER ask the teacher for the subject/, 'والمادة لا تُسأل أصلاً');
-  assert.match(p, /٢\. هل أكتب اسمك في اللعبة — «أ\. سامي» —/, 'الاسم يُعرض جاهزاً من حسابه');
-  assert.match(p, /One message total\. Never a second round of questions/);
-  // وبلا اسمٍ معروف يُطلب منه كتابته لا يُخترع
+  assert.match(p, /NEVER ask whether to write the teacher's name/, 'ولا الاسم');
+  assert.doesNotMatch(p, /هل أكتب اسمك/, 'سؤال الاسم القديم زال');
+});
+
+test('الاسم يُكتب من الحساب بلا سؤال، في موضعين — ولا يُخترع لمن لا اسم له', () => {
+  const p = builder.systemPrompt(builder.readConfig({}), { teacherName: 'ندى' });
+  assert.match(p, /# CREDIT LINE — never asked, always applied/);
+  assert.match(p, /"إعداد: ندى" in exactly TWO places — the bottom of the start\/title screen, and the final result screen/);
+  assert.match(p, /Do not ask the teacher about it/);
+  assert.match(p, /the credit line "إعداد: ندى" is missing from either of its two places/, 'وفي الفحص الصامت');
+
   const anon = builder.systemPrompt(builder.readConfig({}), { seed: 's1' });
-  assert.match(anon, /٢\. هل تريد كتابة اسمك في اللعبة/);
+  assert.match(anon, /No teacher name is on file: write no credit line/);
+  assert.match(anon, /Never invent, guess, or abbreviate a name/);
+  assert.match(anon, /a credit line or any teacher name appears/, 'والفحص الصامت يمنع الاختراع');
   assert.doesNotMatch(anon, /«»/, 'لا قوسين فارغين');
 });
 
-test('الاسم يُكتب في موضعين فقط إن أُريد، ولا يُخترع إن لم يُرَد', () => {
-  const p = builder.systemPrompt(builder.readConfig({}), { teacherName: 'ندى' });
-  assert.match(p, /# CREDIT LINE/);
-  assert.match(p, /exactly TWO places — the bottom of the start\/title screen, and the final result screen/);
-  assert.match(p, /Never invent, guess, or abbreviate a name/);
-  assert.match(p, /credit line is missing when the teacher asked for it, or present when the teacher declined/, 'وفي الفحص الصامت');
+test('الأفكار تُقترح دائماً قبل البناء — ممتعةٌ ومختلفة، ورقمٌ من المعلّم يبني فوراً', () => {
+  const p = builder.systemPrompt(builder.readConfig({ suggestionsCount: 5 }), { seed: 'i1' });
+  assert.match(p, /# IDEAS — the step between the grade and the build/);
+  assert.match(p, /ALWAYS offer SUGGESTIONS_COUNT ideas before building — also when the teacher described a game idea/);
+  assert.match(p, /would a child laugh, gasp, or beg to replay/);
+  assert.match(p, /A number → build that idea immediately, no confirmation/);
+  assert.match(p, /Skip the ideas ONLY when the teacher explicitly asks to build right away/);
+  assert.doesNotMatch(p, /# MODES/, 'لم يعد ثمّة نمطٌ يبني بلا اقتراح');
 });
 
 test('«اقرأ ثم انقر جواباً» ممنوعٌ عموداً للعبة — والفعل الجسديّ أوّل قرار', () => {
@@ -418,6 +432,7 @@ test('التعليمات تُملي بطاقة اللعبة: المادّة من
   const p = builder.systemPrompt(builder.readConfig({}), { seed: 'c1' });
   assert.match(p, /# GAME CARD/);
   for (const name of Object.values(builder.META)) assert.ok(p.includes(name), `الوسم ${name} مذكور`);
+  assert.match(p, /<meta name="description" content="\.\.\."> — ONE Arabic sentence/, 'ووصفٌ للبطاقة والمنشور');
   assert.match(p, /EXACTLY ONE id you choose yourself/, 'المادة يختارها النموذج');
   assert.match(p, new RegExp(`EXACTLY ${builder.KEYWORDS_WANTED} Arabic search keywords`));
   // القوائم تُكتب للنموذج بالرمز والاسم، فلا يخترع رمزاً
@@ -432,6 +447,7 @@ test('البطاقة تُقرأ من رأس الملفّ: الاسم والما�
   const html = [
     '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">',
     '<title>  مطبخ   الكسور </title>',
+    '<meta name="description" content="  يسحب الطفل قطع الكيك إلى الأطباق ليجمع الكسور.  ">',
     '<meta name="tapio:subject" content="math">',
     '<meta name="tapio:grades" content="g4, g5, zz">',
     '<meta name="tapio:keywords" content="الكسور, جمع الكسور, الكسور, مقام مشترك, مطبخ, رياضيات, سادسة">',
@@ -439,6 +455,7 @@ test('البطاقة تُقرأ من رأس الملفّ: الاسم والما�
   ].join('\n');
   const meta = builder.readMeta(html);
   assert.equal(meta.name, 'مطبخ الكسور', 'المسافات تُجمع والأطراف تُقصّ');
+  assert.equal(meta.description, 'يسحب الطفل قطع الكيك إلى الأطباق ليجمع الكسور.');
   assert.equal(meta.subject, 'math', 'ووسمُ الجسد لا يُقرأ — الرأس وحده');
   assert.deepEqual(meta.grades, ['g4', 'g5'], 'ورمزٌ ليس في التصنيف يُطرح');
   assert.deepEqual(meta.keywords, ['الكسور', 'جمع الكسور', 'مقام مشترك', 'مطبخ', 'رياضيات']);
@@ -452,7 +469,7 @@ test('بطاقةٌ ناقصة أو رموزٌ مجهولة لا تُنشر خط�
   assert.deepEqual(meta.keywords, []);
   assert.equal(meta.name, 'لعبة');
   // ولا شيء يُخترع من ملفٍّ بلا رأس
-  assert.deepEqual(builder.readMeta(''), { name: '', subject: '', grades: [], keywords: [] });
+  assert.deepEqual(builder.readMeta(''), { name: '', description: '', subject: '', grades: [], keywords: [] });
 });
 
 test('chat يعيد البطاقة مع الملفّ، ولا بطاقة حين لا ملفّ', async () => {

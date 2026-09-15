@@ -15,16 +15,16 @@
    *     `allow-same-origin` — أصلُها مبهم فلا تمسّ حساب المعلّم ولا تخزينه —
    *     وهو العزلُ نفسه الذي تُقدَّم به الألعاب المنشورة.
    *
-   *  ٣) **النشر خطوةٌ يقرّرها هو.** بعد أن تعجبه: «هل تدرجها في قسم ألعابك؟»
-   *     فإن أراد، وُلّدت الصورة المصغّرة ونُشرت اللعبة وظهر رابطها.
+   *  ٣) **النشر ضغطةٌ واحدة بلا أسئلة.** الصفُّ سُئل عنه قبل البناء، والاسمُ
+   *     والمادّةُ والوصفُ وكلماتُ البحث كتبها المساعد في رأس الملفّ. فبعد أن
+   *     تعجبه: «انشر» — تُرسم الصورة المصغّرة وتُنشر ويظهر رابطها ومنشورُها.
    *
    * والمفتاح لا يمرّ من هنا إطلاقاً — الصفحة تنادي خادمنا وحده.
    */
 
-  const { el, api, toast, fitCover, gradeChips } = global.T;
+  const { el, api, toast, fitCover } = global.T;
   const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
   const tagLabel = (kind, id) => (global.I18n ? global.I18n.tagLabel(kind, id) : id);
-  const SUBJECTS = (global.I18n && global.I18n.SUBJECTS) || [];
 
   const SETTINGS_KEY = 'tapio:gameAi:config';
   /**
@@ -149,8 +149,9 @@
       elapsed: 0,
       html: '',
       truncated: false,
-      // بطاقةُ اللعبة كما كتبها المساعد: الاسم والمادّة والصفوف والكلمات
+      // بطاقةُ اللعبة كما كتبها المساعد: الاسم والوصف والمادّة والصفوف والكلمات
       meta: null,
+      cover: '', // الصورة المصغّرة بعد رسمها — لا تُرسم مرّتين للعبةٍ واحدة
       published: null,
       config: readSettings(),
       quota: quota || null,
@@ -361,15 +362,18 @@
       ]);
       box.append(gameFrame(), hud);
 
-      const approve = el('button', { class: 'btn accent grow', type: 'button' }, t('gbApprove'));
-      approve.addEventListener('click', () => {
-        // ضغطةٌ ثانية تنزل إلى البطاقة القائمة ولا تبني ثانيةً فوقها:
-        // بطاقتا نشرٍ للعبةٍ واحدة تعني رفعها مرّتين — ورسمَ صورتها مرّتين
-        const open = stage.querySelector('[data-publish]');
-        const card = open || stage.appendChild(publishCard());
-        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
+      /*
+       * زرٌّ واحد: «انشر». لا استمارة بعده ولا بطاقةَ اعتماد — الاسمُ والمادّة
+       * والصفُّ والوصفُ والكلمات كلُّها في رأس الملفّ كتبها المساعد، والصفُّ
+       * سُئل عنه المعلّم قبل البناء. فما يبقى للمعلّم قرارٌ واحد: أعجبتني أم لا.
+       */
+      const publish = el('button', { class: 'btn accent grow', type: 'button' }, t('gbPublishNow'));
       const tweak = el('button', { class: 'btn ghost', type: 'button' }, t('gbTweak'));
+      const actions = el('div', { class: 'row', style: { gap: '6px' } }, [publish, tweak]);
+      const progress = el('div', { class: 'stack tight' });
+      const done = el('div', { class: 'stack' });
+
+      publish.addEventListener('click', () => publishNow({ publish, tweak, actions, progress, done }));
       tweak.addEventListener('click', () => {
         input.placeholder = t('gbTweakHint');
         input.focus();
@@ -384,226 +388,161 @@
         el('p', { class: 'muted small', style: { margin: 0 }, text: t('gbReadyBody') }),
         state.truncated ? el('div', { class: 'note warn small' }, t('gbTruncated')) : null,
         box,
-        el('div', { class: 'row', style: { gap: '6px' } }, [approve, tweak]),
-      ]);
-    }
-
-    // ------------------------------------------------- بطاقة اللعبة والنشر
-
-    /**
-     * بطاقةُ الاعتماد — ما يراه المعلّم بعد أن جرّب لعبته وأعجبته.
-     *
-     * كانت هنا استمارة: اكتب الاسم، واختر المادّة، وحدّد الصفوف، ثم انشر. وهي
-     * أسئلةٌ يعرف المساعد جوابها كلَّه: الصفَّ سأل عنه قبل أن يبني، والمادّةَ
-     * قرأها من الدرس، والاسمَ سمّى به اللعبة. فصار الأصل عرضاً لا استفهاماً:
-     * اسمُ اللعبة وصورتُها المصغّرة وصفُّها ومادّتُها وكلماتُها — وزرُّ موافقة.
-     *
-     * والصورة تُرسم الآن لا عند الضغط: هي جزءٌ من البطاقة التي يوافق عليها،
-     * ولا معنى لأن يوافق على صورةٍ لم يرها.
-     *
-     * وما يبقى قابلاً للتعديل يبقى — مطويّاً في «تعديل التفاصيل»: المساعد قد
-     * يخطئ في المادّة أو يسمّي اللعبة اسماً لا يحبّه المعلّم، والبطاقةُ بلا
-     * مخرجٍ من خطئها تصير سجناً أنيقاً.
-     */
-    function publishCard() {
-      const meta = state.meta || {};
-      const title = el('input', {
-        maxlength: 120,
-        placeholder: t('gFormTitlePlaceholder'),
-        value: meta.name || titleFromHtml(state.html),
-      });
-      const subject = el('select', {}, [
-        el('option', { value: '', text: t('gFormPickSubject') }),
-        ...SUBJECTS.map((id) => el('option', { value: id, text: tagLabel('subj', id) })),
-      ]);
-      if (meta.subject && SUBJECTS.includes(meta.subject)) subject.value = meta.subject;
-      const grades = gradeChips(meta.grades);
-      const description = el('input', { maxlength: 300, placeholder: t('gFormDescPlaceholder') });
-      const offlineOk = el('input', { type: 'checkbox' });
-      offlineOk.checked = true;
-
-      const keywords = Array.isArray(meta.keywords) ? meta.keywords : [];
-
-      const note = el('div', { class: 'muted small' });
-      const cover = el('div', { class: 'cover-preview' });
-      const done = el('div', { class: 'stack' });
-      const publish = el('button', { class: 'btn accent grow', type: 'button' }, t('gbPublishYes'));
-      const later = el('button', { class: 'btn ghost', type: 'button' }, t('gbPublishLater'));
-      const actions = el('div', { class: 'row', style: { gap: '6px' } }, [publish, later]);
-
-      /** سطرُ التصنيف: المادّة والصفوف كما هما الآن — يُعاد رسمه مع كل تعديل */
-      const tags = el('div', { class: 'row wrap', style: { gap: '6px' } });
-      function paintTags() {
-        const chosen = grades.value();
-        tags.replaceChildren(
-          el('span', { class: 'badge', text: t('gbCardSubject', { subject: subject.value ? tagLabel('subj', subject.value) : t('gbCardNoSubject') }) }),
-          el('span', {
-            class: 'badge',
-            text: t('gbCardGrades', { grades: chosen.length ? chosen.map((id) => tagLabel('grade', id)).join('، ') : t('gAllStages') }),
-          })
-        );
-      }
-      paintTags();
-
-      /**
-       * صورةُ اللعبة. تُرسم مرّةً عند فتح البطاقة، وتُعاد بضغطةٍ إن فشلت —
-       * والنشر موقوفٌ حتى تصل، فالخادم لا يقبل لعبةً بلا صورة.
-       */
-      let image = '';
-      let drawing = false;
-      let drawnFor = '';
-      /**
-       * اسمُ اللعبة مرسومٌ **داخل** الصورة، فتبديلُه بعد الرسم يترك صورةً
-       * تحمل اسماً غير اسمها. لا نعيد الرسم من تلقائنا — نداءٌ غالٍ لا يُنفق
-       * بلا طلب — بل نقول ما جرى ونترك الزرّ لمن أراد.
-       */
-      const stale = el('div', { class: 'stack tight', hidden: true });
-      const redraw = el('button', { class: 'btn ghost sm', type: 'button' }, t('gbCoverRetry'));
-      redraw.addEventListener('click', drawCover);
-      stale.append(el('span', { class: 'muted small', text: t('gbCoverStale') }), redraw);
-      const checkStale = () => {
-        stale.hidden = !image || title.value.trim() === drawnFor;
-      };
-      title.addEventListener('input', checkStale);
-
-      async function drawCover() {
-        if (drawing) return;
-        drawing = true;
-        publish.disabled = true;
-        cover.replaceChildren(el('div', { class: 'row', style: { gap: '8px' } }, [el('span', { class: 'spinner sm' }), el('span', { class: 'muted small', text: t('gbCoverWorking') })]));
-        // الرسم مهمّةٌ قد تبلغ دقيقتين — عدّادٌ يقول إنّها تجري ولم تتعطّل
-        const startedAt = Date.now();
-        note.textContent = '';
-        const ticker = setInterval(() => {
-          note.textContent = t('gFormShotElapsed', { n: Math.round((Date.now() - startedAt) / 1000) });
-        }, 1000);
-        try {
-          const drawn = await api('/api/games/cover', {
-            method: 'POST',
-            body: { html: state.html, title: title.value, subject: subject.value, grades: grades.value() },
-          });
-          const shrunk = await fitCover(drawn.image);
-          if (!alive()) return;
-          image = shrunk;
-          if (!title.value.trim() && drawn.name) title.value = drawn.name;
-          drawnFor = title.value.trim();
-          cover.replaceChildren(el('img', { src: image, alt: t('gFormShot') }));
-          note.textContent = '';
-          publish.disabled = false;
-          checkStale();
-        } catch (err) {
-          if (!alive()) return;
-          const again = el('button', { class: 'btn ghost sm', type: 'button' }, t('gbCoverRetry'));
-          again.addEventListener('click', drawCover);
-          cover.replaceChildren(el('div', { class: 'stack tight' }, [el('span', { class: 'small', text: err.message }), again]));
-          note.textContent = t('gbCoverFailed');
-          stale.hidden = true;
-        } finally {
-          clearInterval(ticker);
-          drawing = false;
-        }
-      }
-
-      later.addEventListener('click', () => card.remove());
-
-      publish.addEventListener('click', async () => {
-        if (!title.value.trim()) {
-          title.focus();
-          return toast(t('gbNeedTitle'), 'bad');
-        }
-        if (!image) return toast(t('gbCoverFailed'), 'bad');
-        publish.disabled = true;
-        later.disabled = true;
-        note.textContent = t('gbPublishing');
-
-        try {
-          const res = await api('/api/games', {
-            method: 'POST',
-            body: {
-              title: title.value,
-              subject: subject.value,
-              description: description.value,
-              grades: grades.value(),
-              keywords,
-              cover: image,
-              offlineOk: offlineOk.checked,
-              html: state.html,
-            },
-          });
-          if (!alive()) return;
-          state.published = res.game;
-          note.textContent = '';
-          actions.remove();
-          done.append(publishedBox(res.game));
-          toast(t('gUploaded', { title: res.game.title }), 'ok');
-        } catch (err) {
-          note.textContent = err.message;
-          publish.disabled = false;
-          later.disabled = false;
-        }
-      });
-
-      const details = el('details', { class: 'stack tight' });
-      details.append(
-        el('summary', {}, [el('span', { class: 'small', text: t('gbCardEdit') })]),
-        el('div', { class: 'stack' }, [
-          el('label', {}, [el('span', { class: 'small', text: t('gFormSubject') }), subject]),
-          el('div', { class: 'stack tight' }, [
-            el('span', { class: 'small' }, [t('gFormGrades'), ' ', global.T.hintDot(t('gFormGradesHint'))]),
-            grades.node,
-          ]),
-          el('label', {}, [el('span', { class: 'small', text: t('gFormDesc') }), description]),
-          el('label', { class: 'row', style: { gap: '8px', alignItems: 'flex-start', flexWrap: 'nowrap' } }, [
-            offlineOk,
-            el('span', { class: 'small grow' }, [el('strong', {}, [t('gFormOffline'), ' ', global.T.hintDot(t('gFormOfflineHint'))])]),
-          ]),
-        ])
-      );
-      // لا خطّاف تغييرٍ في منتقي الصفوف: نسمع الضغط والتغيير من الغلاف نفسه
-      details.addEventListener('click', paintTags);
-      details.addEventListener('change', paintTags);
-
-      const card = el('div', { class: 'card stack', 'data-publish': '1' }, [
-        el('h2', { style: { margin: 0 }, text: t('gbCardTitleHead') }),
-        el('p', { class: 'muted small', style: { margin: 0 }, text: t('gbPublishBody') }),
-        cover,
-        el('label', {}, [el('span', { class: 'small', text: t('gFormName') }), title]),
-        stale,
-        tags,
-        keywords.length
-          ? el('div', { class: 'stack tight' }, [
-              el('span', { class: 'muted small', text: t('gbCardKeywords') }),
-              el('div', { class: 'row wrap', style: { gap: '6px' } }, keywords.map((word) => el('span', { class: 'chip', text: word }))),
-            ])
-          : null,
-        details,
         actions,
-        note,
+        progress,
         done,
-        el('p', { class: 'muted small', style: { margin: 0 }, text: t('gFormSafety') }),
       ]);
-      drawCover();
-      return card;
+    }
+
+    // -------------------------------------------------------------- النشر
+
+    /**
+     * النشر بضغطةٍ واحدة: تُرسم الصورة المصغّرة، ثم تُنشر اللعبة، ثم يظهر
+     * صندوقُ المشاركة. لا سؤالَ في الطريق.
+     *
+     * ما يُرسل مع اللعبة كلُّه من بطاقتها (`state.meta`) التي كتبها المساعد في
+     * رأس الملفّ. وإن نسي الاسم أخذناه من `<title>` ثم ممّا استنتجه راسمُ
+     * الغلاف — فالخادم لا يقبل لعبةً بلا اسم، والمعلّم لا يُسأل عنه.
+     *
+     * والفشل يوقف عند خطوته ويعرض زرَّ إعادة: صورةٌ لم تُرسم لا تُعيد البناء،
+     * ونشرٌ رُدّ لا يُعيد الرسم.
+     */
+    async function publishNow(ui) {
+      const { publish, tweak, progress, actions, done } = ui;
+      const meta = state.meta || {};
+      publish.disabled = true;
+      tweak.disabled = true;
+
+      const say = (text) => progress.replaceChildren(el('div', { class: 'row', style: { gap: '8px' } }, [el('span', { class: 'spinner sm' }), el('span', { class: 'muted small', text })]));
+      const fail = (message, again) => {
+        const retry = el('button', { class: 'btn ghost sm', type: 'button' }, t('gbRetry'));
+        retry.addEventListener('click', again);
+        progress.replaceChildren(el('div', { class: 'note warn stack tight' }, [el('span', { class: 'small', text: message }), retry]));
+        publish.disabled = false;
+        tweak.disabled = false;
+      };
+
+      let title = String(meta.name || titleFromHtml(state.html) || '').trim();
+      const subject = meta.subject || '';
+      const grades = Array.isArray(meta.grades) ? meta.grades : [];
+
+      // ١) الصورة — رسمٌ قد يبلغ دقيقتين، وعدّادٌ يقول إنه يجري
+      if (!state.cover) {
+        const startedAt = Date.now();
+        say(t('gbCoverWorking'));
+        const ticker = setInterval(() => say(t('gFormShotElapsed', { n: Math.round((Date.now() - startedAt) / 1000) })), 1000);
+        try {
+          const drawn = await api('/api/games/cover', { method: 'POST', body: { html: state.html, title, subject, grades } });
+          const image = await fitCover(drawn.image);
+          if (!alive()) return;
+          state.cover = image;
+          if (!title && drawn.name) title = drawn.name;
+        } catch (err) {
+          clearInterval(ticker);
+          if (!alive()) return;
+          return fail(err.message, () => publishNow(ui));
+        }
+        clearInterval(ticker);
+      }
+      if (!title) title = t('gbUntitled');
+
+      // ٢) النشر
+      say(t('gbPublishing'));
+      let game;
+      try {
+        const res = await api('/api/games', {
+          method: 'POST',
+          body: {
+            title,
+            subject,
+            grades,
+            description: meta.description || '',
+            keywords: Array.isArray(meta.keywords) ? meta.keywords : [],
+            cover: state.cover,
+            offlineOk: true,
+            html: state.html,
+          },
+        });
+        game = res.game;
+      } catch (err) {
+        if (!alive()) return;
+        return fail(err.message, () => publishNow(ui));
+      }
+      if (!alive()) return;
+
+      // ٣) الصندوق
+      state.published = game;
+      progress.replaceChildren();
+      actions.remove();
+      done.append(publishedBox(game));
+      done.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast(t('gUploaded', { title: game.title }), 'ok');
     }
 
     /**
-     * ما بعد النشر: الرابط وفتحُه — ثم مشاركتُه.
+     * نصُّ المنشور — جاهزٌ لفيسبوك والمجموعات: ما اللعبة، لمن، من أعدّها،
+     * وأين تُلعب. الرابط في آخره لأن فيسبوك وواتساب يُظهران له الصورةَ
+     * المصغّرة والاسم (صفحة المشاركة `/g/:id` تحمل وسوم OG).
+     */
+    function postText(game, link) {
+      const subject = game.subject ? tagLabel('subj', game.subject) : '';
+      const grades = (game.grades || []).map((g) => tagLabel('grade', g)).join('، ');
+      const lines = [
+        t('gbPostHead', { title: game.title }),
+        game.description ? game.description : null,
+        subject || grades ? t('gbPostTags', { subject: subject || t('gbCardNoSubject'), grades: grades || t('gAllStages') }) : null,
+        game.author ? t('gbPostBy', { name: game.author }) : null,
+        '',
+        t('gbPostPlay'),
+        link,
+      ];
+      return lines.filter((line) => line !== null).join('\n');
+    }
+
+    /**
+     * ما بعد النشر: الصورة، والرابطان (اللعبة وصفحة ألعاب المعلّم)، ونصُّ
+     * المنشور مع أزرار مشاركته.
      *
      * هذه اللحظة هي أعلى ما يكون حماسُ المعلّم للعبته: بناها للتوّ ورآها
-     * تعمل. فإن لم يجد طريق المشاركة هنا لم يبحث عنه لاحقاً. والرابط رابطُ
-     * الخادم (`/g/<id>`) كي تظهر معه الصورة والاسم في واتساب.
+     * تعمل. فإن لم يجد طريق المشاركة هنا لم يبحث عنه لاحقاً.
      */
     function publishedBox(game) {
       const link = window.T.gameShareUrl(game.id);
-      return el('div', { class: 'note ok stack tight' }, [
+      const shelf = location.origin + '/games.html#/t/' + game.authorId;
+      const text = postText(game, link);
+
+      const post = el('textarea', { class: 'chat-input', rows: 7, readonly: true, 'aria-label': t('gbPostTitle') });
+      post.value = text;
+      const copyPost = el('button', { class: 'btn primary sm', type: 'button' }, t('gbPostCopy'));
+      copyPost.addEventListener('click', async () => {
+        const ok = await window.T.copyLink(text);
+        toast(ok ? t('gbPostCopied') : t('gbPostCopyFail'), ok ? 'ok' : 'bad');
+      });
+
+      return el('div', { class: 'note ok stack' }, [
         el('strong', { text: t('gbPublishedTitle', { title: game.title }) }),
-        el('div', { class: 'row', style: { gap: '6px' } }, [
-          el('code', { class: 'grow link-box', text: link }),
-          el('a', { class: 'btn primary sm', href: '/games.html#/g/' + game.id, target: '_blank', rel: 'noopener' }, t('gOpen')),
+        state.cover ? el('div', { class: 'cover-preview' }, [el('img', { src: state.cover, alt: game.title })]) : null,
+        el('div', { class: 'stack tight' }, [
+          el('span', { class: 'small', text: t('gbLinkGame') }),
+          el('div', { class: 'row', style: { gap: '6px' } }, [
+            el('code', { class: 'grow link-box', text: link }),
+            el('a', { class: 'btn primary sm', href: '/games.html#/g/' + game.id, target: '_blank', rel: 'noopener' }, t('gOpen')),
+          ]),
         ]),
-        el('span', { class: 'muted small', text: t('gShareNote') }),
-        window.T.shareBox(link, game.title),
-        el('a', { class: 'btn ghost sm', href: '#/games' }, t('gMine')),
+        el('div', { class: 'stack tight' }, [
+          el('span', { class: 'small', text: t('gbLinkShelf') }),
+          el('div', { class: 'row', style: { gap: '6px' } }, [
+            el('code', { class: 'grow link-box', text: shelf }),
+            el('a', { class: 'btn ghost sm', href: shelf, target: '_blank', rel: 'noopener' }, t('gMine')),
+          ]),
+        ]),
+        el('div', { class: 'stack tight' }, [
+          el('strong', { class: 'small', text: t('gbPostTitle') }),
+          el('span', { class: 'muted small', text: t('gbPostNote') }),
+          post,
+          el('div', { class: 'row', style: { gap: '6px' } }, [copyPost]),
+          window.T.shareBox(link, text.replace('\n' + link, '')),
+        ]),
       ]);
     }
 
@@ -674,6 +613,7 @@
           state.html = data.html;
           state.truncated = Boolean(data.truncated);
           state.meta = data.meta || null;
+          state.cover = '';
           // لعبةٌ جديدة تُبطل معاينةً سابقة وبطاقةَ نشرٍ لم تُستعمل
           stage.replaceChildren(previewCard());
         }
@@ -736,6 +676,7 @@
       state.html = '';
       state.truncated = false;
       state.meta = null;
+      state.cover = '';
       state.published = null;
       stage.replaceChildren();
       drawThread();
