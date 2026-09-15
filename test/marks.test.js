@@ -419,3 +419,49 @@ test('احتساب السرعة يتبع النافذة الفعلية لا حق
   // ٨٠٪ من الوقت باقٍ ⇒ 0.5 + 0.5×0.8 = 0.9 من النقاط
   assert.ok(p.score > 850 && p.score < 950, 'النقاط تُحسب على ١٠٠ ثانية لا على ١٠: ' + p.score);
 });
+
+// -------------------------------------------- التقرير: علاماتٌ بلا نقاط
+
+test('تقريرُ نشاطٍ بالعلامات يحمل نظامه ونصيبَ كل سؤال، ونسبتُه من العلامة لا من النقاط', () => {
+  const s = new Session('000601', {
+    title: 'اختبار الكسور',
+    // السرعة تُكافأ في النقاط: بها تفترق نسبةُ النقاط عن نسبة العلامة
+    settings: settings({ reward: 'marks', totalMark: 20, scoring: 'speed', pace: 'host' }),
+    questions: [MC(1), MC(2)],
+  });
+  const p = s.addParticipant({ name: 'سارة' });
+  s.start();
+  s.goTo(0);
+  s.submitAnswer(p, s.questions[0].id, 'a');
+  s.goTo(1);
+  s.submitAnswer(p, s.questions[1].id, 'b');
+
+  const out = s.export();
+  assert.equal(out.settings.reward, 'marks', 'التقرير يعرف نظامه — به يُقرّر إخفاء النقاط');
+  assert.equal(out.totalMark, 20);
+  assert.deepEqual(out.questions.map((q) => q.markShare), [10, 10], 'نصيب كل سؤال من العلامة');
+
+  const row = out.participants[0];
+  assert.equal(row.mark.mark, 10, 'أصاب واحداً من اثنين = نصف العلامة');
+  assert.equal(row.percent, 50, 'والنسبة من العلامة لا من النقاط');
+  assert.equal(row.percent, row.mark.percent, 'نسبةُ الصفّ في التقرير هي نسبةُ العلامة نفسها');
+});
+
+test('تقريرُ نشاطٍ بالنقاط يبقى كما كان: نظامه نقاط ولا نصيبَ علامةٍ فيه', () => {
+  const s = new Session('000602', {
+    title: 'مسابقة',
+    settings: settings({ reward: 'points', scoring: 'flat', pace: 'host' }),
+    questions: [MC(1), MC(2)],
+  });
+  const p = s.addParticipant({ name: 'ليان' });
+  s.start();
+  s.goTo(0);
+  s.submitAnswer(p, s.questions[0].id, 'a');
+
+  const out = s.export();
+  assert.equal(out.settings.reward, 'points');
+  assert.equal(out.totalMark, 0);
+  assert.deepEqual(out.questions.map((q) => q.markShare), [0, 0]);
+  assert.equal(out.participants[0].mark, null, 'لا علامة في وضع النقاط');
+  assert.equal(out.participants[0].percent, 50, 'والنسبة من النقاط كما كانت');
+});

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { $, firstName: baseFirstName, userName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, copyLink, fitCover, gradeChips } =
+  const { $, firstName: baseFirstName, userName, el, avatarNode, toast, api, connect, store, TYPE_LABELS, TYPE_EMOJI, fmtMs, fmtLeft, countdownTo, serverAlive, showOfflineBanner, shrinkImage, fitCover, gradeChips } =
     window.T;
   const Fx = window.Fx;
   // اختصار الترجمة — إن غاب المحرّك نعرض المفتاح بدل الانهيار
@@ -951,9 +951,8 @@
   function pinChip(pin) {
     const chip = el('button', { class: 'chip pin', type: 'button', title: pin, text: pin });
     chip.style.direction = 'ltr';
-    chip.addEventListener('click', () => {
-      navigator.clipboard?.writeText(pin).then(() => toast(t('hRecCopied'), 'ok')).catch(() => {});
-    });
+    // النسخ بكل الطرق لا بالحافظة وحدها: رمزٌ لم يُنسخ صامتاً يُملى بالخطأ
+    chip.addEventListener('click', () => window.T.copyNow(pin, t('hRecCopied')));
     return chip;
   }
 
@@ -1541,10 +1540,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('a', { class: 'btn ghost sm', href: publicUrl, target: '_blank', rel: 'noopener' }, t('bkOpenPage')),
           el('button', {
             class: 'btn ghost sm', type: 'button',
-            onclick: async () => {
-              await copyLink(publicUrl);
-              toast(t('bkCopied'), 'ok');
-            },
+            onclick: () => window.T.copyNow(publicUrl, t('bkCopied')),
           }, t('bkCopyPage')),
           el('a', { class: 'btn ghost sm', href: '#/profile' }, t('bkEditProfile')),
         ]),
@@ -1914,10 +1910,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             item.link === 'open'
               ? el('button', {
                   class: 'btn ghost sm', type: 'button',
-                  onclick: async () => {
-                    await copyLink(hwLink(item.code));
-                    toast(t('hwCopied'), 'ok');
-                  },
+                  onclick: () => window.T.copyNow(hwLink(item.code), t('hwCopied')),
                 }, t('hwCopy'))
               : null,
           ]),
@@ -2121,10 +2114,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           data.link === 'open'
             ? el('button', {
                 class: 'btn primary sm', type: 'button',
-                onclick: async () => {
-                  await copyLink(hwLink(item.code));
-                  toast(t('hwCopied'), 'ok');
-                },
+                onclick: () => window.T.copyNow(hwLink(item.code), t('hwCopied')),
               }, t('hwCopy'))
             : null,
           data.link === 'open'
@@ -2940,10 +2930,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
   /** زرّ «انسخ الرابط» — يخبرك أنّه نسخ فعلاً لا أنّه حاول */
   function shareButton(url, label) {
     const btn = el('button', { class: 'btn ghost sm', type: 'button' }, '🔗 ' + label);
-    btn.addEventListener('click', async () => {
-      const done = await copyLink(url);
-      toast(done ? t('gLinkCopied') : url, done ? 'ok' : '');
-    });
+    btn.addEventListener('click', () => window.T.copyNow(url, t('gLinkCopied')));
     return btn;
   }
 
@@ -4426,10 +4413,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       el('span', { class: 'pay-wallet__no', dir: 'ltr', text: pay.wallet }),
       el('button', { class: 'btn ghost sm', type: 'button' }, t('payCopyWallet')),
     ]);
-    walletRow.lastChild.addEventListener('click', async () => {
-      const done = await window.T.copyLink(pay.wallet);
-      toast(done ? t('payCopied') : pay.wallet, done ? 'ok' : '');
-    });
+    walletRow.lastChild.addEventListener('click', () => window.T.copyNow(pay.wallet, t('payCopied')));
 
     /*
      * الرسالة تحمل بريد الحساب **واسم الباقة**: بها يعرف المفعّل أيّ حساب
@@ -5414,9 +5398,16 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
 
   function joinInfo(s) {
     const url = state.joinUrl || `${location.origin}/j/${state.code}`;
+    /*
+     * الرابط يُعرض **كاملاً** لا منزوعَ البروتوكول.
+     *
+     * كان يُعرض مختصراً «tapio.fun/j/123456» ويُنسخ كاملاً، فمن حدّده بإصبعه
+     * — وهذا ما يفعله كثيرون على الجوال بدل زرّ النسخ — أرسل إلى صفّه رابطاً
+     * ناقصاً. وما يُعرض هو ما يُنسخ: قاعدةٌ لا استثناء لها.
+     */
     return el('div', { class: 'stack center' }, [
       el('p', { class: 'muted small', style: { margin: 0 }, text: t('hopenThisAddressIn') }),
-      el('div', { style: { direction: 'ltr', fontWeight: '700' }, text: url.replace(/^https?:\/\//, '') }),
+      el('div', { class: 'link-box', style: { fontWeight: '700', fontSize: '0.95rem' }, text: url }),
       el('div', { class: 'row', style: { justifyContent: 'center' } }, [
         el('button', { class: 'btn sm', type: 'button', onclick: () => copy(url) }, t('hcopyLink')),
         el('button', { class: 'btn sm ghost', type: 'button', onclick: () => share(url, s.title) }, t('hshare2')),
@@ -6431,13 +6422,16 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     }
   }
 
-  async function copy(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast(t('hlinkCopied'), 'ok');
-    } catch {
-      toast(text);
-    }
+  /**
+   * النسخ من شاشة الجلسة.
+   *
+   * كان ينادي الحافظة مباشرةً، فإن مُنعت (تبويبٌ غير مركَّز، متصفّحٌ داخل
+   * تطبيق، هاتفٌ لا يسمح إلا بالبديل) اكتفى بعرض الرابط في فقاعةٍ تختفي بعد
+   * ثانيتين — فيظنّ المعلّم أنه نسخ، ويلصق ما كان في حافظته من قبل. الآن:
+   * نسخٌ بكل الطرق، ثم بطاقةٌ فيها الرابط محدَّداً إن فشلت كلّها.
+   */
+  function copy(text) {
+    return window.T.copyNow(text, t('hlinkCopied'));
   }
 
   function share(url, title) {

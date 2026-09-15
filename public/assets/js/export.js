@@ -192,6 +192,23 @@
     blank: 'typeBlank',
   };
 
+  /**
+   * نظام مكافأة النشاط — ومنه وحده يُقرَّر ما يظهر في التقرير.
+   *
+   * ثلاثة أنظمة يختار المعلّم بينها قبل الإطلاق: نقاطٌ ومنافسة، أو علاماتٌ
+   * للدفتر، أو لا هذا ولا ذاك. وكان التقرير يطبع النقاط في الأنظمة الثلاثة،
+   * فيجد من صحّح بالعلامات عمودَ «نقاط» إلى جانب علامة طالبه — رقمٌ ثانٍ لا
+   * يعرف ما هو ولا كيف يشرحه لوليّ أمر، ويخالف العلامة لأن فيه مكافأة السرعة.
+   *
+   * وتقاريرُ نشاطاتٍ قديمة لا تحمل الحقل: نستنتجه كما يستنتجه الخادم —
+   * علامةٌ كاملة مذكورة تعني نظام العلامات.
+   */
+  const rewardOf = (data) => data.settings?.reward || ((data.totalMark || 0) > 0 ? 'marks' : 'points');
+  /** هل تُطبع النقاط؟ في العلامات و«بلا» هي رقمٌ داخليّ لا يخرج إلى ورقة */
+  const showsPoints = (data) => rewardOf(data) === 'points';
+  /** وهل تُطبع العلامات؟ */
+  const showsMarks = (data) => (data.totalMark || 0) > 0;
+
   /** ورقة التعريف الأساسية: كل ما يسأل عنه المعلّم قبل أن ينظر في الدرجات */
   function infoRows(data) {
     const started = new Date(data.startedAt || data.exportedAt);
@@ -206,10 +223,12 @@
       [t('xDurationMin'), data.durationMinutes || 1],
       [t('xStudentCount'), data.participantCount ?? (data.participants || []).length],
       [t('xQuestionCount'), data.questionCount ?? (data.questions || []).length],
-      [t('xMaxScore'), data.maxScore || 0],
-      ...((data.totalMark || 0) > 0 ? [[t('mTotalMarkRow'), `${data.totalMark} (${t('mPassAt', { pct: data.passPercent })})`]] : []),
+      ...(showsPoints(data) ? [[t('xMaxScore'), data.maxScore || 0]] : []),
+      ...(showsMarks(data) ? [[t('mTotalMarkRow'), `${data.totalMark} (${t('mPassAt', { pct: data.passPercent })})`]] : []),
       [t('xPaceLabel'), (PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—')],
-      [t('xScoringLabel'), (SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—')],
+      ...(showsPoints(data)
+        ? [[t('xScoringLabel'), SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—']]
+        : []),
       [t('xExportedAt'), new Date(data.exportedAt).toLocaleString(loc())],
     ];
   }
@@ -217,11 +236,13 @@
   /** جدول علامات الطلاب مرتبين تنازلياً — يُستخدم في الملفين الكامل والمختصر */
   function peopleRows(participants, data) {
     // عمودا العلامة والتقدير يظهران فقط حين فعّل المعلّم نظام العلامات
-    const marked = (data.totalMark || 0) > 0;
+    const marked = showsMarks(data);
+    const points = showsPoints(data);
     const people = [
       [t('xRank'), t('aStudent'), t('xTeam'),
         ...(marked ? [t('mMarkOf', { of: data.totalMark }), t('mBandCol'), t('mResultCol')] : []),
-        t('aScore'), t('xMaxScore'), t('xPctCol'), t('xAnswered'), t('xUnanswered'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xPendingCol'), t('xBestStreak'), t('xAvgSecCol')],
+        ...(points ? [t('aScore'), t('xMaxScore')] : []),
+        t('xPctCol'), t('xAnswered'), t('xUnanswered'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xPendingCol'), t('xBestStreak'), t('xAvgSecCol')],
     ];
     participants.forEach((p, i) => {
       people.push([
@@ -229,8 +250,7 @@
         p.name,
         p.team || '—',
         ...(marked ? [p.mark ? p.mark.mark : '—', p.mark ? t(BAND_KEYS[p.mark.band] || 'mBandFair') : '—', p.mark ? t(p.mark.passed ? 'mPassed' : 'mFailed') : '—'] : []),
-        p.score,
-        p.maxScore ?? data.maxScore ?? 0,
+        ...(points ? [p.score, p.maxScore ?? data.maxScore ?? 0] : []),
         p.percent === null || p.percent === undefined ? '—' : p.percent,
         p.answered ?? 0,
         p.unanswered ?? 0,
@@ -245,10 +265,32 @@
     return people;
   }
 
+  /** عنوان عمود وزن السؤال: علامته، أو نقاطه، أو لا عمود له */
+  function questionWeightHead(data) {
+    if (showsMarks(data)) return t('mQuestionMarkCol');
+    return showsPoints(data) ? t('xPointsCol') : '';
+  }
+
+  /** ووزنُه نفسه بالقيمة التي تعني شيئاً للمعلّم */
+  function questionWeight(q, data) {
+    if (showsMarks(data)) return q.markShare || 0;
+    return q.maxPoints || 0;
+  }
+
+  /**
+   * ترتيب الطلاب في التقرير: بالعلامة حين تكون هي نظام النشاط، وإلا بالنقاط.
+   * وبلا هذا كان جدول العلامات مرتَّباً بالنقاط — فيسبق صاحبُ ٧ صاحبَ ٩ لأنه
+   * أجاب أسرع، ويقرأ وليّ الأمر ترتيباً يخالف العلامات التي أمامه.
+   */
+  function rankSort(data) {
+    if (showsMarks(data)) return (a, b) => (b.mark?.mark ?? -1) - (a.mark?.mark ?? -1) || (b.percent ?? -1) - (a.percent ?? -1);
+    return (a, b) => (b.score || 0) - (a.score || 0);
+  }
+
   /** يحوّل مخرجات /api/sessions/:code/export إلى أوراق جاهزة */
   function buildSheets(data) {
     const questions = data.questions || [];
-    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const participants = (data.participants || []).slice().sort(rankSort(data));
     const analysis = global.Analytics ? global.Analytics.compute(data) : null;
 
     const info = infoRows(data);
@@ -270,8 +312,11 @@
     const people = peopleRows(participants, data);
 
     // عمود المهارة بعد النوع: به يُصفّى الجدول في Excel فيُقرأ أداءُ مهارةٍ بعينها
+    // وعمود الدرجة يتبع نظام النشاط: علامةُ السؤال، أو نقاطه، أو لا عمود أصلاً
     const qRows = [
-      ['#', t('xType'), t('bSkillLabel'), t('xQuestion'), t('xOptions'), t('xCorrectAnswer'), t('xScoreCol'), t('xResponses'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xAccuracyCol'), t('xAvgSecCol')],
+      ['#', t('xType'), t('bSkillLabel'), t('xQuestion'), t('xOptions'), t('xCorrectAnswer'),
+        ...(questionWeightHead(data) ? [questionWeightHead(data)] : []),
+        t('xResponses'), t('aCorrect'), t('aPartial'), t('xWrong'), t('xAccuracyCol'), t('xAvgSecCol')],
     ];
     questions.forEach((q) => {
       qRows.push([
@@ -281,7 +326,7 @@
         q.text,
         (q.options || []).join(' | '),
         (q.correct || []).join(' | ') || (q.blanks || []).filter(Boolean).join(' | '),
-        q.maxPoints || 0,
+        ...(questionWeightHead(data) ? [questionWeight(q, data)] : []),
         q.responses ?? q.results?.total ?? 0,
         q.correctCount ?? 0,
         q.partialCount ?? 0,
@@ -292,7 +337,10 @@
     });
 
     // كل إجابة في سطر: هذا ما يريده المعلّم للتحليل في Excel
-    const detail = [[t('aStudent'), '#', t('xQuestion'), t('xTheirAnswer'), t('xIsCorrect'), t('xPoints'), t('aOutOf'), t('xTimeSec')]];
+    const detailPoints = showsPoints(data);
+    const detail = [
+      [t('aStudent'), '#', t('xQuestion'), t('xTheirAnswer'), t('xIsCorrect'), ...(detailPoints ? [t('xPoints'), t('aOutOf')] : []), t('xTimeSec')],
+    ];
     participants.forEach((p) => {
       (p.answers || []).forEach((a, i) => {
         if (!a) return;
@@ -310,8 +358,7 @@
                 : a.correct
                   ? t('xYes')
                   : t('xNo'),
-          a.points || 0,
-          a.maxPoints || 0,
+          ...(detailPoints ? [a.points || 0, a.maxPoints || 0] : []),
           a.seconds || 0,
         ]);
       });
@@ -345,7 +392,7 @@
    * بلا تحليل ولا توصيات — مرجع رسمي لعلامات الطلاب أمام الإدارة.
    */
   function buildResultsSheets(data) {
-    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const participants = (data.participants || []).slice().sort(rankSort(data));
     return [
       { name: t('xSheetInfo'), rows: infoRows(data) },
       { name: t('aStudents'), rows: peopleRows(participants, data) },
@@ -619,19 +666,20 @@
 
   /** رأس الطالبين المشترك لجدول العلامات */
   function marksHeadBody(data) {
-    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const participants = (data.participants || []).slice().sort(rankSort(data));
     const hasTeams = participants.some((p) => p.team);
-    const marked = (data.totalMark || 0) > 0;
+    const marked = showsMarks(data);
+    const points = showsPoints(data);
     const head = [t('xRank'), t('aStudent'), ...(hasTeams ? [t('xTeam')] : []),
       ...(marked ? [t('mMarkOf', { of: data.totalMark }), t('mBandCol')] : []),
-      t('aScore'), t('xMaxScore'), t('xPctCol'), t('aCorrect'), t('xAnswered')];
+      ...(points ? [t('aScore'), t('xMaxScore')] : []),
+      t('xPctCol'), t('aCorrect'), t('xAnswered')];
     const body = participants.map((p, i) => [
       p.rank ?? i + 1,
       p.name,
       ...(hasTeams ? [p.team || '—'] : []),
       ...(marked ? [p.mark ? `${p.mark.mark} / ${data.totalMark}` : '—', p.mark ? t(BAND_KEYS[p.mark.band] || 'mBandFair') : '—'] : []),
-      p.score,
-      p.maxScore ?? data.maxScore ?? 0,
+      ...(points ? [p.score, p.maxScore ?? data.maxScore ?? 0] : []),
       p.percent === null || p.percent === undefined ? '—' : `${p.percent}${t('pctSuffix')}`,
       p.correctCount ?? 0,
       `${p.answered ?? 0} / ${(p.answered ?? 0) + (p.unanswered ?? 0)}`,
@@ -749,13 +797,14 @@
     // جدول الأسئلة
     y = roomFor(doc, y, 100);
     y = writeLine(doc, t('xQuestionDetail'), y, { size: 13, bold: true });
-    const qHead = ['#', t('xType'), t('xQuestion'), t('xCorrectAnswer'), t('xScoreCol'), t('xResponses'), t('xAccuracyCol'), t('xAvgSecCol')];
+    const weightHead = questionWeightHead(data);
+    const qHead = ['#', t('xType'), t('xQuestion'), t('xCorrectAnswer'), ...(weightHead ? [weightHead] : []), t('xResponses'), t('xAccuracyCol'), t('xAvgSecCol')];
     const qBody = (data.questions || []).map((q) => [
       q.index,
       TYPE_AR[q.type] ? t(TYPE_AR[q.type]) : q.type,
       q.text,
       (q.correct || []).join(t('listSep')) || (q.blanks || []).filter(Boolean).join(t('listSep')) || '—',
-      q.maxPoints || 0,
+      ...(weightHead ? [questionWeight(q, data)] : []),
       q.responses ?? q.results?.total ?? 0,
       q.accuracy === null || q.accuracy === undefined ? '—' : `${q.accuracy}${t('pctSuffix')}`,
       q.avgSeconds ?? 0,
@@ -875,18 +924,24 @@
         ended.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' })
       )}</strong>${t('xStartEnd')}</div>
       <div><strong>${data.questionCount ?? (data.questions || []).length}</strong>${t('xQuestionCount')}</div>
-      <div><strong>${data.maxScore || 0}</strong>${t('xMaxScore')}</div>
+      ${showsMarks(data) ? `<div><strong>${data.totalMark}</strong>${t('mTotalMarkRow')}</div>` : ''}
+      ${showsPoints(data) ? `<div><strong>${data.maxScore || 0}</strong>${t('xMaxScore')}</div>` : ''}
       <div><strong>${esc(PACE_KEYS[data.settings?.pace] ? t(PACE_KEYS[data.settings?.pace]) : '—')}</strong>${t('xPaceLabel')}</div>
-      <div><strong>${esc(SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—')}</strong>${t('xScoringLabel')}</div>
+      ${
+        showsPoints(data)
+          ? `<div><strong>${esc(SCORING_KEYS[data.settings?.scoring] ? t(SCORING_KEYS[data.settings?.scoring]) : '—')}</strong>${t('xScoringLabel')}</div>`
+          : ''
+      }
       <div><strong>${esc(new Date(data.exportedAt).toLocaleString(loc()))}</strong>${t('xExportedAt')}</div>
     </div>`;
   }
 
   /** جدول العلامات — الأوائل الثلاثة بخلفية مميّزة */
   function marksTableHtml(data) {
-    const participants = (data.participants || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const participants = (data.participants || []).slice().sort(rankSort(data));
     const hasTeams = participants.some((p) => p.team);
-    const marked = (data.totalMark || 0) > 0;
+    const marked = showsMarks(data);
+    const points = showsPoints(data);
     const rows = participants
       .map((p, i) => {
         const rank = p.rank ?? i + 1;
@@ -895,7 +950,7 @@
           : '';
         return `<tr class="${rank <= 3 ? 'rank-' + rank : ''}${p.mark && !p.mark.passed ? ' failed' : ''}">
         <td>${rank}</td><td>${esc(p.name)}</td>${hasTeams ? `<td>${esc(p.team || '—')}</td>` : ''}${markCells}
-        <td>${p.score}</td><td>${p.maxScore ?? data.maxScore ?? 0}</td>
+        ${points ? `<td>${p.score}</td><td>${p.maxScore ?? data.maxScore ?? 0}</td>` : ''}
         <td>${p.percent === null || p.percent === undefined ? '—' : p.percent + t('pctSuffix')}</td>
         <td>${p.correctCount ?? 0}</td>
         <td>${p.answered ?? 0} / ${(p.answered ?? 0) + (p.unanswered ?? 0)}</td>
@@ -905,7 +960,7 @@
     return `<table><thead><tr>
       <th>${t('xRank')}</th><th>${t('aStudent')}</th>${hasTeams ? `<th>${t('xTeam')}</th>` : ''}
       ${marked ? `<th>${t('mMarkOf', { of: data.totalMark })}</th><th>${t('mBandCol')}</th>` : ''}
-      <th>${t('aScore')}</th><th>${t('xMaxScore')}</th><th>${t('xPctCol')}</th>
+      ${points ? `<th>${t('aScore')}</th><th>${t('xMaxScore')}</th>` : ''}<th>${t('xPctCol')}</th>
       <th>${t('aCorrect')}</th><th>${t('xAnswered')}</th>
     </tr></thead><tbody>${rows}</tbody></table>`;
   }
@@ -949,7 +1004,9 @@ ${inner}
           t('xAnsweredN', { n: q.responses }),
           q.accuracy === null || q.accuracy === undefined ? null : t('aAccuracyOnly', { pct: q.accuracy }),
           q.avgSeconds ? t('aAvgSeconds', { sec: q.avgSeconds }) : null,
-          q.maxPoints ? t('xScoreN', { n: q.maxPoints }) : null,
+          // درجة السؤال بلغة النشاط: علامةٌ من الدفتر، أو نقاطٌ من اللعبة، أو لا شيء
+          showsMarks(data) && q.markShare ? t('mQuestionMarkN', { n: q.markShare }) : null,
+          showsPoints(data) && q.maxPoints ? t('xScoreN', { n: q.maxPoints }) : null,
         ]
           .filter(Boolean)
           .join(' · ');

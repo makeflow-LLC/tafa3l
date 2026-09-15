@@ -29,7 +29,14 @@
   /** يحسب كل ما يحتاجه المعلّم من ملف التصدير */
   function compute(data) {
     const questions = data.questions || [];
-    const participants = (data.participants || []).slice().sort((a, b) => b.score - a.score);
+    /*
+     * الترتيب بالعلامة حين يكون النشاط بالعلامات: النقاط فيها مكافأة السرعة،
+     * فترتيبُها يخالف العلامات التي يقرؤها المعلّم في الجدول نفسه.
+     */
+    const marked = (data.totalMark || 0) > 0;
+    const participants = (data.participants || [])
+      .slice()
+      .sort(marked ? (a, b) => (b.mark?.mark ?? -1) - (a.mark?.mark ?? -1) || (b.percent ?? -1) - (a.percent ?? -1) : (a, b) => b.score - a.score);
     const scored = questions.filter((q) => q.scored);
     const answeredAny = participants.filter((p) => p.answered > 0);
 
@@ -127,6 +134,9 @@
       participantCount: participants.length,
       activeCount: answeredAny.length,
       maxScore: data.maxScore || 0,
+      // نظام المكافأة: به يقرّر التقرير أيُعرض عمود النقاط أم عمود العلامة
+      reward: data.settings?.reward || (marked ? 'marks' : 'points'),
+      totalMark: data.totalMark || 0,
       avgPercent,
       median,
       bands,
@@ -313,6 +323,23 @@
       .join('')}</div>`;
   }
 
+  /**
+   * عمود الدرجة في جدول الطلاب: علامةُ الطالب حين يكون النشاط بالعلامات،
+   * ونقاطه حين يكون بالنقاط، ولا عمود أصلاً حين اختار المعلّم «بلا».
+   *
+   * وهذا هو موضع العطل الذي شكا منه المعلّمون: كان العمود «النقاط» دائماً،
+   * فيقرأ وليّ الأمر «٤٧ نقطة» إلى جانب «١٦ / ٢٠» ولا يعرف أيّهما العلامة.
+   */
+  function scoreHead(a) {
+    if ((a.totalMark || 0) > 0) return t('aMarkCol');
+    return (a.reward || 'points') === 'points' ? t('aScore') : '';
+  }
+
+  function scoreCell(p, a) {
+    if ((a.totalMark || 0) > 0) return p.mark ? `${p.mark.mark} ${t('aOutOf')} ${a.totalMark}` : '—';
+    return `${p.score}${a.maxScore ? ' ' + t('aOutOf') + ' ' + a.maxScore : ''}`;
+  }
+
   /** بطاقة رقم واحد */
   function statHtml(value, label, tone) {
     return `<div class="chart-stat"><strong style="color:${TONE[tone] || 'inherit'}">${esc(value)}</strong><span>${esc(
@@ -399,12 +426,14 @@
 
     <div class="chart-card">
       <h3>${t('aStudents')}</h3>
-      <table class="chart-table"><thead><tr><th>#</th><th>${t('aStudent')}</th><th>${t('aScore')}</th><th>${t('aPercent')}</th><th>${t('aCorrect')}</th><th>${t('aAvgTime')}</th></tr></thead><tbody>
+      <table class="chart-table"><thead><tr><th>#</th><th>${t('aStudent')}</th>${
+        scoreHead(a) ? `<th>${scoreHead(a)}</th>` : ''
+      }<th>${t('aPercent')}</th><th>${t('aCorrect')}</th><th>${t('aAvgTime')}</th></tr></thead><tbody>
       ${a.participants
         .map(
-          (p) => `<tr><td>${p.rank ?? ''}</td><td>${esc(p.name)}</td><td>${p.score}${
-            a.maxScore ? ' ' + t('aOutOf') + ' ' + a.maxScore : ''
-          }</td><td>${p.percent === null ? '—' : p.percent + t('pctSuffix')}</td><td>${p.correctCount}${
+          (p, i) => `<tr><td>${p.rank ?? i + 1}</td><td>${esc(p.name)}</td>${
+            scoreHead(a) ? `<td>${scoreCell(p, a)}</td>` : ''
+          }<td>${p.percent === null ? '—' : p.percent + t('pctSuffix')}</td><td>${p.correctCount}${
             p.partialCount ? ` (+${p.partialCount} ${t('aPartial')})` : ''
           }</td><td>${p.avgSeconds}${t('aSecShort')}</td></tr>`
         )
