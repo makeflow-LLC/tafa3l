@@ -77,8 +77,9 @@
    *
    * @param {object} user المستخدم من `/api/auth/me` (أو null)
    * @param {object} premium ملخّص الاشتراك
+   * @param {Function} [onSaved] يُنادى بعد حفظ الاسم والبلد — لتُعيد الصفحة رسم ما يحمل الاسم
    */
-  function afterLogin(user, premium) {
+  function afterLogin(user, premium, onSaved) {
     const t = (key, vars) => (global.I18n ? global.I18n.t(key, vars) : key);
 
     // معامل التهنئة يُقرأ ويُمسح دائماً، كي لا تتكرّر مع كل تحديثٍ للصفحة
@@ -131,6 +132,17 @@
        * تقع عليه الإصبع — فيُطلب تأكيدٌ يذكر **اسم البلد الذي اختاره** لا
        * علامةً مبهمة: من يقرأ «أؤكّد أنّي أُعلّم من ألبانيا» يلتفت إلى خطئه.
        */
+      /*
+       * واسمُ المعلّم كما يحبّ أن يراه طلابه — في البطاقة نفسها.
+       *
+       * هذا الاسم هو ما يُكتب على ألعابه («إعداد: …») وفي بطاقاتها وفي صفحته
+       * العامّة ودليل المعلّمين. وكان يُترك فارغاً في البروفايل فيظهر مكانه
+       * الاسمُ الأول من بريد جوجل — «محمد» بلا لقبٍ ولا كنية — على كل ما ينشره
+       * المعلّم. فيُسأل عنه هنا مرّةً واحدة عند أول دخول، ممتلئاً باسمه من
+       * حسابه ليُصحّحه أو يُبقيه، ويبقى تغييرُه من البروفايل متى شاء.
+       */
+      const nameBox = el('input', { maxlength: 60, placeholder: t('cnNamePlaceholder'), value: user.displayName || user.name || '', autocomplete: 'name' });
+      const nameHint = el('span', { class: 'muted small', text: t('cnNameHint') });
       const care = el('p', { class: 'note warn small', style: { margin: 0 }, text: t('cnCare') });
       const confirmBox = el('input', { type: 'checkbox' });
       const confirmText = el('span', { class: 'small' });
@@ -141,8 +153,9 @@
       const refresh = () => {
         confirm.hidden = !select.value;
         if (select.value) confirmText.textContent = t('cnConfirm', { country: countryName() });
-        go.disabled = !select.value || !confirmBox.checked;
+        go.disabled = !select.value || !confirmBox.checked || !nameBox.value.trim();
       };
+      nameBox.addEventListener('input', refresh);
       // ومن غيّر بلده بعد أن أكّد يعود إلى نقطة البداية: التأكيد على ما اختاره الآن
       select.addEventListener('change', () => {
         confirmBox.checked = false;
@@ -152,16 +165,28 @@
       // القائمة تصل بعد الرسم، فقد تُملأ بقيمةٍ مختارةٍ مسبقاً بلا حدث تغيير
       select.addEventListener('tp:filled', refresh);
       go.addEventListener('click', async () => {
+        const displayName = nameBox.value.trim();
         if (!select.value) return;
+        if (!displayName) {
+          nameBox.focus();
+          return toast(t('cnNameNeeded'), 'bad');
+        }
         go.disabled = true;
         const before = go.textContent;
         go.textContent = t('cnSaving');
         try {
-          await api('/api/profile', { method: 'PUT', body: { country: select.value } });
+          await api('/api/profile', { method: 'PUT', body: { country: select.value, displayName } });
           if (user) {
             user.country = select.value;
             // صار مختاراً لا مفترضاً — فلا يُسأل مرّةً ثانية في هذه الجلسة
             user.countryChosen = true;
+            user.displayName = displayName;
+          }
+          // الشريط العلوي يحمل الاسم — فيُعاد رسمه الآن لا في الزيارة التالية
+          try {
+            onSaved?.();
+          } catch {
+            /* الرسم إشعارٌ لا شرط */
           }
           // الحساب الجديد لا يخرج من البطاقة إلى فراغ: بعد أن يجيب، تصير
           // البطاقة دعوةً إلى أول ما يستحقّ أن يجرّبه. ولولا هذا لابتلع
@@ -193,6 +218,7 @@
         );
       }
       parts.push(
+        el('label', { class: 'stack tight' }, [el('span', { class: 'small', text: t('cnNameLabel') }), nameBox, nameHint]),
         care,
         el('label', { class: 'stack tight' }, [el('span', { class: 'small', text: t('cnGateLabel') }), select, note]),
         confirm,

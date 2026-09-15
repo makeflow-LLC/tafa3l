@@ -6532,7 +6532,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
   // نعرف المستخدم أولاً حتى تظهر أزرار الحساب صحيحة من أول رسم
   loadAccount()
     .finally(route)
-    .finally(() => window.T.afterLogin(state.user, state.premium))
+    .finally(() => window.T.afterLogin(state.user, state.premium, paintAccount))
     // الجرس بعد الرسم لا قبله: طلبٌ ينتظر ردّاً لا يجوز أن يؤخّر ظهور اللوحة
     .finally(() => {
       refreshBell();
