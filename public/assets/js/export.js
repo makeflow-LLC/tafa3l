@@ -512,12 +512,12 @@
 
   function rosterSheets({ className, students = [], stats = false }) {
     const withPin = students.some((s) => s.pin);
-    const head = [t('xRosterNo'), t('xRosterName'), t('xRosterGroup')];
+    const head = [t('xRosterNo'), t('xRosterName')];
     if (withPin) head.push(t('xRosterPin'));
     if (stats) head.push(t('xRosterAttempts'), t('xRosterAvg'), t('xRosterLast'), t('xRosterLastAt'));
 
     const body = students.map((s, i) => {
-      const row = [i + 1, s.name || '', s.group || ''];
+      const row = [i + 1, s.name || ''];
       if (withPin) row.push(s.pin || '');
       if (stats) {
         row.push(

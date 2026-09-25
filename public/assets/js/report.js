@@ -16,14 +16,13 @@
   const app = $('#app');
   const params = new URLSearchParams(location.search);
   const classId = params.get('class') || '';
-  const group = (params.get('group') || '').trim();
 
   window.SiteTopbar?.mount({});
 
   const fmtDate = (ms) => (ms ? new Date(ms).toLocaleDateString('ar', { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
   const fmtStamp = (ms) => (ms ? new Date(ms).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
   const pct = (n) => (n === null || n === undefined ? '—' : `${n}%`);
-  const url = (q) => `/api/classes/${encodeURIComponent(classId)}/analysis${q ? '?group=' + encodeURIComponent(group) : ''}`;
+  const url = () => `/api/classes/${encodeURIComponent(classId)}/analysis`;
   const backHref = `/host.html#/class/${encodeURIComponent(classId)}/record`;
 
   function pctBadge(n) {
@@ -79,7 +78,7 @@
     building();
     let data;
     try {
-      data = await api(url(false), { method: 'POST', body: { group } });
+      data = await api(url(), { method: 'POST', body: {} });
     } catch (err) {
       if (err.status === 402) return locked(err);
       return fail(err.message);
@@ -94,7 +93,7 @@
     const entry = data.report;
     const r = entry.report;
     const s = entry.stats;
-    const scopeLine = s.group ? t('rpScopeGroup', { group: s.group, name: s.className }) : t('rpScopeClass', { name: s.className });
+    const scopeLine = t('rpScopeClass', { name: s.className });
 
     const refresh = el('button', { class: 'btn ghost sm', type: 'button' }, t('rpRefresh'));
     refresh.addEventListener('click', async () => {
@@ -168,7 +167,7 @@
         ])),
         el('tbody', {}, r.students.map((st) =>
           el('tr', {}, [
-            el('td', {}, [el('strong', { text: st.name }), st.group && !s.group ? el('div', { class: 'muted small', text: st.group }) : null]),
+            el('td', {}, el('strong', { text: st.name })),
             el('td', { 'data-label': t('rpColLevel') }, levelBadge(st.level)),
             el('td', { 'data-label': t('rpColAvg') }, pctBadge(st.avg)),
             el('td', { class: 'trend', 'data-label': t('rpColTrend') }, st.trend.length ? st.trend.join(' → ') : t('rpNoAttempts')),
@@ -192,14 +191,14 @@
         el('p', { class: 'report-foot', text: t('rpFooter', { results: s.results }) }),
       ])
     );
-    document.title = `${t('rpTitle')} — ${s.group || s.className} · Tapio`;
+    document.title = `${t('rpTitle')} — ${s.className} · Tapio`;
   }
 
   async function boot() {
     if (!classId) return fail(t('rpNone'));
     let data;
     try {
-      data = await api(url(true));
+      data = await api(url());
     } catch (err) {
       if (err.status === 402) return locked(err);
       return fail(err.message);

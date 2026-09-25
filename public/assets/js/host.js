@@ -488,10 +488,9 @@
     return card;
   }
 
-  /** سطرُ وصفٍ لفصل: عدد طلابه ومجموعاته */
+  /** سطرُ وصفٍ لفصل: عدد طلابه */
   function classLine(item) {
-    const groups = new Set((item.groups || []).filter(Boolean)).size;
-    return t('hClassCount', { n: item.students.length }) + (groups ? ' · ' + t('hRecGroupCount', { n: groups }) : '');
+    return t('hClassCount', { n: item.students.length });
   }
 
 
@@ -568,11 +567,7 @@
       box.replaceChildren(
         el('div', { class: 'stack' }, [
           el('div', {}, [el('label', { text: t('hClassName') }), nameInput]),
-          el('div', {}, [
-            el('label', { text: t('hClassStudents') }),
-            namesInput,
-            el('span', { class: 'muted small', text: t('hClassGroupsHint') }),
-          ]),
+          el('div', {}, [el('label', { text: t('hClassStudents') }), namesInput]),
           el('div', { class: 'row', style: { gap: '8px' } }, [save, el('button', { class: 'btn ghost sm', type: 'button', onclick: () => reload() }, t('hClassCancel'))]),
         ])
       );
@@ -704,13 +699,7 @@
     function pasteList() {
       const box = el('div', { class: 'card stack' });
       const namesInput = el('textarea', { rows: 8 });
-      namesInput.value = (current.students || [])
-        .map((name, i) => {
-          const group = (current.groups || [])[i] || '';
-          const before = i === 0 ? '' : (current.groups || [])[i - 1] || '';
-          return group && group !== before ? `# ${group}\n${name}` : name;
-        })
-        .join('\n');
+      namesInput.value = (current.students || []).join('\n');
       const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hClassSave'));
       save.addEventListener('click', async () => {
         save.disabled = true;
@@ -726,7 +715,6 @@
       box.append(
         el('label', { text: t('hClassStudents') }),
         namesInput,
-        el('span', { class: 'muted small', text: t('hClassGroupsHint') }),
         el('div', { class: 'row', style: { gap: '8px' } }, [save, el('button', { class: 'btn ghost sm', type: 'button', onclick: () => reload(current.id) }, t('hClassCancel'))])
       );
       app.append(box);
@@ -734,22 +722,31 @@
       namesInput.focus();
     }
 
-    // ---- إضافة: طالبٌ واحد، أو مجموعةٌ بأسمائها
-    const groupNames = [...new Set((current.groups || []).filter(Boolean))];
-    const addName = el('input', { maxlength: 40, placeholder: t('hStuNamePh') });
-    const addGroup = el('input', { maxlength: 40, placeholder: t('hStuGroupPh'), list: 'stu-groups' });
-    const groupList = el('datalist', { id: 'stu-groups' }, groupNames.map((g) => el('option', { value: g })));
+    /*
+     * ---- الإضافة: حقلٌ واحد.
+     *
+     * كان هنا حقلُ اسمٍ وحقلُ مجموعة، وتحتهما نموذجٌ ثانٍ «أضف مجموعةً كاملة
+     * بأسمائها». وهو ما شكا منه المعلّمون: أربعةُ حقولٍ ونموذجان قبل أن يُكتب
+     * اسمُ طالبٍ واحد. فبقي الاسمُ وحده، والزرّ، ورمزُ الطالب يظهر فور إضافته.
+     */
+    const addName = el('input', { maxlength: 40, placeholder: t('hStuNamePh'), id: 'stuNameField' });
     const addBtn = el('button', { class: 'btn primary sm', type: 'button' }, t('hStuAdd'));
     const addOne = async () => {
       const name = addName.value.trim();
       if (!name) return toast(t('hStuNeedName'), 'bad');
       addBtn.disabled = true;
       try {
-        await api('/api/classes/' + current.id + '/students', { method: 'POST', body: { name, group: addGroup.value.trim() } });
-        // المجموعة تبقى في مكانها: من يضيف خمسة إلى مجموعةٍ واحدة لا يكتب اسمها خمس مرّات
+        const res = await api('/api/classes/' + current.id + '/students', { method: 'POST', body: { name } });
+        /*
+         * الرمز يُقال فور الإضافة لا يُبحث عنه: المعلّم يكتب الاسم ثم يكتب
+         * الرمز على ورقة الطالب أو يرسله لوليّ أمره — فيُعرض في فقاعةٍ طويلة
+         * تبقى ست ثوانٍ، ويبقى بعدها إلى جانب الاسم في الكشف.
+         */
+        const made = (res.class?.pupils || []).find((p) => p.name === name);
+        toast(made?.pin ? t('hStuAddedPin', { name, pin: made.pin }) : t('hStuAdded', { name }), 'ok');
         addName.value = '';
-        const keep = addGroup.value;
-        await reloadKeeping(keep);
+        await openStudents(current.id);
+        document.querySelector('#stuNameField')?.focus();
       } catch (err) {
         toast(err.message, 'bad');
         addBtn.disabled = false;
@@ -760,49 +757,14 @@
       if (event.key === 'Enter') addOne();
     });
 
-    async function reloadKeeping(group) {
-      await openStudents(current.id);
-      const field = document.querySelector('#stuGroupField');
-      if (field) field.value = group || '';
-      const nameField = document.querySelector('#stuNameField');
-      if (nameField) nameField.focus();
-    }
-    addName.id = 'stuNameField';
-    addGroup.id = 'stuGroupField';
-
-    const bulkGroup = el('input', { maxlength: 40, placeholder: t('hStuGroupPh') });
-    const bulkNames = el('textarea', { rows: 4, placeholder: t('hStuBulkPh') });
-    const bulkBtn = el('button', { class: 'btn accent sm', type: 'button' }, t('hStuAddGroup'));
-    bulkBtn.addEventListener('click', async () => {
-      const name = bulkGroup.value.trim();
-      if (!name) return toast(t('hStuNeedGroup'), 'bad');
-      bulkBtn.disabled = true;
-      try {
-        const res = await api('/api/classes/' + current.id + '/groups', { method: 'POST', body: { name, students: bulkNames.value } });
-        toast(t('hStuGroupAdded', { n: res.class.students.length }), 'ok');
-        reload(current.id);
-      } catch (err) {
-        toast(err.message, 'bad');
-        bulkBtn.disabled = false;
-      }
-    });
-
     app.append(
       el('div', { class: 'card stack' }, [
         el('h2', { style: { margin: 0 }, text: t('hStuAddTitle') }),
         el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' } }, [
-          el('div', { class: 'grow', style: { minWidth: '140px' } }, [el('label', { text: t('hStuName') }), addName]),
-          el('div', { class: 'grow', style: { minWidth: '140px' } }, [el('label', { text: t('hStuGroup') }), addGroup, groupList]),
+          el('div', { class: 'grow', style: { minWidth: '160px' } }, [el('label', { text: t('hStuName') }), addName]),
           addBtn,
         ]),
-        el('details', { open: true }, [
-          el('summary', { class: 'muted small', style: { cursor: 'pointer' }, text: t('hStuAddGroupTitle') }),
-          el('div', { class: 'stack tight', style: { marginTop: '8px' } }, [
-            el('div', {}, [el('label', { text: t('hStuGroupName') }), bulkGroup]),
-            el('div', {}, [el('label', { text: t('hStuBulkNames') }), bulkNames]),
-            el('div', { class: 'row' }, [bulkBtn]),
-          ]),
-        ]),
+        el('span', { class: 'muted small', text: t('hStuAddHint') }),
       ])
     );
 
@@ -827,29 +789,27 @@
       addName.focus({ preventScroll: true });
     }
 
-    // ---- الكشف: الطلاب تحت عناوين مجموعاتهم، ولكلٍّ تعديلٌ وحذف
+    /*
+     * ---- الكشف: قائمةٌ واحدة بأسماء الطلاب ورموزهم.
+     *
+     * كان الكشف مقسوماً إلى عناوين مجموعات، ولكل طالبٍ ثلاثةُ أزرار (تعديل،
+     * نقلٌ بين المجموعات، حذف). فصار قائمةً مسطّحة: اسمٌ ورمزٌ وزرّان — وهذا
+     * ما يطلبه المعلّم حين يفتح «طلابي»: أن يرى طلابه، لا أن يدير تصنيفاً.
+     */
     if (!current.students.length) {
       app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hStuNoStudents') })));
       return;
     }
 
     const pinOf = new Map((current.pupils || []).map((p) => [p.name, p.pin]));
-    const buckets = [];
-    const seen = new Map();
-    current.students.forEach((name, i) => {
-      const group = (current.groups || [])[i] || '';
-      if (!seen.has(group)) {
-        seen.set(group, { group, names: [] });
-        buckets.push(seen.get(group));
-      }
-      seen.get(group).names.push(name);
-    });
 
-    const studentRow = (name) =>
-      el('div', { class: 'row between', style: { padding: '6px 0', borderBottom: '1px solid var(--border)', gap: '8px' } }, [
-        el('div', { class: 'row grow', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
+    const studentRow = (name, i) =>
+      el('div', { class: 'row between', style: { padding: '8px 0', borderBottom: '1px solid var(--border)', gap: '8px' } }, [
+        el('div', { class: 'row grow', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, [
+          el('span', { class: 'muted small', style: { minWidth: '22px', direction: 'ltr' }, text: String(i + 1) }),
           el('span', { text: name }),
-          current.record && pinOf.get(name) ? pinChip(pinOf.get(name)) : null,
+          // الرمز إلى جانب الاسم دائماً — لا حين يُشغَّل السجل وحده
+          pinOf.get(name) ? pinChip(pinOf.get(name)) : null,
         ]),
         el('button', {
           class: 'btn ghost sm', type: 'button', title: t('hStuEdit'),
@@ -861,16 +821,6 @@
               .catch((err) => toast(err.message, 'bad'));
           },
         }, '✏️'),
-        el('button', {
-          class: 'btn ghost sm', type: 'button', title: t('hStuMove'),
-          onclick: () => {
-            const next = prompt(t('hStuMoveAsk', { list: groupNames.join('، ') || '—' }), (current.groups || [])[current.students.indexOf(name)] || '');
-            if (next === null) return;
-            api(`/api/classes/${current.id}/students/${encodeURIComponent(name)}`, { method: 'PATCH', body: { group: next } })
-              .then(() => reload(current.id))
-              .catch((err) => toast(err.message, 'bad'));
-          },
-        }, '↔'),
         el('button', {
           class: 'btn danger sm', type: 'button', title: t('hStuRemove'),
           onclick: () => {
@@ -888,26 +838,8 @@
           el('h2', { style: { margin: 0 }, text: t('hStuRoster') }),
           el('span', { class: 'muted small', text: t('hClassCount', { n: current.students.length }) }),
         ]),
-        ...buckets.map((bucket) =>
-          el('div', { class: 'stack tight', style: { marginTop: '6px' } }, [
-            el('div', { class: 'row between' }, [
-              el('strong', { class: 'small', text: bucket.group || t('hRecNoGroup') }),
-              bucket.group
-                ? el('button', {
-                    class: 'btn ghost sm', type: 'button',
-                    onclick: () => {
-                      const next = prompt(t('hStuGroupRename'), bucket.group);
-                      if (next === null) return;
-                      api(`/api/classes/${current.id}/groups/${encodeURIComponent(bucket.group)}`, { method: 'PATCH', body: { name: next } })
-                        .then(() => reload(current.id))
-                        .catch((err) => toast(err.message, 'bad'));
-                    },
-                  }, t('hStuGroupEdit'))
-                : null,
-            ]),
-            ...bucket.names.map(studentRow),
-          ])
-        ),
+        el('span', { class: 'muted small', text: t('hStuPinHint') }),
+        el('div', { class: 'stack tight' }, current.students.map(studentRow)),
       ])
     );
   }
@@ -970,25 +902,9 @@
    */
   function printPins(cls, students) {
     const esc = window.T.escapeHtml;
-    // مقسّمةً بمجموعاتها إن وُجدت: ورقةٌ لكل مجموعة تُقصّ وتُسلَّم لمشرفها
-    const order = [];
-    const byGroup = new Map();
-    students.forEach((s) => {
-      const key = s.group || '';
-      if (!byGroup.has(key)) {
-        byGroup.set(key, []);
-        order.push(key);
-      }
-      byGroup.get(key).push(s);
-    });
     const card = (s) =>
       `<div class="c"><div class="n">${esc(s.name)}</div><div class="p" dir="ltr">${esc(s.pin)}</div><div class="h">${esc(t('hRecPrintNote'))}</div></div>`;
-    const cards = order
-      .map((key) => {
-        const grid = `<div class="g">${byGroup.get(key).map(card).join('')}</div>`;
-        return key ? `<h2>${esc(key)}</h2>${grid}` : grid;
-      })
-      .join('');
+    const cards = `<div class="g">${students.map(card).join('')}</div>`;
     const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(t('hRecPrintTitle', { name: cls.name }))}</title>
 <style>body{font-family:system-ui,'Segoe UI',Tahoma,sans-serif;margin:16px;color:#10173A}h1{font-size:18px;margin:0 0 12px}
 .g{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.c{border:1px dashed #8A8FAD;border-radius:12px;padding:12px;text-align:center;break-inside:avoid}
@@ -1007,15 +923,15 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
    * كشفُ الفصل ملفَّ Excel.
    *
    * والمصدرُ ما بين يدي الشاشة التي طُلب منها: صفحةُ الطلاب تعرف الأسماء
-   * والمجموعات والرموز، وصفحةُ السجل تعرف معها المتوسّطات — فكلٌّ تُنزّل ما
-   * تعرفه، ولا نطلب من الخادم نداءً ثانياً لملفٍّ بين يدي القارئ أصلاً.
+   * والرموز، وصفحةُ السجل تعرف معها المتوسّطات — فكلٌّ تُنزّل ما تعرفه، ولا
+   * نطلب من الخادم نداءً ثانياً لملفٍّ بين يدي القارئ أصلاً.
    */
   function downloadRoster(cls, summary) {
     if (!window.Exporter) return toast(t('hexportFailed'), 'bad');
     const pinOf = new Map((cls.pupils || []).map((p) => [p.name, p.pin]));
     const students = summary
-      ? summary.map((s) => ({ name: s.name, group: s.group, pin: s.pin, attempts: s.attempts, avgPercent: s.avgPercent, lastPercent: s.lastPercent, lastAt: s.lastAt }))
-      : (cls.students || []).map((name, i) => ({ name, group: (cls.groups || [])[i] || '', pin: pinOf.get(name) || '' }));
+      ? summary.map((s) => ({ name: s.name, pin: s.pin, attempts: s.attempts, avgPercent: s.avgPercent, lastPercent: s.lastPercent, lastAt: s.lastAt }))
+      : (cls.students || []).map((name) => ({ name, pin: pinOf.get(name) || '' }));
     if (!students.length) return toast(t('hStuNoStudents'), 'warn');
     try {
       window.Exporter.toRoster({ className: cls.name, students, stats: Boolean(summary) });
@@ -1113,42 +1029,6 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     if (!students.length) return;
     if (cls.record && !withAttempts.length) app.append(el('div', { class: 'card' }, el('p', { class: 'muted', style: { margin: 0 }, text: t('hRecEmpty') })));
 
-    /**
-     * المجموعات: بطاقةُ متوسّطاتٍ ثم مصفاةٌ فوق الجدول.
-     *
-     * صفٌّ من ستّين طالباً جدولٌ لا يُقرأ دفعةً واحدة، والمعلّم يسأل عن
-     * مجموعةٍ بعينها: «كيف حال مجموعة الدعم؟». فإن لم يقسّم فصله لم يظهر
-     * شيءٌ من هذا أصلاً — لا مصفاة ولا عمود.
-     */
-    const groups = data.groups || [];
-    if (groups.length) {
-      app.append(
-        el('div', { class: 'card stack' }, [
-          el('h2', { style: { margin: 0 }, text: t('hRecGroups') }),
-          el('div', { class: 'stack tight' }, groups.map((g) =>
-            el('div', { class: 'row between', style: { gap: '8px', flexWrap: 'wrap' } }, [
-              el('span', { class: 'grow', text: g.name || t('hRecNoGroup') }),
-              el('span', { class: 'muted small', text: t('hRecGroupSize', { n: g.students }) }),
-              pctBadge(g.avgPercent),
-              // مراجعةٌ لمجموعةٍ بعينها: «مجموعة الدعم» تُراجَع بما أخطأت فيه هي
-              g.name && g.attempts
-                ? el('button', {
-                    class: 'btn ghost sm', type: 'button', title: t('hwRevHint'),
-                    onclick: (event) => buildReview(classId, { group: g.name }, event.currentTarget),
-                  }, t('hwRevGroup'))
-                : null,
-              g.name && g.attempts
-                ? el('a', {
-                    class: 'btn ghost sm', title: t('hRecAnalyzeHint'), target: '_blank', rel: 'noopener',
-                    href: '/report.html?class=' + encodeURIComponent(classId) + '&group=' + encodeURIComponent(g.name),
-                  }, t('hRecAnalyzeGroup'))
-                : null,
-            ])
-          )),
-        ])
-      );
-    }
-
     /*
      * ترتيب الأعمدة: الاسم فالمتوسط فالاتجاه.
      *
@@ -1158,15 +1038,12 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
      */
     const table = el('table', { class: 'rec-table' });
     const tbody = el('tbody', {});
-    const heads = [t('hRecColName'), t('hRecColAvg'), t('hRecColTrend'), t('hRecColLast'), t('hRecColAttempts')];
-    if (groups.length) heads.push(t('hRecColGroup'));
-    heads.push(t('hRecColPin'));
+    const heads = [t('hRecColName'), t('hRecColAvg'), t('hRecColTrend'), t('hRecColLast'), t('hRecColAttempts'), t('hRecColPin')];
     table.append(el('thead', {}, el('tr', {}, heads.map((h) => el('th', { text: h })))), tbody);
 
-    const draw = (only) => {
-      const shown = only ? students.filter((s) => (s.group || '') === only) : students;
+    const draw = () => {
       tbody.replaceChildren(
-        ...shown.map((s) => {
+        ...students.map((s) => {
           const cells = [
             // الاسم رابطٌ صريح إلى الملفّ — والصفّ كلّه ينقر أيضاً، عدا زرّ الرمز
             el('td', {}, el('a', { href: `#/class/${classId}/record/${s.id}`, style: { fontWeight: '700' }, text: s.name })),
@@ -1175,7 +1052,6 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             el('td', {}, [pctBadge(s.lastPercent), el('span', { class: 'muted small', text: s.lastAt ? ' ' + recDate(s.lastAt) : '' })]),
             el('td', { style: { direction: 'ltr', textAlign: 'end' }, text: String(s.attempts) }),
           ];
-          if (groups.length) cells.push(el('td', { class: 'muted', text: s.group || '—' }));
           cells.push(el('td', {}, pinChip(s.pin)));
           const tr = el('tr', { style: { cursor: 'pointer' } }, cells);
           tr.addEventListener('click', (event) => {
@@ -1186,23 +1062,9 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         })
       );
     };
-    draw(null);
+    draw();
 
     const card = el('div', { class: 'card stack' });
-    if (groups.length) {
-      const filter = el('div', { class: 'chips' });
-      const chips = [{ label: t('hRecAllGroups'), value: null }, ...groups.map((g) => ({ label: g.name || t('hRecNoGroup'), value: g.name }))];
-      chips.forEach((entry, i) => {
-        const chip = el('button', { class: 'chip' + (i === 0 ? ' on' : ''), type: 'button', text: entry.label });
-        chip.addEventListener('click', () => {
-          [...filter.children].forEach((node) => node.classList.remove('on'));
-          chip.classList.add('on');
-          draw(entry.value);
-        });
-        filter.append(chip);
-      });
-      card.append(filter);
-    }
     card.append(el('div', { class: 'table-wrap' }, table));
     app.append(card);
   }
@@ -1297,7 +1159,6 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('div', { class: 'row between', style: { flexWrap: 'wrap', gap: '8px' } }, [
           el('div', { class: 'stack tight' }, [
             el('h1', { style: { margin: 0 }, text: t('hRecStudentTitle', { name: student.name }) }),
-            student.group ? el('span', { class: 'muted small', text: student.group }) : null,
           ]),
           el('div', { class: 'row', style: { gap: '6px', alignItems: 'center' } }, [el('span', { class: 'muted small', text: t('hRecColPin') }), pinChip(student.pin)]),
         ]),
@@ -1962,7 +1823,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     if (presetActivity && activities.some((a) => a.id === presetActivity)) activitySel.value = presetActivity;
     const classSel = el('select', {}, classes.map((c) => el('option', { value: c.id, text: c.name })));
     const due = el('input', { type: 'datetime-local' });
-    const groupChips = el('div', { class: 'chips' });
+    const pickTools = el('div', { class: 'row', style: { gap: '6px' } });
     const list = el('div', { class: 'roster-pick' });
     const count = el('span', { class: 'muted small' });
     const save = el('button', { class: 'btn primary sm', type: 'button' }, t('hwFormSave'));
@@ -1976,42 +1837,18 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('label', { class: 'roster-pick__row' }, [
             el('input', { type: 'checkbox', value: p.id, checked: true, onchange: refreshCount }),
             el('span', { class: 'grow', text: p.name }),
-            p.group ? el('span', { class: 'muted small', text: p.group }) : null,
           ])
         )
       );
-      /*
-       * أفعالُ التحديد أزرارٌ والمجموعاتُ رقاقات: لو تساوى شكلُهما لَما عرف
-       * المعلّم أيُّ ما أمامه اسمُ مجموعةٍ في فصله وأيُّه فعلٌ نصنعه نحن.
-       * والرقاقة تُضاء حين تكون مجموعتها كاملةً في التحديد — فيُقرأ التكليف
-       * من أعلى الشاشة بلا عدّ صناديق.
-       */
-      const groups = [...new Set(pupils.map((p) => p.group || '').filter(Boolean))];
-      groupChips.replaceChildren(
+      // الفصلُ كلّه مُختارٌ ابتداءً، وزرّان لا غير: «الكل» و«لا أحد»
+      pickTools.replaceChildren(
         el('button', { class: 'btn ghost sm', type: 'button', onclick: () => setAll(true) }, t('hwFormAll')),
-        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => setAll(false) }, t('hwFormClear')),
-        ...groups.map((g) =>
-          el('button', {
-            class: 'chip', type: 'button', 'data-group': g,
-            onclick: () => {
-              // الرقاقة تُبدّل مجموعتها: مضاءةً وكلُّها محدَّدة تعني «انزعها»
-              const rows = boxesFor(g);
-              const allOn = rows.every((b) => b.checked);
-              rows.forEach((b) => (b.checked = !allOn));
-              refreshCount();
-            },
-          }, '👥 ' + g)
-        )
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: () => setAll(false) }, t('hwFormClear'))
       );
       refreshCount();
     }
 
     const boxes = () => [...list.querySelectorAll('input[type=checkbox]')];
-    function boxesFor(group) {
-      const cls = classes.find((c) => c.id === classSel.value);
-      const ids = new Set((cls?.pupils || []).filter((p) => (p.group || '') === group).map((p) => p.id));
-      return boxes().filter((b) => ids.has(b.value));
-    }
     function setAll(on) {
       boxes().forEach((b) => (b.checked = on));
       refreshCount();
@@ -2020,29 +1857,19 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       const n = boxes().filter((b) => b.checked).length;
       count.textContent = t('hwSelected', { n });
       save.disabled = n === 0;
-      groupChips.querySelectorAll('[data-group]').forEach((chip) => {
-        const rows = boxesFor(chip.getAttribute('data-group'));
-        chip.classList.toggle('on', rows.length > 0 && rows.every((b) => b.checked));
-      });
     }
 
     classSel.addEventListener('change', paintPupils);
     paintPupils();
 
     save.addEventListener('click', async () => {
-      const cls = classes.find((c) => c.id === classSel.value);
       const studentIds = boxes().filter((b) => b.checked).map((b) => b.value);
-      const chosen = new Set(studentIds);
-      // المجموعة تُذكر في العنوان حين تكون كاملةً في التكليف — وصفٌ لا تكليف
-      const groups = [...new Set((cls?.pupils || []).map((p) => p.group || '').filter(Boolean))].filter((g) =>
-        (cls?.pupils || []).filter((p) => (p.group || '') === g).every((p) => chosen.has(p.id))
-      );
       const dueAt = due.value ? new Date(due.value).getTime() : 0;
       save.disabled = true;
       try {
         const made = await api('/api/assignments', {
           method: 'POST',
-          body: { activityId: activitySel.value, classId: classSel.value, studentIds, groups, dueAt },
+          body: { activityId: activitySel.value, classId: classSel.value, studentIds, dueAt },
         });
         // مفتاح المضيف يُحفظ فور الإنشاء: المتابعة الحيّة تعمل بلا نداءٍ ثانٍ
         rememberHost(made.assignment.code, made.assignment.hostToken, made.assignment.title);
@@ -2060,7 +1887,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         el('div', {}, [el('label', { text: t('hwFormClass') }), classSel]),
         el('div', { class: 'stack tight' }, [
           el('label', { text: t('hwFormWho') }),
-          groupChips,
+          pickTools,
           list,
           count,
         ]),
@@ -2100,7 +1927,6 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           el('div', { class: 'stack tight' }, [
             el('h1', { style: { margin: 0 }, text: item.title }),
             el('span', { class: 'muted small', text: t('hwClassLine', { cls: item.className, n: item.assigned }) }),
-            el('span', { class: 'muted small', text: item.groups?.length ? t('hwWhoGroups', { list: item.groups.join('، ') }) : t('hwWhoAll') }),
           ]),
           el('div', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, [
             dueChip(item.dueAt),
@@ -2206,9 +2032,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
 
     const table = el('table', { class: 'rec-table hw-table' });
     const tbody = el('tbody', {});
-    const groups = [...new Set(rows.map((r) => r.group).filter(Boolean))];
     const heads = [t('hwColName'), t('hwColStatus'), t('hwColScore'), t('hwColWhen')];
-    if (groups.length) heads.push(t('hwColGroup'));
     table.append(el('thead', {}, el('tr', {}, heads.map((h) => el('th', { text: h })))), tbody);
 
     const draw = (filter) => {
@@ -2223,7 +2047,6 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
             el('td', {}, [pctBadge(r.percent), r.pending ? el('span', { class: 'badge warn', text: t('hRecPending', { n: r.pending }) }) : null]),
             el('td', { 'data-label': t('hwColWhen') }, el('span', { class: 'muted small', text: r.at ? recDate(r.at) : '—' })),
           ];
-          if (groups.length) cells.push(el('td', { 'data-label': t('hwColGroup'), class: 'muted' }, el('span', { text: r.group || '—' })));
           return el('tr', {}, cells);
         })
       );
@@ -3760,7 +3583,6 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
           statBox(t('hstStudents'), [
             [stats.classes.total, t('hstClasses')],
             [stats.classes.students, t('hstStudentsN')],
-            [stats.classes.groups, t('hstGroups')],
             [stats.classes.withRecord, t('hstWithRecord')],
           ]),
           statBox(t('hstRecords'), [
@@ -6058,33 +5880,11 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
      * أمام صفّه ويريد اسماً ينادي به، لا عدّاً يقارنه بدفتره.
      */
     if ((data.missing || []).length || (data.hasRoster && !(data.missing || []).length)) {
-      // الغائبون تحت عناوين مجموعاتهم إن قُسّم الفصل: «مجموعة ب ناقصة كلّها» خبرٌ يُقرأ بنظرة
       const missing = data.missing || [];
-      const mGroups = data.missingGroups || [];
-      const order = [];
-      const buckets = new Map();
-      missing.forEach((name, i) => {
-        const key = mGroups[i] || '';
-        if (!buckets.has(key)) {
-          buckets.set(key, []);
-          order.push(key);
-        }
-        buckets.get(key).push(name);
-      });
-      const grouped = order.some((key) => key);
       app.append(
         el('div', { class: 'card stack' }, [
           el('h2', { style: { margin: 0 }, text: missing.length ? t('hMissingTitle', { n: missing.length }) : t('hMissingAllIn') }),
-          !missing.length
-            ? null
-            : grouped
-              ? el('div', { class: 'stack tight' }, order.map((key) =>
-                  el('div', { class: 'stack tight' }, [
-                    el('span', { class: 'muted small', text: key || t('hRecNoGroup') }),
-                    el('div', { class: 'roster' }, buckets.get(key).map((name) => el('span', { class: 'chip', text: name }))),
-                  ])
-                ))
-              : el('div', { class: 'roster' }, missing.map((name) => el('span', { class: 'chip', text: name }))),
+          missing.length ? el('div', { class: 'roster' }, missing.map((name) => el('span', { class: 'chip', text: name }))) : null,
         ])
       );
     }

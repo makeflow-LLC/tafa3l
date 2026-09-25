@@ -43,7 +43,7 @@ function codesOf(assignment) {
  *
  * @param {object} opts
  * @param {object} opts.assignment الواجب
- * @param {Array}  opts.pupils     ملفّات الفصل (id, name, group)
+ * @param {Array}  opts.pupils     ملفّات الفصل (id, name, pin)
  * @param {Array}  opts.records    سطور سجلّ الفصل كلّها — نصفّيها برموز الواجب
  * @param {Set|Array} [opts.started] معرّفات من فتح الواجب ولم ينهه (من الجلسة الحيّة)
  */
@@ -70,7 +70,6 @@ function progress({ assignment, pupils = [], records = [], started = [] }) {
         return {
           id: p.id,
           name: p.name,
-          group: p.group || '',
           status: open.has(p.id) ? STATUS.STARTED : STATUS.NONE,
           percent: null,
           at: null,
@@ -82,7 +81,6 @@ function progress({ assignment, pupils = [], records = [], started = [] }) {
       return {
         id: p.id,
         name: p.name,
-        group: p.group || '',
         status: STATUS.DONE,
         percent: row.percent ?? null,
         at: row.at || null,
@@ -111,19 +109,15 @@ function progress({ assignment, pupils = [], records = [], started = [] }) {
 }
 
 /**
- * من يُكلَّف؟ مجموعاتٌ مختارة، أو طلابٌ بأعيانهم، أو الفصل كلّه.
+ * من يُكلَّف؟ طلابٌ بأعيانهم، أو الفصل كلّه حين لا يُختار أحد.
  *
- * والاختيار بالمجموعة هو الحالة الغالبة — «مجموعة الدعم» أو «الشعبة (أ)» —
- * لكنّ المخرَج طلابٌ بأعيانهم لا اسمُ مجموعة: الطالب قد ينتقل بين المجموعات
- * بعد التكليف، ولو حفظنا اسم المجموعة وحدها لتغيّر المُكلَّفون تحت الواجب.
+ * والمخرَج معرّفاتٌ لا أسماء: الاسم يُصحَّح بعد التكليف، والمعرّف لا يتبدّل
+ * فيبقى المُكلَّفون هم أنفسهم.
  */
-function pickStudents(pupils, { groups = [], studentIds = [] } = {}) {
+function pickStudents(pupils, { studentIds = [] } = {}) {
   const wantIds = new Set((studentIds || []).filter(Boolean));
-  const wantGroups = new Set((groups || []).map((g) => String(g || '').trim()).filter(Boolean));
-  if (!wantIds.size && !wantGroups.size) return (pupils || []).map((p) => p.id);
-  return (pupils || [])
-    .filter((p) => wantIds.has(p.id) || wantGroups.has(String(p.group || '').trim()))
-    .map((p) => p.id);
+  if (!wantIds.size) return (pupils || []).map((p) => p.id);
+  return (pupils || []).filter((p) => wantIds.has(p.id)).map((p) => p.id);
 }
 
 module.exports = { MAX_ASSIGNMENTS, STATUS, codesOf, progress, pickStudents, cleanCode };

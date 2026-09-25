@@ -428,7 +428,6 @@ test('إحصاءُ المعلّم في لوحة المالك: أرقامٌ صا�
   assert.equal(s.activities.questions, 3, 'الأسئلة تُعدّ لا تُقرأ');
   assert.equal(s.classes.total, 1);
   assert.equal(s.classes.students, 3);
-  assert.equal(s.classes.groups, 2, 'المجموعتان تُميَّزان من كشفٍ موازٍ للأسماء');
   assert.equal(s.classes.withRecord, 1);
   assert.equal(s.homework.total, 1);
   assert.equal(s.homework.assigned, 3, 'الفصل كلّه مُكلَّف');

@@ -38,12 +38,9 @@ const CLAMP = { line: 260, para: 900, note: 320, list: 8 };
 
 const levelOf = (avg) => (avg === null || avg === undefined ? 'support' : avg >= STRONG ? 'strong' : avg >= STEADY ? 'steady' : 'support');
 
-/** طلاب النطاق: الفصلُ كلّه، أو مجموعةٌ باسمها */
-function scopePupils(cls, group) {
-  const pupils = Array.isArray(cls?.pupils) ? cls.pupils : [];
-  const wanted = String(group || '').trim();
-  if (!wanted) return pupils;
-  return pupils.filter((p) => String(p.group || '').trim() === wanted);
+/** طلاب الفصل — والنطاق الفصلُ كلّه بعد أن زالت المجموعات */
+function scopePupils(cls) {
+  return Array.isArray(cls?.pupils) ? cls.pupils : [];
 }
 
 const avgOf = (rows) => {
@@ -55,8 +52,8 @@ const avgOf = (rows) => {
  * الخلاصة: ما يُحسب من السجل والواجبات، مقسوماً إلى ما يُعرض (بالأسماء) وما
  * يُرسل (بالمستعار). والاثنان يُبنيان معاً من المصدر نفسه فلا يفترقان.
  */
-function digest({ cls, records: rows, assignments = [], group = '' }) {
-  const pupils = scopePupils(cls, group).slice(0, MAX_STUDENTS);
+function digest({ cls, records: rows, assignments = [] }) {
+  const pupils = scopePupils(cls).slice(0, MAX_STUDENTS);
   const ids = new Set(pupils.map((p) => p.id));
   const scoped = (rows || []).filter((r) => ids.has(r.studentId));
 
@@ -102,7 +99,6 @@ function digest({ cls, records: rows, assignments = [], group = '' }) {
       id: p.id,
       label: labels.get(p.id),
       name: p.name,
-      group: p.group || '',
       attempts: mine.length,
       avg,
       level: levelOf(avg),
@@ -153,7 +149,6 @@ function digest({ cls, records: rows, assignments = [], group = '' }) {
 
   const stats = {
     className: cls.name,
-    group: String(group || '').trim(),
     students: students.length,
     sessions: sessions.length,
     results: scoped.length,
@@ -186,8 +181,8 @@ function promptFor(d) {
   const s = d.stats;
   const pct = (n) => (n === null || n === undefined ? '—' : `${n}%`);
   const lines = [];
-  lines.push(`النطاق: ${s.group ? `مجموعة «${s.group}» من فصل «${s.className}»` : `فصل «${s.className}»`}`);
-  lines.push(`الطلاب: ${s.students} · الجلسات المسجّلة: ${s.sessions} · النتائج: ${s.results} · متوسّط النطاق: ${pct(s.avg)}`);
+  lines.push(`الفصل: «${s.className}»`);
+  lines.push(`الطلاب: ${s.students} · الجلسات المسجّلة: ${s.sessions} · النتائج: ${s.results} · متوسّط الفصل: ${pct(s.avg)}`);
   lines.push(
     `التوزيع: قويّ (≥${STRONG}%) ${s.distribution.strong} · مستقرّ (${STEADY}–${STRONG - 1}%) ${s.distribution.steady} · يحتاج دعماً (<${STEADY}%) ${s.distribution.support} · بلا نتائج ${s.distribution.silent}`
   );
@@ -290,7 +285,6 @@ function parseReport(text, d) {
       return {
         id: st.id,
         name: st.name,
-        group: st.group,
         level: LEVELS.includes(row.level) ? row.level : st.level,
         note: deLabel(clampText(row.note, CLAMP.note)),
         next: deLabel(clampText(row.next, CLAMP.note)),
@@ -304,7 +298,7 @@ function parseReport(text, d) {
   // ومن لم يذكره النموذج يُدرج بأرقامه بلا ملاحظة — التقرير لا يُسقط طالباً
   for (const st of d.students) {
     if (seen.has(st.id)) continue;
-    students.push({ id: st.id, name: st.name, group: st.group, level: st.level, note: '', next: '', avg: st.avg, attempts: st.attempts, trend: st.trend, homework: st.homework });
+    students.push({ id: st.id, name: st.name, level: st.level, note: '', next: '', avg: st.avg, attempts: st.attempts, trend: st.trend, homework: st.homework });
   }
   // من يحتاج دعماً أوّلاً، والأدنى متوسّطاً قبل غيره — ومن لم يشارك آخرَ فئته
   const order = { support: 0, steady: 1, strong: 2 };

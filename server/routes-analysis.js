@@ -3,8 +3,8 @@
 /**
  * مسارات تحليل الفصل — للباقة الاحترافية.
  *
- *   GET  /classes/:id/analysis?group=   آخرُ تقريرٍ محفوظ لهذا النطاق (أو لا شيء)
- *   POST /classes/:id/analysis          يبني تقريراً جديداً ويحفظه
+ *   GET  /classes/:id/analysis   آخرُ تقريرٍ محفوظ للفصل (أو لا شيء)
+ *   POST /classes/:id/analysis   يبني تقريراً جديداً ويحفظه
  *
  * والتقرير **يُحفظ مع الفصل**: نداءُ النموذج يستغرق نصف دقيقة ويكلّف، والمعلّم
  * يفتح التقرير ليطبعه أو ليعرضه، لا ليُعاد بناؤه مع كل فتح. فالمحفوظُ يُعرض
@@ -38,10 +38,15 @@ function rateLimited(userId) {
 
 const MAX_OUTPUT_TOKENS = 6000;
 
-/** مفتاح النطاق داخل الفصل: الفصل كلّه «*»، والمجموعة باسمها */
-const keyOf = (group) => String(group || '').trim() || '*';
+/**
+ * مفتاح التقرير داخل الفصل.
+ *
+ * كان للفصل تقريرٌ لكل مجموعة، فبقي المفتاح بعد زوال المجموعات: «*» للفصل
+ * كلّه. وتركُه ثابتاً يُبقي تقارير الفصول المحفوظة تُقرأ كما هي.
+ */
+const CLASS_KEY = '*';
 
-/** ما يُقاس به قِدم التقرير: عددُ النتائج وأحدثُها في النطاق */
+/** ما يُقاس به قِدم التقرير: عددُ النتائج وأحدثُها في الفصل */
 function freshness(rows) {
   return { count: rows.length, latest: rows.reduce((m, r) => Math.max(m, r.at || 0), 0) };
 }
@@ -59,15 +64,15 @@ function analysisRoutes() {
     return item;
   }
 
-  /** النطاق وسجلّه — أو خطأٌ يقول لماذا لا تقرير */
-  async function scopeOf(req, res, cls, group) {
+  /** الفصلُ وسجلّه — أو خطأٌ يقول لماذا لا تقرير */
+  async function scopeOf(req, res, cls) {
     if (!cls.record) {
       res.status(409).json({ error: 'شغّل «سجلّ الطلاب» على هذا الفصل أولاً — التحليل يُبنى من النتائج المسجّلة' });
       return null;
     }
-    const pupils = analysis.scopePupils(cls, group);
+    const pupils = analysis.scopePupils(cls);
     if (!pupils.length) {
-      res.status(404).json({ error: 'لا مجموعة بهذا الاسم في الفصل' });
+      res.status(404).json({ error: 'لا طلاب في هذا الفصل بعد' });
       return null;
     }
     const ids = new Set(pupils.map((p) => p.id));
@@ -79,14 +84,12 @@ function analysisRoutes() {
     try {
       const cls = await ownClass(req, res);
       if (!cls) return;
-      const group = String(req.query.group || '').trim();
-      const scope = await scopeOf(req, res, cls, group);
+      const scope = await scopeOf(req, res, cls);
       if (!scope) return;
-      const saved = cls.analysis?.[keyOf(group)] || null;
+      const saved = cls.analysis?.[CLASS_KEY] || null;
       const now = freshness(scope.rows);
       res.json({
         class: { id: cls.id, name: cls.name, demo: Boolean(cls.demo) },
-        group,
         results: now.count,
         report: saved,
         // «أحدث» لا «أقدم»: نتائجُ دخلت بعد التقرير تُقال صراحةً لا تُخمَّن
@@ -103,16 +106,15 @@ function analysisRoutes() {
       if (!ai.isConfigured()) return res.status(503).json({ error: 'خدمة الذكاء الاصطناعي غير مُفعّلة على هذا الخادم' });
       const cls = await ownClass(req, res);
       if (!cls) return;
-      const group = String(req.body?.group || '').trim();
-      const scope = await scopeOf(req, res, cls, group);
+      const scope = await scopeOf(req, res, cls);
       if (!scope) return;
-      if (!scope.rows.length) return res.status(409).json({ error: 'لا نتائج مسجّلة بعد لهذا النطاق — التحليل يُبنى من نتائج سابقة' });
+      if (!scope.rows.length) return res.status(409).json({ error: 'لا نتائج مسجّلة بعد في هذا الفصل — التحليل يُبنى من نتائج سابقة' });
 
       const minutes = rateLimited(req.user.id);
       if (minutes) return res.status(429).json({ error: `بلغت حدّ التحليلات لهذه الساعة — حاول بعد ${minutes} دقيقة` });
 
       const assignments = (await storage.get().listAssignments(req.user.id)).filter((a) => a.classId === cls.id);
-      const d = analysis.digest({ cls, records: scope.rows, assignments, group });
+      const d = analysis.digest({ cls, records: scope.rows, assignments });
       const text = await ai.complete({
         system: analysis.SYSTEM_PROMPT,
         messages: [{ role: 'user', content: analysis.promptFor(d) }],
@@ -122,10 +124,10 @@ function analysisRoutes() {
       const report = analysis.parseReport(text, d);
 
       const entry = { at: Date.now(), ...freshness(scope.rows), stats: d.stats, report };
-      const next = { ...cls, analysis: { ...(cls.analysis || {}), [keyOf(group)]: entry } };
+      const next = { ...cls, analysis: { ...(cls.analysis || {}), [CLASS_KEY]: entry } };
       await storage.get().saveClass(next);
 
-      res.json({ class: { id: cls.id, name: cls.name, demo: Boolean(cls.demo) }, group, results: entry.count, report: entry, stale: false, ai: true });
+      res.json({ class: { id: cls.id, name: cls.name, demo: Boolean(cls.demo) }, results: entry.count, report: entry, stale: false, ai: true });
     } catch (err) {
       const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
       if (status >= 500) console.error('class analysis:', err.message);

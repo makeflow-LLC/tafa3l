@@ -189,16 +189,16 @@ async function solve(code, name, pin, answers) {
 
 // ------------------------------------------------------------------ الوحدة
 
-test('التكليف: مجموعةٌ تُختار فيُكلَّف طلابها، وبلا اختيارٍ يُكلَّف الفصل كلّه', () => {
+test('التكليف: طلابٌ بأعيانهم، وبلا اختيارٍ يُكلَّف الفصل كلّه', () => {
   const pupils = [
-    { id: 'st_1', name: 'سارة', group: 'الدعم' },
-    { id: 'st_2', name: 'ليان', group: 'الدعم' },
-    { id: 'st_3', name: 'هدى', group: 'الإثراء' },
+    { id: 'st_1', name: 'سارة' },
+    { id: 'st_2', name: 'ليان' },
+    { id: 'st_3', name: 'هدى' },
   ];
-  assert.deepEqual(homework.pickStudents(pupils, { groups: ['الدعم'] }), ['st_1', 'st_2']);
+  assert.deepEqual(homework.pickStudents(pupils, { studentIds: ['st_1', 'st_2'] }), ['st_1', 'st_2']);
   assert.deepEqual(homework.pickStudents(pupils, { studentIds: ['st_3'] }), ['st_3']);
-  // مجموعةٌ وطالبٌ من غيرها: اتّحادٌ لا تقاطع
-  assert.deepEqual(homework.pickStudents(pupils, { groups: ['الإثراء'], studentIds: ['st_1'] }), ['st_1', 'st_3']);
+  // معرّفٌ لا وجود له يسقط ولا يكسر
+  assert.deepEqual(homework.pickStudents(pupils, { studentIds: ['st_9'] }), []);
   assert.deepEqual(homework.pickStudents(pupils, {}), ['st_1', 'st_2', 'st_3']);
 });
 
@@ -212,11 +212,11 @@ test('رموز الواجب: الحاليّ وما سبقه بلا تكرار �
 test('المتابعة: من سلّم بنتيجته، ومن بدأ ولم يُنهِ، ومن لم يبدأ — والمتأخّر يُوسم', () => {
   const assignment = { code: '222222', codes: ['111111'], studentIds: ['st_1', 'st_2', 'st_3'], dueAt: 1000 };
   const pupils = [
-    { id: 'st_1', name: 'سارة', group: 'الدعم' },
-    { id: 'st_2', name: 'ليان', group: 'الدعم' },
-    { id: 'st_3', name: 'هدى', group: 'الإثراء' },
+    { id: 'st_1', name: 'سارة' },
+    { id: 'st_2', name: 'ليان' },
+    { id: 'st_3', name: 'هدى' },
     // طالبةٌ في الفصل لم تُكلَّف — لا تظهر في متابعة هذا الواجب
-    { id: 'st_4', name: 'رنا', group: 'الإثراء' },
+    { id: 'st_4', name: 'رنا' },
   ];
   const rows = [
     { code: '111111', studentId: 'st_1', at: 500, percent: 80, pending: 0 },
@@ -281,13 +281,12 @@ test('المراجعة: بلا خطأٍ يقابله سؤالٌ عند المع�
 
 // ---------------------------------------------------------------- المسارات
 
-test('الواجب: يُنشأ لمجموعةٍ، فيرى المعلّم من سلّم ومن لم يبدأ — والنتيجة في ملفّ الطالبة', async () => {
+test('الواجب: يُنشأ لطلابٍ مختارين، فيرى المعلّم من سلّم ومن لم يبدأ — والنتيجة في ملفّ الطالبة', async () => {
   const { teacher, cls, activityId } = await teacherWithClass();
   const made = await teacher.request('POST', '/api/assignments', {
     activityId,
     classId: cls.id,
-    groups: ['مجموعة الدعم'],
-    studentIds: cls.pupils.filter((p) => p.group === 'مجموعة الدعم').map((p) => p.id),
+    studentIds: cls.pupils.filter((p) => ['سارة', 'ليان'].includes(p.name)).map((p) => p.id),
   });
   assert.equal(made.status, 201);
   const hw = made.data.assignment;

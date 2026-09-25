@@ -100,7 +100,7 @@
       try {
         await window.Exporter.toStudentCardPdf({
           name: s.name,
-          meta: [data.class?.name, s.group, teacherName ? t('cdTeacher', { name: teacherName }) : '', t('cdMadeAt', { at: fmtDate(Date.now()) })]
+          meta: [data.class?.name, teacherName ? t('cdTeacher', { name: teacherName }) : '', t('cdMadeAt', { at: fmtDate(Date.now()) })]
             .filter(Boolean)
             .join(' · '),
           avg: pct(avg),
@@ -131,7 +131,7 @@
           el('div', { style: { fontWeight: 700, fontSize: '1.15rem' }, text: s.name }),
           el('div', {
             class: 'muted small',
-            text: [data.class?.name, s.group, teacherName ? t('cdTeacher', { name: teacherName }) : '', t('cdMadeAt', { at: fmtDate(Date.now()) })]
+            text: [data.class?.name, teacherName ? t('cdTeacher', { name: teacherName }) : '', t('cdMadeAt', { at: fmtDate(Date.now()) })]
               .filter(Boolean)
               .join(' · '),
           }),
