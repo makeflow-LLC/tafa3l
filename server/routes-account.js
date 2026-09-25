@@ -342,8 +342,6 @@ function accountRoutes(store) {
           classes: {
             total: real.length,
             students: real.reduce((sum, c) => sum + (c.students || []).length, 0),
-            // `groups` كشفٌ موازٍ للأسماء لا قائمةَ مجموعات — فالعدد بالتمييز
-            groups: real.reduce((sum, c) => sum + new Set((c.groups || []).filter(Boolean)).size, 0),
             withRecord: recordClasses.length,
           },
           records: {
@@ -675,51 +673,34 @@ function accountRoutes(store) {
   const MAX_CLASSES = 60;
   const MAX_STUDENTS = 300;
 
-  const MAX_GROUP_NAME = 40;
-
   /**
-   * كشفُ الأسماء، ومجموعاتُه إن كتبها المعلّم.
+   * كشفُ الأسماء: اسمٌ في كل سطر، ويُقبل الفصل بفاصلةٍ أيضاً.
    *
-   * صفٌّ من ستّين طالباً قائمةٌ لا تُقرأ — لا على شاشة المعلّم ولا على جوّال
-   * الطالب وهو يبحث عن اسمه. فالمجموعة تُكتب **في الكشف نفسه** كعنوانٍ يسبق
-   * أسماءها: سطرٌ يبدأ بـ`#` أو محصورٌ بين قوسين معقوفين. ولا حقلَ جديداً
-   * ولا شاشةَ ثانية: من يلصق قائمته كما هي لا يرى شيئاً تغيّر، ومن أراد
-   * التقسيم كتب سطراً.
-   *
-   *     # المجموعة أ
-   *     سارة أحمد
-   *     ليان محمود
-   *     [المجموعة ب]
-   *     كريم خالد
-   *
-   * والمخرجان **متوازيان**: `names[i]` صاحب `groups[i]`. لا خريطةَ بالاسم —
-   * الاسم يتغيّر فتضيع مجموعته، والفهرس لا يكذب ما دام المصدر واحداً.
+   * وكان هنا نظامُ «مجموعاتٍ داخل الفصل» يُكتب بعناوين `#` بين الأسماء —
+   * فأُزيل: المعلّمون لم يطلبوه، ومن جرّبه وجد نفسه أمام طبقةٍ ثانية من
+   * التنظيم قبل أن يكتب اسم طالبٍ واحد. الفصلُ قائمةُ طلاب، لا قوائمَ داخل
+   * قائمة. والسطرُ الذي يبدأ بـ`#` يبقى مقبولاً — يُقرأ اسماً بعد تنظيفه لا
+   * عنواناً — فلا تُبتلع أسماءُ من لصق كشفاً قديماً فيه عناوين.
    */
   function parseRoster(raw) {
     const lines = Array.isArray(raw) ? raw : String(raw || '').split(/\r?\n/);
     const seen = new Set();
     const names = [];
-    const groups = [];
-    let current = '';
     for (const line of lines) {
       const text = String(line || '').replace(/\s+/g, ' ').trim();
       if (!text) continue;
-      const heading = /^#+\s*(.+)$/.exec(text) || /^\[(.+)\]$/.exec(text);
-      if (heading) {
-        current = heading[1].trim().slice(0, MAX_GROUP_NAME);
-        continue;
-      }
+      // عناوينُ الكشوف القديمة («# المجموعة أ» أو «[المجموعة ب]») ليست أسماءً
+      if (/^#+\s*\S/.test(text) || /^\[.+\]$/.test(text)) continue;
       // الفواصل داخل السطر تبقى مقبولة كما كانت — من يلصق «سارة، ليان» يجد اسمين
       for (const piece of text.split(/[,،;]+/)) {
         const name = piece.replace(/\s+/g, ' ').trim().slice(0, 40);
         if (!name || seen.has(name)) continue;
         seen.add(name);
         names.push(name);
-        groups.push(current);
-        if (names.length >= MAX_STUDENTS) return { names, groups };
+        if (names.length >= MAX_STUDENTS) return { names };
       }
     }
-    return { names, groups };
+    return { names };
   }
 
   /** أسماءٌ نظيفة بلا فراغات ولا تكرار — تُقبل ملصوقةً بأسطر أو فواصل */
@@ -734,18 +715,23 @@ function accountRoutes(store) {
    * ورموزهم بعد كل نشاط. وحين يطفئه لا يُكتب جديد، وما كُتب يبقى حتى يحذفه هو.
    */
   // التحليل المحفوظ ليس من بيانات الفصل التي تُسرد: صفحته تطلبه وحدها
-  const publicClass = ({ analysis, ...item }) => ({
+  const publicClass = ({ analysis, groups, ...item }) => ({
     ...item,
     record: Boolean(item.record),
     demo: Boolean(item.demo),
-    groups: item.groups || [],
-    pupils: item.record ? (item.pupils || []).map(records.publicPupil) : [],
+    pupils: (item.pupils || []).map(records.publicPupil),
   });
 
-  /** يعيد الفصل بملفّاته موائمةً لكشفه — إن كان السجل مفعّلاً */
+  /**
+   * يعيد الفصل بملفّاته موائمةً لكشفه.
+   *
+   * والملفّ يُصنع **لكل طالبٍ ساعةَ يُكتب اسمه** لا ساعةَ يُشغَّل السجل: رمزُه
+   * الشخصي جزءٌ من هويّته في الفصل، والمعلّم يريده أمامه وهو يضيفه ليكتبه له
+   * على ورقةٍ أو يرسله لوليّ أمره. وكان يُولَد عند تشغيل السجل وحده، فيجد
+   * المعلّم كشفاً بلا رموز ولا يدري أين يجدها.
+   */
   function withPupils(item) {
-    if (!item.record) return { ...item, pupils: item.pupils || [] };
-    return { ...item, pupils: records.syncPupils(item.students, item.pupils, item.groups) };
+    return { ...item, pupils: records.syncPupils(item.students, item.pupils) };
   }
 
   /**
@@ -801,7 +787,6 @@ function accountRoutes(store) {
         ownerId: req.user.id,
         name,
         students: roster.names,
-        groups: roster.groups,
         record: req.body?.record === true,
         pupils: [],
         createdAt: now,
@@ -832,7 +817,6 @@ function accountRoutes(store) {
         ...existing,
         name,
         students: roster ? roster.names : existing.students,
-        groups: roster ? roster.groups : existing.groups || [],
         record: typeof req.body?.record === 'boolean' ? req.body.record : Boolean(existing.record),
         updatedAt: Date.now(),
       });
@@ -874,7 +858,6 @@ function accountRoutes(store) {
         ownerId: req.user.id,
         name: demoRecord.CLASS_NAME,
         students: demoRecord.STUDENTS.map((s) => s.name),
-        groups: demoRecord.STUDENTS.map((s) => s.group),
         record: true,
         demo: true,
         pupils: existing?.pupils || [],
@@ -900,15 +883,15 @@ function accountRoutes(store) {
   // على الكشف نفسه، لا تخزينٌ ثانٍ له.
 
   /** يكتب الفصل بعد تعديل كشفه، ويوائم ملفّاته */
-  async function saveRoster(item, names, groups) {
-    const updated = withPupils({ ...item, students: names, groups, updatedAt: Date.now() });
+  async function saveRoster(item, names) {
+    const updated = withPupils({ ...item, students: names, updatedAt: Date.now() });
     await storage.get().saveClass(updated);
     return updated;
   }
 
   const sameName = (a, b) => records.nameKey(a) === records.nameKey(b);
 
-  /** إضافة طالبٍ واحد — باسمه ومجموعته */
+  /** إضافة طالبٍ واحد — اسمٌ في آخر الكشف، ويعود معه رمزُه */
   router.post('/classes/:id/students', auth.requireUser, async (req, res) => {
     try {
       const item = await ownClass(req, res);
@@ -920,21 +903,8 @@ function accountRoutes(store) {
       if (names.some((n) => sameName(n, name))) return res.status(409).json({ error: 'هذا الاسم موجود في الفصل' });
       const others = await studentsTotal(req.user.id, item.id);
       premium.assertStudentsAllowed(req.user, others + names.length + 1, others + names.length);
-      const group = String(req.body?.group || '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
-      const groups = (item.groups || []).slice();
-      /*
-       * يُدرَج **آخرَ مجموعته** لا آخر القائمة: الكشف مقروءٌ بمجموعاته في
-       * شاشة الطالب وفي ورقة الرموز، فطالبٌ يهبط تحت عنوان مجموعةٍ أخرى
-       * يفسد الترتيب الذي رتّبه المعلّم بنفسه.
-       */
-      let at = names.length;
-      if (group) {
-        const last = groups.lastIndexOf(group);
-        if (last >= 0) at = last + 1;
-      }
-      names.splice(at, 0, name);
-      groups.splice(at, 0, group);
-      const updated = await saveRoster(item, names, groups);
+      names.push(name);
+      const updated = await saveRoster(item, names);
       res.status(201).json({ class: publicClass(updated) });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّرت الإضافة' });
@@ -942,7 +912,7 @@ function accountRoutes(store) {
   });
 
   /**
-   * تعديل طالب: اسمُه أو مجموعته.
+   * تعديل طالب: اسمُه.
    *
    * والاسمُ يُعاد تسميته **في ملفّه أيضاً** قبل المواءمة، وإلا عُدَّ اسماً
    * جديداً فأخذ ملفّاً جديداً برمزٍ جديد — فيفقد الطالب سجلّه لأن معلّمه
@@ -954,7 +924,6 @@ function accountRoutes(store) {
       if (!item) return;
       const current = String(req.params.name || '');
       const names = (item.students || []).slice();
-      const groups = (item.groups || []).slice();
       const at = names.findIndex((n) => sameName(n, current));
       if (at < 0) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
 
@@ -966,17 +935,7 @@ function accountRoutes(store) {
         if (pupil) pupil.name = next;
         names[at] = next;
       }
-      if (req.body?.group !== undefined) {
-        groups[at] = String(req.body.group).replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
-        // ينتقل مع مجموعته الجديدة كي يبقى الكشف مقروءاً بعناوينه
-        const [movedName] = names.splice(at, 1);
-        const [movedGroup] = groups.splice(at, 1);
-        const last = movedGroup ? groups.lastIndexOf(movedGroup) : -1;
-        const to = last >= 0 ? last + 1 : names.length;
-        names.splice(to, 0, movedName);
-        groups.splice(to, 0, movedGroup);
-      }
-      const updated = await saveRoster(item, names, groups);
+      const updated = await saveRoster(item, names);
       res.json({ class: publicClass(updated) });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر التعديل' });
@@ -989,65 +948,13 @@ function accountRoutes(store) {
       const item = await ownClass(req, res);
       if (!item) return;
       const names = (item.students || []).slice();
-      const groups = (item.groups || []).slice();
       const at = names.findIndex((n) => sameName(n, String(req.params.name || '')));
       if (at < 0) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
       names.splice(at, 1);
-      groups.splice(at, 1);
-      const updated = await saveRoster(item, names, groups);
+      const updated = await saveRoster(item, names);
       res.json({ class: publicClass(updated) });
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message || 'تعذّر الحذف' });
-    }
-  });
-
-  /** مجموعةٌ جديدة بأسمائها دفعةً واحدة — أسرع طريقٍ لتقسيم فصلٍ كبير */
-  router.post('/classes/:id/groups', auth.requireUser, async (req, res) => {
-    try {
-      const item = await ownClass(req, res);
-      if (!item) return;
-      const group = String(req.body?.name || '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
-      if (!group) return res.status(400).json({ error: 'اكتب اسم المجموعة' });
-      const names = (item.students || []).slice();
-      const groups = (item.groups || []).slice();
-      // أسماءٌ في الفصل بالفعل تُنقل إلى المجموعة الجديدة بدل أن تُرفض أو تتكرّر
-      const wanted = parseRoster(req.body?.students).names;
-      for (const name of wanted) {
-        const at = names.findIndex((n) => sameName(n, name));
-        if (at >= 0) {
-          names.splice(at, 1);
-          groups.splice(at, 1);
-        }
-      }
-      if (names.length + wanted.length > MAX_STUDENTS) return res.status(409).json({ error: `بلغت الحد الأقصى (${MAX_STUDENTS} طالباً)` });
-      const others = await studentsTotal(req.user.id, item.id);
-      premium.assertStudentsAllowed(req.user, others + names.length + wanted.length, others + (item.students || []).length);
-      names.push(...wanted);
-      groups.push(...wanted.map(() => group));
-      const updated = await saveRoster(item, names, groups);
-      res.status(201).json({ class: publicClass(updated) });
-    } catch (err) {
-      res.status(err.status || 400).json({ error: err.message || 'تعذّر إنشاء المجموعة' });
-    }
-  });
-
-  /** إعادة تسمية مجموعة، أو حلّها (اسمٌ فارغ) — الطلاب يبقون في الفصل */
-  router.patch('/classes/:id/groups/:name', auth.requireUser, async (req, res) => {
-    try {
-      const item = await ownClass(req, res);
-      if (!item) return;
-      const current = String(req.params.name || '').trim();
-      const next = String(req.body?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
-      const groups = (item.groups || []).slice();
-      if (!groups.some((g) => (g || '') === current)) return res.status(404).json({ error: 'المجموعة غير موجودة' });
-      const updated = await saveRoster(
-        item,
-        (item.students || []).slice(),
-        groups.map((g) => ((g || '') === current ? next : g))
-      );
-      res.json({ class: publicClass(updated) });
-    } catch (err) {
-      res.status(err.status || 400).json({ error: err.message || 'تعذّر تعديل المجموعة' });
     }
   });
 
@@ -1206,8 +1113,8 @@ function accountRoutes(store) {
   /**
    * «نشاط مراجعة» — يُبنى ممّا أخطأ فيه الطلاب لا ممّا نظنّ.
    *
-   * نطاقه ثلاثة: الفصل كلّه، أو مجموعةٌ فيه، أو طالبٌ بعينه — وهو الفرق بين
-   * مراجعةٍ عامّة ودرسِ علاجٍ لمن يحتاجه. والناتج **نشاطٌ محفوظ** لا جلسة:
+   * نطاقه اثنان: الفصل كلّه، أو طالبٌ بعينه — وهو الفرق بين مراجعةٍ عامّة
+   * ودرسِ علاجٍ لمن يحتاجه. والناتج **نشاطٌ محفوظ** لا جلسة:
    * المعلّم يفتحه فيحذف ويضيف ثم يطلقه أو يكلّف به، فالقرار الأخير له.
    */
   router.post('/classes/:id/review', auth.requireUser, async (req, res) => {
@@ -1222,17 +1129,12 @@ function accountRoutes(store) {
 
       const pupils = item.pupils || [];
       const studentId = String(req.body?.studentId || '');
-      const group = String(req.body?.group || '').trim();
       let scope = item.name;
-      let rows = await db.listRecords(item.id, studentId || undefined);
+      const rows = await db.listRecords(item.id, studentId || undefined);
       if (studentId) {
         const pupil = pupils.find((p) => p.id === studentId);
         if (!pupil) return res.status(404).json({ error: 'الطالب غير موجود في هذا الفصل' });
         scope = pupil.name;
-      } else if (group) {
-        const ids = new Set(pupils.filter((p) => String(p.group || '').trim() === group).map((p) => p.id));
-        rows = rows.filter((r) => ids.has(r.studentId));
-        scope = group;
       }
       if (!rows.length) return res.status(409).json({ error: 'لا سجلّ بعد لهذا النطاق — المراجعة تُبنى من نتائج سابقة' });
 
@@ -1317,7 +1219,6 @@ function accountRoutes(store) {
     activityId: a.activityId,
     title: a.title,
     code: a.code,
-    groups: a.groups || [],
     assigned: (a.studentIds || []).length,
     dueAt: a.dueAt || null,
     createdAt: a.createdAt,
@@ -1374,7 +1275,7 @@ function accountRoutes(store) {
       premium.assertImagesAllowed(req.user, activity.questions);
 
       const pupils = cls.pupils || [];
-      const studentIds = homework.pickStudents(pupils, { groups: req.body?.groups, studentIds: req.body?.studentIds });
+      const studentIds = homework.pickStudents(pupils, { studentIds: req.body?.studentIds });
       if (!studentIds.length) return res.status(400).json({ error: 'اختر طالباً واحداً على الأقل' });
       const chosen = pupils.filter((p) => studentIds.includes(p.id));
       const dueAt = Number(req.body?.dueAt) || 0;
@@ -1393,7 +1294,6 @@ function accountRoutes(store) {
         // مفتاح المضيف محفوظٌ مع الواجب لا في متصفّحٍ واحد: المعلّم يفتح
         // متابعته الحيّة من أيّ جهازٍ يدخل منه حسابه
         hostToken: session.hostToken,
-        groups: (req.body?.groups || []).map((g) => clean(g, 40)).filter(Boolean),
         studentIds,
         dueAt: session.settings.dueAt || 0,
         createdAt: now,
@@ -1423,7 +1323,6 @@ function accountRoutes(store) {
         requireName: true,
         allowLateJoin: true,
         roster: chosen.map((p) => p.name),
-        rosterGroups: chosen.map((p) => p.group || ''),
         recordClassId: cls.id,
         dueAt: dueAt || 0,
         // موعدُ فتحٍ ورثه النشاط من إطلاقٍ قديم لا معنى له في واجبٍ يُرسل الآن

@@ -149,9 +149,9 @@ test('الخلاصة: أسماءٌ مستعارة في ما يُرسل، وأر�
     name: 'السابع أ',
     record: true,
     pupils: [
-      { id: 'st_1', name: 'سارة قاسم', group: 'الدعم' },
-      { id: 'st_2', name: 'ليان محمود', group: 'الدعم' },
-      { id: 'st_3', name: 'هدى سليم', group: 'الإثراء' },
+      { id: 'st_1', name: 'سارة قاسم' },
+      { id: 'st_2', name: 'ليان محمود' },
+      { id: 'st_3', name: 'هدى سليم' },
     ],
   };
   const records = [
@@ -160,7 +160,7 @@ test('الخلاصة: أسماءٌ مستعارة في ما يُرسل، وأر�
     row('cl_a', 'st_3', '111111', 75, [wrong('١/٢ + ١/٤ = ؟', 'جمع الكسور')]),
     row('cl_a', 'st_2', '222222', 50, [wrong('٢/٣ + ١/٣ = ؟', 'جمع الكسور')]),
   ];
-  const d = analysis.digest({ cls, records, assignments: [], group: '' });
+  const d = analysis.digest({ cls, records, assignments: [] });
   assert.equal(d.students.length, 3);
   assert.deepEqual(d.students.map((s) => s.label), ['s1', 's2', 's3']);
   assert.equal(d.stats.avg, Math.round((100 + 25 + 75 + 50) / 4));
@@ -177,10 +177,9 @@ test('الخلاصة: أسماءٌ مستعارة في ما يُرسل، وأر�
   assert.match(prompt, /s2: محاولات 2/);
   assert.match(prompt, /جمع الكسور/);
 
-  // مجموعةٌ وحدها
-  const g = analysis.digest({ cls, records, assignments: [], group: 'الدعم' });
-  assert.equal(g.students.length, 2);
-  assert.equal(g.stats.group, 'الدعم');
+  // والنطاق الفصلُ كلّه: لا تصنيفاتٍ داخله
+  assert.equal(d.stats.group, undefined);
+  assert.equal(d.students.every((st) => st.group === undefined), true);
 });
 
 test('التقرير العائد: الأسماء تعود، والدخلاء يسقطون، والمنسيّ يُدرج بأرقامه', () => {
@@ -189,9 +188,9 @@ test('التقرير العائد: الأسماء تعود، والدخلاء ي
     name: 'الثامن',
     record: true,
     pupils: [
-      { id: 'st_1', name: 'سارة', group: '' },
-      { id: 'st_2', name: 'ليان', group: '' },
-      { id: 'st_3', name: 'هدى', group: '' },
+      { id: 'st_1', name: 'سارة' },
+      { id: 'st_2', name: 'ليان' },
+      { id: 'st_3', name: 'هدى' },
     ],
   };
   const d = analysis.digest({ cls, records: [row('cl_b', 'st_1', '1', 90), row('cl_b', 'st_2', '1', 30)], assignments: [] });
@@ -214,7 +213,7 @@ test('التقرير العائد: الأسماء تعود، والدخلاء ي
 
 // ------------------------------------------------------------------ المسار
 
-test('المسار: للاحترافية وحدها، يُبنى مرّةً ويُحفظ، والمجموعة نطاقٌ مستقلّ', async () => {
+test('المسار: للاحترافية وحدها، يُبنى مرّةً ويُحفظ — ونطاقُه الفصل كلّه', async () => {
   const email = 'analysis.teacher@example.com';
   const mock = mockUpstream({ email, azure: azureReply(REPORT) });
   try {
@@ -272,14 +271,12 @@ test('المسار: للاحترافية وحدها، يُبنى مرّةً وي
     assert.equal(later.data.stale, true);
     assert.equal(later.data.report.at, made.data.report.at, 'المحفوظ يبقى حتى يُطلب التجديد');
 
-    // مجموعةٌ نطاقٌ آخر بتقريرٍ آخر
-    const grp = await teacher.request('POST', `/api/classes/${cls.id}/analysis`, { group: 'الدعم' });
-    assert.equal(grp.status, 200);
-    assert.equal(grp.data.report.stats.students, 2);
-    assert.equal(grp.data.report.stats.group, 'الدعم');
+    // ونطاقُ التقرير الفصلُ كلّه: «مجموعة» في الطلب لا تفتح نطاقاً ثانياً
+    const whole = await teacher.request('POST', `/api/classes/${cls.id}/analysis`, { group: 'الدعم' });
+    assert.equal(whole.status, 200);
+    assert.equal(whole.data.report.stats.students, 3);
+    assert.equal(whole.data.group, undefined);
     assert.equal(mock.seen.azure.length, 2);
-    const ghost = await teacher.request('POST', `/api/classes/${cls.id}/analysis`, { group: 'لا أحد' });
-    assert.equal(ghost.status, 404);
 
     // ولا يُسرَّب التقرير في قائمة الفصول
     const list = await teacher.request('GET', '/api/classes');

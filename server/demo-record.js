@@ -17,25 +17,23 @@
 
 const CLASS_NAME = 'فصل تجريبي — نموذج للعرض';
 
-const GROUPS = ['المجموعة أ', 'المجموعة ب', 'المجموعة ج'];
-
 /**
  * الطلاب الوهميون وسِيَرهم. `base` نسبته المعتادة، و`slope` ميلُه بين نشاطٍ
  * وآخر (موجبٌ يتحسّن وسالبٌ يتراجع)، و`skip` أنشطةٌ غاب عنها.
  */
 const STUDENTS = [
-  { name: 'سارة أحمد', group: GROUPS[0], base: 90, slope: 1, skip: [] },
-  { name: 'ليان محمود', group: GROUPS[0], base: 48, slope: 10, skip: [] },
-  { name: 'كريم خالد', group: GROUPS[0], base: 71, slope: 0, skip: [] },
-  { name: 'يوسف نبيل', group: GROUPS[0], base: 92, slope: -9, skip: [] },
-  { name: 'رهف سامي', group: GROUPS[1], base: 36, slope: 4, skip: [] },
-  { name: 'عمر زياد', group: GROUPS[1], base: 78, slope: 1, skip: [1, 3] },
-  { name: 'جنى فادي', group: GROUPS[1], base: 96, slope: 0, skip: [0] },
-  { name: 'محمود إياد', group: GROUPS[1], base: 63, slope: 3, skip: [] },
-  { name: 'تالا وسيم', group: GROUPS[2], base: 58, slope: 5, skip: [] },
-  { name: 'أنس مراد', group: GROUPS[2], base: 44, slope: 2, skip: [2] },
-  { name: 'ملك عدنان', group: GROUPS[2], base: 82, slope: 2, skip: [] },
-  { name: 'زيد حاتم', group: GROUPS[2], base: 55, slope: -3, skip: [] },
+  { name: 'سارة أحمد', base: 90, slope: 1, skip: [] },
+  { name: 'ليان محمود', base: 48, slope: 10, skip: [] },
+  { name: 'كريم خالد', base: 71, slope: 0, skip: [] },
+  { name: 'يوسف نبيل', base: 92, slope: -9, skip: [] },
+  { name: 'رهف سامي', base: 36, slope: 4, skip: [] },
+  { name: 'عمر زياد', base: 78, slope: 1, skip: [1, 3] },
+  { name: 'جنى فادي', base: 96, slope: 0, skip: [0] },
+  { name: 'محمود إياد', base: 63, slope: 3, skip: [] },
+  { name: 'تالا وسيم', base: 58, slope: 5, skip: [] },
+  { name: 'أنس مراد', base: 44, slope: 2, skip: [2] },
+  { name: 'ملك عدنان', base: 82, slope: 2, skip: [] },
+  { name: 'زيد حاتم', base: 55, slope: -3, skip: [] },
 ];
 
 /** سؤالٌ في نشاطٍ تجريبي: نصّه، وصوابه، والخطأ الشائع فيه، والمهارة التي يقيسها */
@@ -207,4 +205,4 @@ function buildRows({ classId, ownerId, pupils }) {
   return rows;
 }
 
-module.exports = { CLASS_NAME, GROUPS, STUDENTS, ACTIVITIES, buildRows };
+module.exports = { CLASS_NAME, STUDENTS, ACTIVITIES, buildRows };

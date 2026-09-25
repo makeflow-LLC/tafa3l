@@ -191,17 +191,20 @@ test('مواءمة الملفّات: الاسم الباقي يحتفظ بمعر
   assert.equal(new Set(again.map((p) => p.pin)).size, 3);
 });
 
-test('الفصل بلا سجل لا ملفّات له، وتشغيله يُنشئها بلا أن يمسّ الأسماء', async () => {
+test('لكل طالبٍ ملفٌّ ورمزٌ فور كتابة اسمه — والسجل قرارٌ مستقلّ عنه', async () => {
   const teacher = client();
   await teacher.login('أ. سامي');
   const made = await teacher.request('POST', '/api/classes', { name: 'صف', students: 'سارة\nليان' });
   assert.equal(made.data.class.record, false);
-  assert.deepEqual(made.data.class.pupils, []);
+  // الرمز جزءٌ من هوية الطالب في الفصل لا مكافأةَ تشغيل السجل
+  assert.equal(made.data.class.pupils.length, 2);
+  assert.match(made.data.class.pupils[0].pin, /^\d{4}$/);
   assert.deepEqual(made.data.class.students, ['سارة', 'ليان']);
 
   const on = await teacher.request('PUT', '/api/classes/' + made.data.class.id, { record: true });
   assert.equal(on.data.class.record, true);
   assert.equal(on.data.class.pupils.length, 2);
+  assert.equal(on.data.class.pupils[0].pin, made.data.class.pupils[0].pin, 'وتشغيل السجل لا يبدّل الرموز');
   assert.deepEqual(on.data.class.students, ['سارة', 'ليان'], 'الكشف كما هو');
   assert.equal(on.data.class.pupils[0].key, undefined, 'مفتاح الطالب السرّي لا يغادر الخادم');
 
@@ -413,71 +416,49 @@ test('تجديد الرمز يُبطل القديم، وحذف سجلّ الطا
 
 // ------------------------------------------------------------ المجموعات
 
-test('عناوين المجموعات في الكشف: تُقرأ من # ومن [ ]، والأسماء تبقى قائمةً مسطّحة', async () => {
+test('الفصل قائمةٌ مسطّحة: عناوينُ الكشوف القديمة تُهمَل ولا تصير أسماء', async () => {
   const teacher = client();
   await teacher.login('أ. هبة');
   const made = await teacher.request('POST', '/api/classes', {
     name: 'السادس',
-    students: '# المجموعة أ\nسارة\nليان\n[المجموعة ب]\nكريم, رنا\nبلا عنوان بعدها؟ لا',
+    // كشفٌ قديم فيه عناوين مجموعات: العناوين تُطرح والأسماء تبقى
+    students: '# المجموعة أ\nسارة\nليان\n[المجموعة ب]\nكريم, رنا',
     record: true,
   });
   const cls = made.data.class;
-  assert.deepEqual(cls.students, ['سارة', 'ليان', 'كريم', 'رنا', 'بلا عنوان بعدها؟ لا']);
-  assert.deepEqual(cls.groups, ['المجموعة أ', 'المجموعة أ', 'المجموعة ب', 'المجموعة ب', 'المجموعة ب']);
-  assert.equal(cls.pupils.find((p) => p.name === 'كريم').group, 'المجموعة ب');
+  assert.deepEqual(cls.students, ['سارة', 'ليان', 'كريم', 'رنا']);
+  assert.equal(cls.groups, undefined, 'ولا حقل مجموعاتٍ يخرج إلى الواجهة');
+  assert.equal(cls.pupils.every((p) => p.group === undefined), true, 'ولا في ملفّات الطلاب');
 });
 
-test('الاسم المكرّر لا يُزيح المجموعات عن أسمائها', async () => {
-  const teacher = client();
-  await teacher.login('أ. رائد');
-  const made = await teacher.request('POST', '/api/classes', {
-    name: 'صف',
-    students: '# أ\nسارة\nسارة\n# ب\nكريم',
-    record: true,
-  });
-  assert.deepEqual(made.data.class.students, ['سارة', 'كريم']);
-  assert.deepEqual(made.data.class.groups, ['أ', 'ب']);
-});
-
-test('المجموعات تُلخَّص في سجلّ الفصل، وتصل كشفَ الدخول موازيةً للأسماء', async () => {
+test('سجلّ الفصل بلا تصنيفات: طلابٌ وجلساتٌ ومتوسّط، وكشفُ الدخول أسماءٌ وحدها', async () => {
   const { teacher, cls, code } = await classroom();
   const info = await (await fetch(base + '/api/sessions/' + code)).json();
-  assert.equal(info.rosterGroups.length, info.roster.length);
+  assert.ok(info.roster.length, 'الكشف يصل شاشة الطالب');
+  assert.equal(info.rosterGroups, undefined, 'بلا مجموعاتٍ موازية');
 
-  const grouped = await teacher.request('PUT', '/api/classes/' + cls.id, { students: '# أ\nسارة\nليان' });
-  assert.deepEqual(grouped.data.class.groups, ['أ', 'أ']);
-  const sara = grouped.data.class.pupils.find((p) => p.name === 'سارة');
+  const sara = cls.pupils.find((p) => p.name === 'سارة');
   await (await play(code, 'سارة', sara.pin)).socket.close();
   await sleep(400);
   const rec = await teacher.request('GET', '/api/classes/' + cls.id + '/record');
-  assert.equal(rec.data.groups.length, 1);
-  assert.equal(rec.data.groups[0].name, 'أ');
-  assert.equal(rec.data.groups[0].students, 2);
-  assert.equal(rec.data.groups[0].avgPercent, 100);
-  assert.equal(rec.data.students[0].group, 'أ');
-});
-
-test('فصلٌ بلا مجموعات لا يُصنَّف: القائمة فارغة لا مجموعةٌ بلا اسم', async () => {
-  const { teacher, cls } = await classroom();
-  const rec = await teacher.request('GET', '/api/classes/' + cls.id + '/record');
-  assert.deepEqual(rec.data.groups, []);
+  assert.equal(rec.data.groups, undefined);
+  assert.ok(rec.data.students.length);
+  assert.equal(rec.data.students[0].group, undefined);
 });
 
 // ------------------------------------------------------ إدارة الطلاب
 
-test('إضافة طالب: يُدرَج آخر مجموعته لا آخر القائمة، والاسم المكرّر يُرفض', async () => {
+test('إضافة طالب: يُدرَج آخر القائمة ويعود معه رمزُه، والاسم المكرّر يُرفض', async () => {
   const teacher = client();
   await teacher.login('أ. فادي');
-  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\n# ب\nكريم', record: true })).data.class;
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: 'سارة\nكريم' })).data.class;
 
-  const added = await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: 'ليان', group: 'أ' });
+  const added = await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: 'ليان' });
   assert.equal(added.status, 201);
-  assert.deepEqual(added.data.class.students, ['سارة', 'ليان', 'كريم']);
-  assert.deepEqual(added.data.class.groups, ['أ', 'أ', 'ب']);
-
-  const tail = await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: 'رنا' });
-  assert.deepEqual(tail.data.class.students, ['سارة', 'ليان', 'كريم', 'رنا']);
-  assert.equal(tail.data.class.groups[3], '');
+  assert.deepEqual(added.data.class.students, ['سارة', 'كريم', 'ليان']);
+  // الرمز يعود مع الردّ — به تقول الواجهة للمعلّم رمزَ من أضافه للتوّ
+  const pin = added.data.class.pupils.find((p) => p.name === 'ليان')?.pin;
+  assert.match(String(pin), /^\d{4}$/);
 
   assert.equal((await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: ' ليان ' })).status, 409);
   assert.equal((await teacher.request('POST', `/api/classes/${cls.id}/students`, { name: '  ' })).status, 400);
@@ -497,46 +478,27 @@ test('تعديل اسم طالب يحفظ ملفّه ورمزه — تصحيحُ
   assert.deepEqual(fixed.data.class.students, ['سارة أحمد', 'كريم']);
 });
 
-test('نقل طالبٍ بين المجموعات ينقله إلى موضع مجموعته، والحذف يُزيله بمجموعته', async () => {
+test('حذف طالبٍ يُزيله من الكشف ومن ملفّاته', async () => {
   const teacher = client();
-  await teacher.login('أ. بشار');
-  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\nليان\n# ب\nكريم' })).data.class;
-
-  const moved = await teacher.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`, { group: 'ب' });
-  assert.deepEqual(moved.data.class.students, ['ليان', 'كريم', 'سارة']);
-  assert.deepEqual(moved.data.class.groups, ['أ', 'ب', 'ب']);
-
-  const out = await teacher.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`, { group: '' });
-  assert.equal(out.data.class.groups[out.data.class.students.indexOf('سارة')], '');
+  await teacher.login('أ. لمى');
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: 'سارة\nليان\nكريم', record: true })).data.class;
 
   const gone = await teacher.request('DELETE', `/api/classes/${cls.id}/students/${encodeURIComponent('ليان')}`);
-  assert.deepEqual(gone.data.class.students, ['كريم', 'سارة']);
-  assert.deepEqual(gone.data.class.groups, ['ب', '']);
+  assert.deepEqual(gone.data.class.students, ['سارة', 'كريم']);
+  assert.deepEqual(gone.data.class.pupils.map((p) => p.name), ['سارة', 'كريم']);
   assert.equal((await teacher.request('DELETE', `/api/classes/${cls.id}/students/${encodeURIComponent('لا أحد')}`)).status, 404);
 });
 
-test('مجموعةٌ بأسمائها دفعةً واحدة: الاسم الموجود يُنقل إليها ولا يتكرّر', async () => {
+test('مسارا المجموعات زالا — لا يُنشَآن ولا يُعاد فتحهما بطلبٍ قديم', async () => {
   const teacher = client();
-  await teacher.login('أ. علا');
-  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\nليان' })).data.class;
-  const made = await teacher.request('POST', `/api/classes/${cls.id}/groups`, { name: 'ب', students: 'ليان\nكريم\nرنا' });
-  assert.equal(made.status, 201);
-  assert.deepEqual(made.data.class.students, ['سارة', 'ليان', 'كريم', 'رنا']);
-  assert.deepEqual(made.data.class.groups, ['أ', 'ب', 'ب', 'ب']);
-  assert.equal((await teacher.request('POST', `/api/classes/${cls.id}/groups`, { name: '  ' })).status, 400);
-});
-
-test('إعادة تسمية مجموعة وحلّها — والطلاب يبقون', async () => {
-  const teacher = client();
-  await teacher.login('أ. مازن');
-  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: '# أ\nسارة\nليان\n# ب\nكريم' })).data.class;
-  const renamed = await teacher.request('PATCH', `/api/classes/${cls.id}/groups/${encodeURIComponent('أ')}`, { name: 'مجموعة الدعم' });
-  assert.deepEqual(renamed.data.class.groups, ['مجموعة الدعم', 'مجموعة الدعم', 'ب']);
-
-  const dissolved = await teacher.request('PATCH', `/api/classes/${cls.id}/groups/${encodeURIComponent('ب')}`, { name: '' });
-  assert.deepEqual(dissolved.data.class.groups, ['مجموعة الدعم', 'مجموعة الدعم', '']);
-  assert.equal(dissolved.data.class.students.length, 3, 'حلُّ المجموعة لا يحذف أحداً');
-  assert.equal((await teacher.request('PATCH', `/api/classes/${cls.id}/groups/${encodeURIComponent('لا وجود')}`, { name: 'س' })).status, 404);
+  await teacher.login('أ. وسام');
+  const cls = (await teacher.request('POST', '/api/classes', { name: 'صف', students: 'سارة' })).data.class;
+  assert.equal((await teacher.request('POST', `/api/classes/${cls.id}/groups`, { name: 'ب', students: 'ليان' })).status, 404);
+  assert.equal((await teacher.request('PATCH', `/api/classes/${cls.id}/groups/${encodeURIComponent('ب')}`, { name: 'ج' })).status, 404);
+  // وطلبُ تعديلٍ قديم يحمل مجموعةً لا يكسر شيئاً: الاسم وحده يُقرأ
+  const patched = await teacher.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`, { group: 'أ' });
+  assert.equal(patched.status, 200);
+  assert.deepEqual(patched.data.class.students, ['سارة']);
 });
 
 test('إدارة الطلاب معزولةٌ لكل معلّم', async () => {
@@ -548,14 +510,13 @@ test('إدارة الطلاب معزولةٌ لكل معلّم', async () => {
   assert.equal((await b.request('POST', `/api/classes/${cls.id}/students`, { name: 'دخيل' })).status, 404);
   assert.equal((await b.request('PATCH', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`, { name: 'x' })).status, 404);
   assert.equal((await b.request('DELETE', `/api/classes/${cls.id}/students/${encodeURIComponent('سارة')}`)).status, 404);
-  assert.equal((await b.request('POST', `/api/classes/${cls.id}/groups`, { name: 'ج' })).status, 404);
   assert.equal((await client().request('POST', `/api/classes/${cls.id}/students`, { name: 'x' })).status, 401);
   assert.deepEqual((await a.request('GET', '/api/classes')).data.classes[0].students, ['سارة']);
 });
 
 // ----------------------------------------------------------- النموذج
 
-test('السجل التجريبي: فصلٌ بطلاب وهميين في ثلاث مجموعات ونتائجَ عبر خمسة أنشطة', async () => {
+test('السجل التجريبي: فصلٌ بطلاب وهميين ونتائجَ عبر خمسة أنشطة', async () => {
   const teacher = client();
   await teacher.login('أ. جهاد');
   const made = await teacher.request('POST', '/api/classes/demo', {});
@@ -564,13 +525,12 @@ test('السجل التجريبي: فصلٌ بطلاب وهميين في ثلا�
   assert.equal(cls.record, true);
   assert.equal(cls.demo, true);
   assert.equal(cls.students.length, 12);
-  assert.equal(new Set(cls.groups).size, 3);
   assert.equal(new Set(cls.pupils.map((p) => p.pin)).size, 12, 'رموز لا تتكرّر');
 
   const rec = await teacher.request('GET', '/api/classes/' + cls.id + '/record');
   assert.equal(rec.data.class.demo, true);
   assert.equal(rec.data.sessions.length, 5);
-  assert.equal(rec.data.groups.length, 3);
+  assert.equal(rec.data.groups, undefined, 'ولا تصنيفات داخل الفصل');
   assert.ok(rec.data.avgPercent > 20 && rec.data.avgPercent < 100);
   const busy = rec.data.students.filter((s) => s.attempts > 0);
   assert.equal(busy.length, 12, 'كلّهم لهم محاولات');
