@@ -804,6 +804,11 @@ function postgresDriver(connectionString) {
     kind: 'postgres',
     location: connectionString.replace(/:[^:@/]+@/, ':***@'),
 
+    /** يغلق مجمّع الاتصالات — لسائقٍ فشلت تهيئته فلن يُستعمل */
+    async end() {
+      await pool.end();
+    },
+
     async init() {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
@@ -1588,13 +1593,29 @@ function explainDbError(err, url) {
   return err.message;
 }
 
+/**
+ * خطأٌ لا تنفع معه إعادة المحاولة: كلمة مرورٍ أو اسمُ مستخدمٍ خاطئ في
+ * DATABASE_URL لا يصلحهما الوقت، بل تعديلُ المتغيّر وإعادةُ النشر. وإعادةُ
+ * المحاولة بهما تُبقي «قاطع الدارة» عند Supabase مفتوحاً فتحجب حتى الاتصال
+ * الصحيح دقائق بعد إصلاحه.
+ */
+function isCredentialError(err) {
+  return /password authentication failed|Tenant or user not found/i.test((err && err.message) || '');
+}
+
+function isLoud() {
+  return process.env.PORT !== '0' && process.env.NODE_ENV !== 'test';
+}
+
 async function init() {
   const url = process.env.DATABASE_URL;
-  const loud = process.env.PORT !== '0' && process.env.NODE_ENV !== 'test';
+  const loud = isLoud();
   lastError = null;
+  stopReconnect();
 
   if (url) {
     const pg = postgresDriver(url);
+    let retryable = true;
     // محاولتان إضافيتان: قواعد البيانات المُدارة قد تستيقظ ببطء
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -1605,14 +1626,32 @@ async function init() {
         return driver;
       } catch (err) {
         lastError = explainDbError(err, url);
+        retryable = !isCredentialError(err);
         if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
       }
     }
+    await pg.end().catch(() => {});
     // لا نُسقط التطبيق: الجلسات الحية أهم من الحسابات، لكن نُعلن العطل بوضوح
     if (loud) {
       console.error('⛔ تعذّر الاتصال بقاعدة البيانات، سنتابع بتخزين ملف مؤقت.');
       console.error('   السبب: ' + lastError);
+      if (!retryable) console.error('   لن تُعاد المحاولة: صحّح DATABASE_URL ثم أعد النشر.');
     }
+    driver = fileDriver();
+    await driver.init();
+    if (loud) console.log(`تخزين الحسابات: file (${driver.location})`);
+    startSweeper();
+    /*
+     * ما دام العطل ممّا يزول وحده (قاعدةٌ نائمة، شبكةٌ مقطوعة، قاطعُ دارةٍ
+     * مفتوح) نعاود الاتصال في الخلفية ونعود إلى القاعدة فور استجابتها.
+     *
+     * بدون هذا كان الخادم يبقى على الملف المؤقت **حتى إعادة النشر التالية**
+     * مهما طال الوقت: كلُّ معلّمٍ يجد نفسه خارج حسابه، ومن يدخل من جديد
+     * تُكتب جلسته في ملفٍ يضيع مع أول إعادة تشغيل — فيرى صفحة الدخول مع
+     * كل زيارة ولا يفهم لماذا.
+     */
+    if (retryable) scheduleReconnect(url);
+    return driver;
   }
 
   driver = fileDriver();
@@ -1622,7 +1661,47 @@ async function init() {
   return driver;
 }
 
+// ------------------------------------------------------- العودة إلى القاعدة
+
+const RECONNECT_MS = 60 * 1000;
+let reconnectTimer = null;
+
+function stopReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+}
+
+function scheduleReconnect(url) {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    tryReconnect(url).catch(() => {});
+  }, RECONNECT_MS);
+  reconnectTimer.unref?.();
+}
+
+/**
+ * محاولةُ عودةٍ واحدة إلى Postgres. تنجح فيصير هو السائق من الطلب التالي —
+ * وما كُتب في الملف المؤقت أثناء العطل (جلساتُ دخولٍ غالباً) يبقى فيه ولا
+ * يُنقل: صاحبُه يسجّل دخوله مرّةً أخرى، وذلك أهون من مواصلة الكتابة في ملفٍ
+ * يضيع. تفشل فتُعاد بعد دقيقة، إلا أن يكون الخطأ خطأَ اعتماد.
+ */
+async function tryReconnect(url) {
+  const pg = postgresDriver(url);
+  try {
+    await pg.init();
+    driver = pg;
+    lastError = null;
+    if (isLoud()) console.log(`✅ عادت قاعدة البيانات — تخزين الحسابات: postgres (${pg.location})`);
+  } catch (err) {
+    lastError = explainDbError(err, url);
+    await pg.end().catch(() => {});
+    if (!isCredentialError(err)) scheduleReconnect(url);
+  }
+}
+
 function startSweeper() {
+  // `driver` يُقرأ عند كل نبضة لا مرّةً واحدة: قد يتبدّل بعودة القاعدة
   const sweep = setInterval(() => driver.sweepAuthSessions().catch(() => {}), 60 * 60 * 1000);
   sweep.unref?.();
 }
@@ -1632,8 +1711,12 @@ function status() {
   return {
     kind: driver?.kind || null,
     durable: isDurable(),
+    // هل ضُبطت قاعدةُ بيانات أصلاً؟ ملفٌ بلا DATABASE_URL اختيار، وملفٌ معها عطل
+    configured: Boolean(process.env.DATABASE_URL),
     // نعرض سبب فشل قاعدة البيانات إن وُجد ليظهر في الفحص
     error: lastError,
+    // هل تُعاد المحاولة في الخلفية؟ لا مع خطأ اعتماد: ذاك يُصلَح بالنشر لا بالانتظار
+    reconnecting: Boolean(reconnectTimer),
   };
 }
 
@@ -1647,4 +1730,4 @@ function isDurable() {
   return driver?.kind === 'postgres';
 }
 
-module.exports = { init, get, isDurable, status, newId, DATA_FILE };
+module.exports = { init, get, isDurable, status, newId, DATA_FILE, isCredentialError };

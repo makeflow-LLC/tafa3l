@@ -197,9 +197,16 @@ function accountRoutes(store) {
   });
 
   router.get('/auth/me', (req, res) => {
+    const storageState = storage.status();
     res.json({
       user: req.user || null,
       durable: storage.isDurable(),
+      /*
+       * قاعدةُ بياناتٍ مضبوطة لكنها لا تستجيب: تخزينٌ مؤقت على خادمٍ كان
+       * يُفترض أن يكون دائماً. تعرضه صفحةُ الدخول و«نشاطاتي» بسببه، لأن
+       * أثره الأول على المعلّم «أخرجتني المنصة من حسابي» لا شيءٌ يفهمه.
+       */
+      storageError: storageState.configured ? storageState.error : null,
       googleConfigured: google.isConfigured(),
       // حالة الاشتراك تصل مع المستخدم كي تعرف الواجهة ماذا تعرض فوراً
       premium: premium.summary(req.user),

@@ -53,6 +53,7 @@
     leavingIntentionally: false, // خروج مقصود عبر أزرار التنقل
     user: null, // المدرب المسجّل، أو null للاستخدام بلا حساب
     durable: null, // هل تخزين الحسابات دائم على هذا الخادم
+    storageError: null, // قاعدةُ بياناتٍ مضبوطة لكنها لا تستجيب — السبب كما يشرحه الخادم
     premium: null, // { isPremium, isAdmin, premiumUntil, plan }
     editingActivityId: store.local.get(EDITING_KEY, null), // النشاط المحفوظ الجاري تعديله — يبقى بعد تحديث الصفحة
     dashOpenQ: null, // سؤال مفتوح النتائج في جدول لوحة التحكم
@@ -156,6 +157,7 @@
       const data = await api('/api/auth/me');
       state.user = data.user || null;
       state.durable = data.durable;
+      state.storageError = data.storageError || null;
       state.premium = data.premium || null;
     } catch {
       state.user = null;
@@ -376,7 +378,13 @@
 
     // تحذير التخزين يسبق القائمة ولا يُطوى — يحمي عمل المعلّم
     if (state.durable === false) {
-      page.append(UI.Warning({ title: t('hstorageIsNotDurable'), body: t('haccountsAndActivitiesAre') }));
+      // قاعدةٌ مضبوطة وساقطة عطلٌ يُسمّى بسببه، وملفٌ بلا قاعدة إعدادٌ يُنبَّه إليه
+      page.append(
+        UI.Warning({
+          title: state.storageError ? t('hstorageDownTitle') : t('hstorageIsNotDurable'),
+          body: state.storageError ? t('hstorageDownBody', { reason: state.storageError }) : t('haccountsAndActivitiesAre'),
+        })
+      );
     }
 
     const listBox = el('div', { class: 'tp-home' });

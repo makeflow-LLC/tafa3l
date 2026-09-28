@@ -20,7 +20,19 @@ function parseCookies(req) {
   for (const part of header.split(';')) {
     const at = part.indexOf('=');
     if (at < 0) continue;
-    out[part.slice(0, at).trim()] = decodeURIComponent(part.slice(at + 1).trim());
+    const raw = part.slice(at + 1).trim();
+    /*
+     * كوكي تالفة من سكربت طرفٍ ثالث (قياس، إعلانات) لا يجوز أن تُسقط جلسة
+     * الدخول: `decodeURIComponent` يرمي على `%` ناقصة، وكان الرمي يخرج من
+     * الدالة كلّها فيبدو المعلّم خارج حسابه ما دامت تلك الكوكي في متصفّحه.
+     */
+    let value = raw;
+    try {
+      value = decodeURIComponent(raw);
+    } catch {
+      /* تُقرأ كما هي */
+    }
+    out[part.slice(0, at).trim()] = value;
   }
   return out;
 }
@@ -146,6 +158,7 @@ function validateEmail(value) {
 
 module.exports = {
   COOKIE,
+  parseCookies,
   startSession,
   endSession,
   attachUser,

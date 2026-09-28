@@ -31,15 +31,18 @@
     // عدد أيام المنحة من الخادم لا رقماً مكتوباً هنا: يتغيّر بمتغيّر بيئة،
     // وصفحة الدخول أسوأ مكانٍ يَعِد فيه رقمٌ قديم بما لا يحدث
     let trialDays = 0;
+    // قاعدةُ البيانات مضبوطة ولا تستجيب: الدخول الآن مؤقت يضيع مع إعادة التشغيل
+    let storageError = null;
     try {
-      const { user, googleConfigured: configured, premium } = await api('/api/auth/me');
+      const { user, googleConfigured: configured, premium, storageError: dbError } = await api('/api/auth/me');
       googleConfigured = configured !== false;
       trialDays = premium?.plan?.signupTrialDays || 0;
+      storageError = dbError || null;
       if (user) return renderAlready(user);
     } catch {
       /* الخادم قد يكون متوقفاً — نعرض الزر على أي حال */
     }
-    render(googleConfigured, trialDays);
+    render(googleConfigured, trialDays, storageError);
     if (errorMsg) toast(errorMsg, 'bad');
   }
 
@@ -68,7 +71,7 @@
     );
   }
 
-  function render(googleConfigured, trialDays) {
+  function render(googleConfigured, trialDays, storageError) {
     app.innerHTML = '';
 
     const googleBtn = el(
@@ -86,6 +89,17 @@
         // المنحة فوق الزرّ لا تحته: هي سببُ الضغط عليه
         trialDays ? el('div', { class: 'trial', style: { margin: 0 } }, t('loginTrialBadge', { days: trialDays })) : null,
         el('p', { class: 'muted small', text: t('loginSubtitle') }),
+        /*
+         * يُقال قبل الزرّ لا بعده: من يضغط وهو يعرف أن جلسته لن تبقى لا
+         * يعود بعد ساعة ليسأل لماذا أُخرج من حسابه. وسببُ العطل كما يشرحه
+         * الخادم، لأن من يقرؤه هنا غالباً هو من يستطيع إصلاحه.
+         */
+        storageError
+          ? el('div', { class: 'banner' }, [
+              el('strong', { text: t('loginStorageDownTitle') }),
+              el('div', { class: 'small', text: t('loginStorageDownBody', { reason: storageError }) }),
+            ])
+          : null,
         googleConfigured
           ? googleBtn
           : el('div', { class: 'banner' }, [
