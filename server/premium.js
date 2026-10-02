@@ -279,9 +279,22 @@ function onSignupTrial(user) {
   return user.premiumUntil === user.trialGrantedAt + signupTrialMs();
 }
 
+/**
+ * هل انتهى اشتراكٌ كان لهذا الحساب؟
+ *
+ * غيرُ المشترك نوعان لا واحد: من لم يشترك قط، ومن كان مشتركاً فانتهت مدّته.
+ * الأوّل يُعرض عليه الاشتراك كأيّ زائر، والثاني فقد شيئاً كان يعمل عنده أمس
+ * ولا يعرف لماذا — فيُقال له صراحةً «انتهى اشتراكك» ويُدَلّ على التجديد.
+ */
+function isExpired(user) {
+  if (!user || isAdmin(user)) return false;
+  return Boolean(user.premiumUntil && user.premiumUntil <= Date.now());
+}
+
 /** ملخّص يُرسل للمتصفح — بلا أي بيانات حساسة */
 function summary(user) {
   const tier = tierOf(user);
+  const expired = isExpired(user);
   return {
     isPremium: isPremium(user),
     isAdmin: isAdmin(user),
@@ -289,6 +302,12 @@ function summary(user) {
     daysLeft: daysLeft(user),
     // منحة التسجيل: نميّزها عن الاشتراك المدفوع كي تعرف الواجهة ماذا تقول
     onSignupTrial: onSignupTrial(user),
+    // اشتراكٌ انتهى: الواجهة تقول ذلك صراحةً وتضع زرّ التجديد أمامه
+    expired,
+    // وهل ما انتهى منحةُ التسجيل لا اشتراكٌ مدفوع؟ — «انتهت تجربتك» غير «انتهى اشتراكك»
+    expiredTrial: expired && Boolean(user.trialGrantedAt) && user.premiumUntil === user.trialGrantedAt + signupTrialMs(),
+    // الباقة التي كان فيها — كي يُجدّد ما كان عنده لا ما نخمّنه
+    lastTier: expired ? (TIERS.includes(user.tier) && user.tier !== 'free' ? user.tier : 'basic') : null,
     plan: PLAN,
     // المستوى وحدوده والباقات كلّها: الواجهة ترسم عليها ولا تحفظ رقماً عندها
     tier,
@@ -395,6 +414,7 @@ module.exports = {
   summary,
   daysLeft,
   onSignupTrial,
+  isExpired,
   signupTrialMs,
   requirePremium,
   requireAdmin,

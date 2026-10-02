@@ -3126,6 +3126,10 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     const home = el('div', { class: 'tp-home' });
     app.append(home);
 
+    // اشتراكٌ انتهى: أوّل ما يُرى في اللوحة، قبل أيّ زرّ آخر
+    const expired = expiredNotice();
+    if (expired) home.append(expired);
+
     home.append(
       el('div', { class: 'tp-chips' }, [
         UI.NavChip({ label: t('hnewActivity'), href: '#/new', primary: true }),
@@ -3949,6 +3953,71 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
     ]);
   }
 
+  /**
+   * رابط واتساب «أريد تجديد اشتراكي» — ومعه بريد الحساب كي يُعرف صاحبه بلا
+   * سؤالٍ ثانٍ. الرقم رقمُ طريق بلده: من يدفع بالمحفظة يراسل رقم الإيصالات.
+   */
+  function renewWhatsappLink(plan) {
+    const p = plan || DEFAULT_PLAN;
+    const phone = localPay(p)?.whatsapp || p.whatsapp;
+    const text = t('expWaMsg', { email: state.user?.email || '' });
+    return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  }
+
+  /**
+   * «انتهى اشتراكك» — قولٌ صريح وخطوتان لا ثالث لهما.
+   *
+   * المعلّم الذي انتهى اشتراكه يجد المساعد الذكيّ مقفلاً فجأة ولا يعرف لماذا
+   * ولا ماذا يفعل. فنقولها له في أوّل ما يراه، ونضع أمامه زرّين كبيرين: الباقات
+   * للتجديد، وواتساب لمن يريد أن يسأل إنساناً. وفي صفحة الباقات نفسها يسقط
+   * زرّ الباقات (هو فيها) ويبقى واتساب.
+   */
+  function expiredNotice(opts = {}) {
+    const info = state.premium;
+    if (!state.user || !info?.expired) return null;
+    const plan = info.plan || DEFAULT_PLAN;
+    return el('div', { class: 'expired-note stack', role: 'alert' }, [
+      el('h2', { text: info.expiredTrial ? t('expTrialTitle') : t('expTitle') }),
+      el('p', { text: t('expBody', { date: fmtDate(info.premiumUntil) }) }),
+      el('div', { class: 'expired-note__actions' }, [
+        opts.onPlans ? null : el('a', { class: 'btn primary', href: '#/upgrade', onclick: opts.onRenew }, t('expRenewBtn')),
+        el('a', { class: 'btn wa', href: renewWhatsappLink(plan), target: '_blank', rel: 'noopener' }, t('expWaBtn')),
+      ]),
+      opts.onPlans ? el('p', { text: t('expPickBelow') }) : null,
+      el('p', { class: 'muted small', text: t('expSafe') }),
+    ]);
+  }
+
+  /**
+   * النافذة نفسها مرّةً في اليوم — لا مع كل فتحٍ للصفحة.
+   * تُرى فوق أيّ شاشة، فلا يفوت التنبيهُ من دخل من رابطٍ مباشر إلى نشاطٍ أو لعبة.
+   */
+  const EXPIRED_POP_KEY = 'tapio.expiredPopDay';
+  function maybeShowExpiredPop() {
+    if (!state.user || !state.premium?.expired) return;
+    if (document.querySelector('.welcome-pop')) return; // سؤال البلد أوّلاً
+    const hash = location.hash.slice(1);
+    if (/^\/(upgrade|pay|live)/.test(hash)) return; // هو في الباقات أو في جلسةٍ حيّة
+    const today = new Date().toISOString().slice(0, 10);
+    if (store.local.get(EXPIRED_POP_KEY, null) === today) return;
+    store.local.set(EXPIRED_POP_KEY, today);
+
+    const box = el('div', { class: 'welcome-pop' });
+    const close = () => box.remove();
+    const notice = expiredNotice({ onRenew: close });
+    box.append(
+      el('div', { class: 'welcome-card stack', role: 'dialog', 'aria-modal': 'true' }, [
+        el('div', { style: { fontSize: '2.4rem', textAlign: 'center' }, text: '⏰' }),
+        notice,
+        el('button', { class: 'btn ghost sm', type: 'button', onclick: close }, t('upWelcomeLater')),
+      ])
+    );
+    box.addEventListener('click', (event) => {
+      if (event.target === box) close();
+    });
+    document.body.append(box);
+  }
+
   /** السعر بعملة المعلّم: الشيكل لمن له طريق دفعٍ محليّ، والدولار لسواه */
   function priceLine(plan) {
     const pay = localPay(plan);
@@ -4172,7 +4241,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       ctaFor('pro', pro),
     ]);
 
-    const invite = signupTrialInvite(plan) || trialCountdown();
+    const invite = expiredNotice({ onPlans: true }) || signupTrialInvite(plan) || trialCountdown();
     if (invite) app.append(invite);
 
     app.append(el('div', { class: 'plans plans--three' }, [freeCard, basicCard, proCard]));
@@ -6327,6 +6396,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
   loadAccount()
     .finally(route)
     .finally(() => window.T.afterLogin(state.user, state.premium, paintAccount))
+    .finally(maybeShowExpiredPop)
     // الجرس بعد الرسم لا قبله: طلبٌ ينتظر ردّاً لا يجوز أن يؤخّر ظهور اللوحة
     .finally(() => {
       refreshBell();

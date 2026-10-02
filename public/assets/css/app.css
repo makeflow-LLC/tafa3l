@@ -3908,6 +3908,56 @@ body.screen-body .q-image {
   font-size: 0.92rem;
 }
 
+/* انتهى الاشتراك — أوّل ما يُرى، بلون التنبيه لا بلون العلامة، وزرّان كبيران */
+.expired-note {
+  gap: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  color: var(--text);
+}
+
+.expired-note h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.expired-note p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.expired-note__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* زرّان بعرضٍ متساوٍ يملآن السطر؛ وعلى الجوال يصير كلٌّ في سطر */
+.expired-note__actions .btn {
+  flex: 1 1 200px;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.btn.wa {
+  background: #128a4d;
+  border-color: #128a4d;
+  color: #fff;
+}
+
+/* داخل النافذة المنبثقة: البطاقة نفسها تحمل الإطار، فلا إطار ثانٍ */
+.welcome-card .expired-note {
+  margin: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: center;
+}
+
 /* ------------------------------------------------------------- الباقات */
 
 .plans {

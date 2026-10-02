@@ -444,3 +444,28 @@ test('إحصاءُ المعلّم في لوحة المالك: أرقامٌ صا�
   assert.equal((await teacher.request('GET', `/api/admin/users/${target.id}/stats`)).status, 404);
   assert.equal((await owner.request('GET', '/api/admin/users/u_ghost/stats')).status, 404);
 });
+
+test('من انتهى اشتراكه يُعرف أنه انتهى — ومن لم يشترك قط لا', () => {
+  const now = Date.now();
+  const never = premium.summary({ email: 'never@example.com' });
+  assert.equal(never.expired, false, 'من لم يشترك قط ليس «منتهياً»');
+  assert.equal(never.lastTier, null);
+
+  const active = premium.summary({ email: 'a@example.com', premiumUntil: now + DAY, tier: 'pro' });
+  assert.equal(active.expired, false, 'الساري ليس منتهياً');
+
+  const paid = premium.summary({ email: 'p@example.com', premiumUntil: now - DAY, tier: 'pro' });
+  assert.equal(paid.expired, true, 'انتهى اشتراكه');
+  assert.equal(paid.expiredTrial, false, 'اشتراكٌ مدفوع لا تجربة');
+  assert.equal(paid.lastTier, 'pro', 'يُجدّد ما كان عنده');
+  assert.equal(paid.tier, 'free');
+
+  const grantedAt = now - 20 * DAY;
+  const trial = premium.summary({ email: 't@example.com', trialGrantedAt: grantedAt, premiumUntil: grantedAt + premium.signupTrialMs() });
+  assert.equal(trial.expired, true);
+  assert.equal(trial.expiredTrial, true, 'انتهت تجربته المجانية');
+  assert.equal(trial.lastTier, 'basic');
+
+  const owner = premium.summary({ email: 'owner@tapio.fun', premiumUntil: now - DAY });
+  assert.equal(owner.expired, false, 'المالك لا ينتهي اشتراكه');
+});
