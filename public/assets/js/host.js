@@ -3611,6 +3611,41 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       ]);
     }
 
+    /*
+     * البحث عن مدرّب: جزءٌ من البريد أو الاسم يكفي.
+     *
+     * القائمة كلّها وصلت مع اللوحة، فالتصفية في المتصفّح عند كل حرف بلا طلبٍ
+     * للخادم. والحقل يُبنى مرّةً واحدة خارج `draw` كي يبقى ما كُتب فيه عبر
+     * إعادة الرسم (التفعيل وفتح الإحصاء يعيدان رسم الجدول)، والكتابة لا تعيد
+     * إلا صفوف الجدول فلا يفقد الحقل تركيزه تحت أصابع المالك.
+     * عدّة كلماتٍ = كلّها يجب أن تطابق، بأيّ ترتيب: «gmail أحمد».
+     */
+    const fold = (s) =>
+      String(s || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/[ً-ٰٟـ]/g, '');
+    let query = '';
+    let renderRows = () => {};
+    const search = el('input', {
+      type: 'search',
+      placeholder: t('hadmSearch'),
+      'aria-label': t('hadmSearch'),
+      maxlength: 80,
+      autocomplete: 'off',
+      dir: 'auto',
+    });
+    search.addEventListener('input', () => {
+      query = search.value;
+      renderRows();
+    });
+    const matches = (user) => {
+      const words = fold(query).split(/\s+/).filter(Boolean);
+      if (!words.length) return true;
+      const hay = fold([user.email, user.name, user.country, countryName(user.country), user.id].join(' '));
+      return words.every((w) => hay.includes(w));
+    };
+
     const draw = () => {
       const users = data.users;
       const active = users.filter((u) => u.isPremium).length;
@@ -3636,7 +3671,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
       );
       if (series.length) app.append(signupChart(series));
 
-      const rows = users.map((user) => {
+      const userRows = (user) => {
         const left = daysLeft(user.premiumUntil);
         const statusBadge = user.isAdmin
           ? el('span', { class: 'badge', text: t('howner') })
@@ -3787,12 +3822,29 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
         ]);
 
         return statsRow ? [row, statsRow] : [row];
-      }).flat();
+      };
+
+      const tbody = el('tbody');
+      const count = el('span', { class: 'badge' });
+      renderRows = () => {
+        const shown = users.filter(matches);
+        count.textContent = t('hadmSearchCount', { n: shown.length, total: users.length });
+        tbody.replaceChildren(
+          ...(shown.length
+            ? shown.flatMap(userRows)
+            : [el('tr', {}, el('td', { colspan: 6, class: 'muted center' }, t('hadmSearchNone', { q: query.trim() })))])
+        );
+      };
+      renderRows();
 
       app.append(
         el('div', { class: 'card stack' }, [
           el('h2', { style: { margin: 0 }, text: t('hregisteredTeachers2') }),
           el('p', { class: 'muted small', style: { margin: 0 }, text: t('hextensionsStartFromThe') }),
+          el('div', { class: 'row', style: { gap: '8px' } }, [
+            el('span', { style: { flex: '1 1 auto', minWidth: '0' } }, search),
+            count,
+          ]),
           el('div', { class: 'table-wrap' }, [
             el('table', { class: 'adm-table' }, [
               el('thead', {}, el('tr', {}, [
@@ -3803,7 +3855,7 @@ h2{font-size:14px;margin:14px 0 6px;color:#6E7290}
                 el('th', {}, t('hsubscription')),
                 el('th', {}, t('hcontrols')),
               ])),
-              el('tbody', {}, rows),
+              tbody,
             ]),
           ]),
         ])
