@@ -1140,6 +1140,9 @@
       hadmLast7: 'تسجيلات آخر 7 أيام',
       hadmMade: 'ما أنشأه',
       hadmMadeHint: '📝 الأنشطة · 🎮 الألعاب المرفوعة',
+      hadmSearch: 'ابحث بجزءٍ من البريد أو الاسم…',
+      hadmSearchCount: '{n} من {total}',
+      hadmSearchNone: 'لا مدرّب يطابق «{q}»',
       // إحصاءُ معلّمٍ واحد في لوحة المالك — أرقامٌ لا محتوى
       hstOpen: '📊 إحصاؤه',
       hstClose: '▲ أغلق',
